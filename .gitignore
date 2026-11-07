@@ -1,0 +1,15 @@
+# Bảo mật: Không bao giờ đưa biến môi trường chứa API Key lên GitHub
+.env
+.env.*
+!.env.example
+
+# Dữ liệu sao lưu cá nhân của người học
+*backup*.json
+qenglish-backup-*.json
+
+# Thư mục phụ thuộc & công cụ triển khai
+node_modules/
+.vercel/
+.DS_Store
+Thumbs.db
+*.log

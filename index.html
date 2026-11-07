@@ -1,0 +1,1527 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="QEnglish — Hệ thống học tiếng Anh cá nhân hóa dành cho sinh viên FPT University (Listening, Speaking, Reading, Writing, Grammar & Vocabulary)">
+    <title>QEnglish — Personal English Learning System (FPT University)</title>
+
+    <!-- Fonts & UI Frameworks -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif']
+                    }
+                }
+            }
+        };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="antialiased selection:bg-violet-500 selection:text-white">
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="fixed bottom-20 lg:bottom-6 right-4 z-[90] flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Mobile Sidebar Overlay -->
+    <div id="sidebar-overlay" onclick="toggleSidebar(true)" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 lg:hidden"></div>
+
+    <!-- ==================== LEFT SIDEBAR ==================== -->
+    <aside id="sidebar" class="fixed top-0 left-0 bottom-0 z-50 flex flex-col justify-between overflow-y-auto no-scrollbar p-4">
+        <div class="space-y-4">
+            <!-- Brand Header -->
+            <div class="flex items-center justify-between px-1 pt-1">
+                <div onclick="navigateTo('dashboard')" class="flex items-center gap-3 cursor-pointer">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-violet-500/30 font-extrabold text-xl text-white">
+                        Q
+                    </div>
+                    <div>
+                        <h1 class="font-extrabold text-base tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-300">
+                            QEnglish
+                        </h1>
+                        <p class="text-[10px] text-cyan-400 font-bold uppercase tracking-wider">FPT Level 3 System</p>
+                    </div>
+                </div>
+                <button onclick="toggleSidebar(true)" class="lg:hidden p-2 rounded-lg text-slate-400 hover:text-white">✕</button>
+            </div>
+
+            <!-- Global Level Selector (PHẦN 4: CEFR & IELTS Tách Biệt) -->
+            <div class="p-3 rounded-2xl bg-slate-950/90 border border-white/10 space-y-1.5">
+                <div class="flex items-center justify-between">
+                    <label for="global-level" class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">🎯 Trình Độ Học Tập</label>
+                    <span class="text-[10px] text-violet-300 font-bold">CEFR / IELTS</span>
+                </div>
+                <select id="global-level" onchange="onLevelChange(this.value)" class="w-full bg-slate-900 border border-white/10 rounded-xl px-2.5 py-2 text-xs font-bold text-cyan-300 focus:outline-none focus:border-violet-500 cursor-pointer">
+                    <option value="all">🌐 Tất cả trình độ (Mặc định)</option>
+                    <optgroup label="Chuẩn CEFR (A1 – C2)">
+                        <option value="A1">CEFR A1 — Beginner</option>
+                        <option value="A2">CEFR A2 — Elementary</option>
+                        <option value="B1">CEFR B1 — Intermediate (FPT Lv3)</option>
+                        <option value="B2">CEFR B2 — Upper-Intermediate</option>
+                        <option value="C1">CEFR C1 — Advanced</option>
+                        <option value="C2">CEFR C2 — Proficiency</option>
+                    </optgroup>
+                    <optgroup label="Mục tiêu IELTS (3.0 – 9.0, Độc lập)">
+                        <option value="IELTS 3.0">IELTS 3.0 – 3.5</option>
+                        <option value="IELTS 4.0">IELTS 4.0 – 4.5</option>
+                        <option value="IELTS 5.0">IELTS 5.0 – 5.5</option>
+                        <option value="IELTS 6.0">IELTS 6.0 – 6.5</option>
+                        <option value="IELTS 7.0">IELTS 7.0 – 7.5</option>
+                        <option value="IELTS 8.0">IELTS 8.0 – 9.0</option>
+                    </optgroup>
+                </select>
+            </div>
+
+            <!-- Primary Navigation -->
+            <nav class="space-y-1" aria-label="Điều hướng chính">
+                <button data-nav="dashboard" onclick="navigateTo('dashboard')" class="sidebar-item active">
+                    <span>🏠</span>
+                    <span>Dashboard</span>
+                </button>
+
+                <!-- Vocabulary + Sub-tabs -->
+                <div>
+                    <button data-nav="vocabulary" onclick="navigateTo('vocabulary')" class="sidebar-item justify-between">
+                        <span class="flex items-center gap-3"><span>📖</span><span>Vocabulary Bank</span></span>
+                        <span id="nav-count" class="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 font-extrabold">20</span>
+                    </button>
+                    <div id="vocab-sub" class="hidden pl-4 pr-1 py-1.5 space-y-1 border-l border-white/10 ml-4 mt-1">
+                        <button data-nav="vocab-flashcards" onclick="navigateTo('vocabulary','flashcards')" class="sidebar-item py-1.5 text-xs">🃏 Thẻ Học (Flashcards)</button>
+                        <button data-nav="vocab-wordlist" onclick="navigateTo('vocabulary','wordlist')" class="sidebar-item py-1.5 text-xs">📚 Kho Từ Vựng</button>
+                        <button data-nav="vocab-practice" onclick="navigateTo('vocabulary','practice')" class="sidebar-item py-1.5 text-xs">🔥 Luyện 6 Bước</button>
+                        <button data-nav="vocab-srs" onclick="navigateTo('vocabulary','srs')" class="sidebar-item py-1.5 text-xs">🔄 Ôn Ngắt Quãng (SRS)</button>
+                        <button data-nav="vocab-quiz" onclick="navigateTo('vocabulary','quiz')" class="sidebar-item py-1.5 text-xs">🎯 Trắc Nghiệm</button>
+                        <button data-nav="vocab-import" onclick="navigateTo('vocabulary','import')" class="sidebar-item py-1.5 text-xs">➕ Nhập & Quản Lý</button>
+                    </div>
+                </div>
+
+                <button data-nav="grammar" onclick="navigateTo('grammar')" class="sidebar-item">
+                    <span>📝</span>
+                    <span>Grammar (16 Chủ đề)</span>
+                </button>
+
+                <button data-nav="listening" onclick="navigateTo('listening')" class="sidebar-item">
+                    <span>🎧</span>
+                    <span>Listening (4 Chế độ)</span>
+                </button>
+
+                <button data-nav="speaking" onclick="navigateTo('speaking')" class="sidebar-item">
+                    <span>🎙️</span>
+                    <span>Speaking & Live Talk</span>
+                </button>
+
+                <button data-nav="reading" onclick="navigateTo('reading')" class="sidebar-item">
+                    <span>📄</span>
+                    <span>Reading Academic</span>
+                </button>
+
+                <button data-nav="writing" onclick="navigateTo('writing')" class="sidebar-item">
+                    <span>✍️</span>
+                    <span>Writing Studio</span>
+                </button>
+
+                <div class="pt-2 border-t border-white/5 mt-2 space-y-1">
+                    <button data-nav="notebook" onclick="navigateTo('notebook')" class="sidebar-item">
+                        <span>📓</span>
+                        <span>English Notebook</span>
+                    </button>
+                    <button data-nav="progress" onclick="navigateTo('progress')" class="sidebar-item">
+                        <span>📊</span>
+                        <span>Progress & Adaptive</span>
+                    </button>
+                    <button data-nav="settings" onclick="navigateTo('settings')" class="sidebar-item">
+                        <span>⚙️</span>
+                        <span>Settings & Học Liệu</span>
+                    </button>
+                </div>
+            </nav>
+        </div>
+
+        <!-- 6-Week FPT Level 3 Goal Card -->
+        <div class="mt-4 p-3.5 rounded-2xl bg-gradient-to-br from-violet-950/70 to-slate-950 border border-violet-500/25 space-y-2">
+            <div class="flex items-center justify-between text-[11px]">
+                <span class="font-extrabold text-violet-300">🎓 FPT HCM — Level 3</span>
+                <span class="text-slate-400">6 Tuần</span>
+            </div>
+            <p class="text-[11px] text-slate-300 leading-snug">04/11/2026 → 17/12/2026</p>
+            <div class="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
+                <div id="sidebar-goal-bar" class="h-full bg-gradient-to-r from-violet-500 to-cyan-400 transition-all duration-500" style="width: 12%"></div>
+            </div>
+            <button onclick="openOnboardingModal()" class="w-full py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-bold text-cyan-300 transition">
+                ❓ Hướng dẫn học hiệu quả
+            </button>
+        </div>
+    </aside>
+
+    <!-- ==================== MAIN WORKSPACE ==================== -->
+    <div class="lg:pl-[268px] min-h-screen flex flex-col pb-20 lg:pb-8">
+
+        <!-- Sticky Top Header -->
+        <header class="sticky top-0 z-30 glass-panel border-b border-white/5 px-4 md:px-7 py-3">
+            <div class="max-w-7xl mx-auto flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                    <button onclick="toggleSidebar()" class="lg:hidden p-2 rounded-xl bg-slate-900 border border-white/10 text-slate-200" aria-label="Mở menu">
+                        ☰
+                    </button>
+                    <div class="truncate">
+                        <h2 id="page-title" class="text-sm md:text-lg font-extrabold text-white truncate">Dashboard — Trung tâm học tập</h2>
+                    </div>
+                </div>
+
+                <!-- Preserved Audio Controls + Honest AI Status Badge -->
+                <div class="flex items-center gap-2 shrink-0">
+                    <div id="header-ai-badge" class="hidden md:block cursor-pointer" onclick="navigateTo('settings')" title="Xem trạng thái Backend AI"></div>
+
+                    <div class="flex items-center gap-1.5 bg-slate-900/90 px-2.5 py-1.5 rounded-xl border border-white/10" title="Điều chỉnh tốc độ đọc phát âm (0.1x – 3.0x)">
+                        <span class="text-xs text-cyan-400">🔊</span>
+                        <select id="speed-select" onchange="updateSpeechRate(this.value)" class="bg-transparent text-xs font-bold text-cyan-300 focus:outline-none cursor-pointer">
+                            <option value="0.1">0.1x</option>
+                            <option value="0.25">0.25x</option>
+                            <option value="0.5">0.5x (Chậm)</option>
+                            <option value="0.75">0.75x</option>
+                            <option value="0.85">0.85x</option>
+                            <option value="1" selected>1.0x (Chuẩn)</option>
+                            <option value="1.25">1.25x</option>
+                            <option value="1.5">1.5x</option>
+                            <option value="2">2.0x</option>
+                            <option value="2.5">2.5x</option>
+                            <option value="3">3.0x</option>
+                        </select>
+                    </div>
+
+                    <button id="btn-autoplay-toggle" onclick="toggleAutoPlay()" class="px-3 py-1.5 rounded-xl bg-slate-900/90 border border-white/10 text-xs font-bold text-emerald-400 hover:bg-slate-800 transition hidden sm:inline-flex items-center gap-1.5">
+                        <span id="autoplay-text">Tự Đọc: Bật</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Container -->
+        <main class="flex-1 w-full max-w-7xl mx-auto px-4 md:px-7 py-6">
+
+            <!-- =====================================================================
+                 MODULE 1: DASHBOARD — TRUNG TÂM ĐIỀU KHIỂN HỌC TẬP (PHẦN 3.1)
+                 ===================================================================== -->
+            <section id="page-dashboard" class="module-page active space-y-6">
+                <!-- Hero Banner + Daily Motivation -->
+                <div class="rounded-3xl p-6 md:p-7 bg-gradient-to-r from-violet-900/65 via-indigo-950/75 to-slate-900/90 border border-violet-500/30 shadow-2xl grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
+                    <div class="lg:col-span-2 space-y-2.5">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="px-3 py-1 rounded-full bg-violet-500/25 border border-violet-400/30 text-violet-200 text-xs font-extrabold">🎓 Sinh viên Năm Nhất — FPT University HCM</span>
+                            <span id="dash-current-level-badge" class="px-3 py-1 rounded-full bg-cyan-500/20 border border-cyan-400/30 text-cyan-300 text-xs font-extrabold">Tất cả trình độ</span>
+                        </div>
+                        <h3 class="text-2xl md:text-3xl font-extrabold text-white tracking-tight">Chào bạn! Sẵn sàng chinh phục English Level 3 hôm nay?</h3>
+                        <p id="dash-goal-countdown" class="text-xs md:text-sm text-slate-300 font-medium">Lộ trình 6 tuần: 04/11/2026 – 17/12/2026 • Ưu tiên hiểu bản chất, tự sửa lỗi và duy trì thói quen mỗi ngày.</p>
+                        <div class="flex flex-wrap gap-2.5 pt-1">
+                            <button onclick="navigateTo('vocabulary','practice')" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-extrabold text-xs shadow-lg transition">🔥 Luyện Từ 6 Bước</button>
+                            <button onclick="navigateTo('listening')" class="px-4 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-white/15 text-cyan-300 font-bold text-xs transition">🎧 Luyện Nghe</button>
+                            <button onclick="navigateTo('speaking')" class="px-4 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-white/15 text-emerald-300 font-bold text-xs transition">🎙️ Luyện Nói</button>
+                            <button onclick="navigateTo('writing')" class="px-4 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-white/15 text-amber-300 font-bold text-xs transition">✍️ Viết Đoạn Văn</button>
+                        </div>
+                    </div>
+
+                    <!-- E. Daily Motivation -->
+                    <div id="daily-motivation" class="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-1.5"></div>
+                </div>
+
+                <!-- A. Tổng quan tiến độ (9 Chỉ số thực tế + Streak) -->
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <h4 class="text-sm font-extrabold uppercase tracking-wider text-slate-300">📌 Tổng Quan Tiến Độ Học Tập Thực Tế</h4>
+                        <span class="text-[11px] text-slate-400">🖥️ Dữ liệu lưu trực tiếp trên trình duyệt</span>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+                        <div class="glass-panel p-4 rounded-2xl">
+                            <p class="text-[11px] text-slate-400 font-semibold">Tổng số ngày đã học</p>
+                            <p id="dash-days-total" class="text-xl font-extrabold text-white mt-1">0 ngày</p>
+                            <p class="text-[10px] text-amber-300 mt-0.5">Chuỗi liên tiếp: <strong id="dash-streak">0 ngày</strong></p>
+                        </div>
+                        <div class="glass-panel p-4 rounded-2xl">
+                            <p class="text-[11px] text-slate-400 font-semibold">Tổng thời gian học</p>
+                            <p id="dash-time" class="text-xl font-extrabold text-cyan-300 mt-1">0 phút</p>
+                            <p class="text-[10px] text-slate-500 mt-0.5">Đo theo phiên tương tác thực</p>
+                        </div>
+                        <div class="glass-panel p-4 rounded-2xl">
+                            <p class="text-[11px] text-slate-400 font-semibold">Từ vựng đã học</p>
+                            <p id="dash-words" class="text-xl font-extrabold text-violet-300 mt-1">0 / 20</p>
+                            <p class="text-[10px] text-slate-500 mt-0.5">Trong kho cá nhân</p>
+                        </div>
+                        <div class="glass-panel p-4 rounded-2xl">
+                            <p class="text-[11px] text-slate-400 font-semibold">Từ vựng đã ghi nhớ</p>
+                            <p id="dash-words-mastered" class="text-xl font-extrabold text-emerald-300 mt-1">0</p>
+                            <p class="text-[10px] text-slate-500 mt-0.5">Đạt ngưỡng SRS Mastered</p>
+                        </div>
+                        <div class="glass-panel p-4 rounded-2xl">
+                            <p class="text-[11px] text-slate-400 font-semibold">Điểm TB kiểm tra</p>
+                            <p id="dash-avg" class="text-xl font-extrabold text-amber-300 mt-1">Chưa có</p>
+                            <p class="text-[10px] text-slate-500 mt-0.5">Quiz, Ngữ pháp, Nghe, Đọc</p>
+                        </div>
+                        <div class="glass-panel p-4 rounded-2xl">
+                            <p class="text-[11px] text-slate-400 font-semibold">Bài Listening hoàn thành</p>
+                            <p id="dash-listening-done" class="text-xl font-extrabold text-cyan-300 mt-1">0</p>
+                        </div>
+                        <div class="glass-panel p-4 rounded-2xl">
+                            <p class="text-[11px] text-slate-400 font-semibold">Bài Reading hoàn thành</p>
+                            <p id="dash-reading-done" class="text-xl font-extrabold text-blue-300 mt-1">0</p>
+                        </div>
+                        <div class="glass-panel p-4 rounded-2xl">
+                            <p class="text-[11px] text-slate-400 font-semibold">Bài Writing hoàn thành</p>
+                            <p id="dash-writing-done" class="text-xl font-extrabold text-rose-300 mt-1">0</p>
+                        </div>
+                        <div class="glass-panel p-4 rounded-2xl">
+                            <p class="text-[11px] text-slate-400 font-semibold">Buổi Speaking đã luyện</p>
+                            <p id="dash-speaking-done" class="text-xl font-extrabold text-emerald-300 mt-1">0</p>
+                        </div>
+                        <div onclick="navigateTo('notebook')" class="glass-panel p-4 rounded-2xl cursor-pointer hover:border-violet-500/40 transition">
+                            <p class="text-[11px] text-slate-400 font-semibold">Sổ tay lỗi sai & ghi chú</p>
+                            <p class="text-sm font-extrabold text-violet-300 mt-1.5">Mở Notebook →</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- B. Tiến độ 5 nhóm kỹ năng + C. Daily Learning Plan -->
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <!-- Skill Progress Bars + Radar Chart -->
+                    <div class="lg:col-span-6 glass-panel p-6 rounded-3xl space-y-5">
+                        <div class="flex items-center justify-between">
+                            <h4 class="font-extrabold text-white text-base">📊 Tiến Độ Từng Nhóm Kỹ Năng</h4>
+                            <button onclick="navigateTo('progress')" class="text-xs font-bold text-cyan-300 hover:underline">Chi tiết tuần →</button>
+                        </div>
+
+                        <div class="space-y-3 text-xs">
+                            <div>
+                                <div class="flex justify-between mb-1"><span class="font-bold text-slate-200">🎧 Listening</span><span id="skill-listen-pct" class="font-bold text-cyan-300">0%</span></div>
+                                <div class="h-2 bg-slate-900 rounded-full overflow-hidden"><div id="skill-listen-bar" class="h-full bg-cyan-500 transition-all duration-500" style="width:0%"></div></div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1"><span class="font-bold text-slate-200">🎙️ Speaking</span><span id="skill-speak-pct" class="font-bold text-emerald-300">0%</span></div>
+                                <div class="h-2 bg-slate-900 rounded-full overflow-hidden"><div id="skill-speak-bar" class="h-full bg-emerald-500 transition-all duration-500" style="width:0%"></div></div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1"><span class="font-bold text-slate-200">📄 Reading</span><span id="skill-read-pct" class="font-bold text-blue-300">0%</span></div>
+                                <div class="h-2 bg-slate-900 rounded-full overflow-hidden"><div id="skill-read-bar" class="h-full bg-blue-500 transition-all duration-500" style="width:0%"></div></div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1"><span class="font-bold text-slate-200">✍️ Writing</span><span id="skill-write-pct" class="font-bold text-rose-300">0%</span></div>
+                                <div class="h-2 bg-slate-900 rounded-full overflow-hidden"><div id="skill-write-bar" class="h-full bg-rose-500 transition-all duration-500" style="width:0%"></div></div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1"><span class="font-bold text-slate-200">📖 Grammar & Vocabulary</span><span id="skill-vocab-pct" class="font-bold text-violet-300">0%</span></div>
+                                <div class="h-2 bg-slate-900 rounded-full overflow-hidden"><div id="skill-vocab-bar" class="h-full bg-violet-500 transition-all duration-500" style="width:0%"></div></div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1"><span class="font-bold text-slate-400">📝 Riêng chuyên đề Grammar (16 chủ điểm)</span><span id="skill-grammar-pct" class="font-bold text-amber-300">0%</span></div>
+                                <div class="h-1.5 bg-slate-900 rounded-full overflow-hidden"><div id="skill-grammar-bar" class="h-full bg-amber-500 transition-all duration-500" style="width:0%"></div></div>
+                            </div>
+                        </div>
+
+                        <div class="h-56 pt-2">
+                            <canvas id="dash-radar-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- C. Daily Learning Plan -->
+                    <div class="lg:col-span-6 glass-panel p-6 rounded-3xl flex flex-col justify-between gap-5">
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h4 class="font-extrabold text-white text-base">✅ Kế Hoạch Học Tập Hôm Nay (Daily Plan)</h4>
+                                    <p class="text-xs text-slate-400">Đánh dấu từng nhiệm vụ sau khi hoàn thành để rèn thói quen mỗi ngày</p>
+                                </div>
+                            </div>
+                            <div id="daily-tasks" class="space-y-2.5"></div>
+                        </div>
+
+                        <!-- Weekly Streak Strip -->
+                        <div class="pt-3 border-t border-white/10 space-y-2">
+                            <p class="text-xs font-bold text-slate-300">🔥 Hoạt Động Các Ngày Trong Tuần Này</p>
+                            <div id="dash-weekly-streak" class="grid grid-cols-7 gap-2"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- D. Quick Access Module Cards -->
+                <div class="space-y-3">
+                    <h4 class="text-sm font-extrabold uppercase tracking-wider text-slate-300">⚡ Truy Cập Nhanh Các Module Học Tập</h4>
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                        <button onclick="navigateTo('vocabulary','flashcards')" class="glass-card p-4 rounded-2xl text-left hover:border-violet-500/50 transition space-y-1">
+                            <span class="text-2xl">🃏</span>
+                            <p class="font-extrabold text-xs text-white pt-1">Thẻ Flashcards</p>
+                            <p class="text-[11px] text-slate-400">Lật thẻ 3D & SRS</p>
+                        </button>
+                        <button onclick="navigateTo('grammar')" class="glass-card p-4 rounded-2xl text-left hover:border-amber-500/50 transition space-y-1">
+                            <span class="text-2xl">📝</span>
+                            <p class="font-extrabold text-xs text-white pt-1">16 Bài Grammar</p>
+                            <p class="text-[11px] text-slate-400">Công thức & bài tập</p>
+                        </button>
+                        <button onclick="navigateTo('listening')" class="glass-card p-4 rounded-2xl text-left hover:border-cyan-500/50 transition space-y-1">
+                            <span class="text-2xl">🎧</span>
+                            <p class="font-extrabold text-xs text-white pt-1">Listening Lab</p>
+                            <p class="text-[11px] text-slate-400">Dictation & Test</p>
+                        </button>
+                        <button onclick="navigateTo('speaking')" class="glass-card p-4 rounded-2xl text-left hover:border-emerald-500/50 transition space-y-1">
+                            <span class="text-2xl">🎙️</span>
+                            <p class="font-extrabold text-xs text-white pt-1">Speaking AI</p>
+                            <p class="text-[11px] text-slate-400">Lệnh "Please do"</p>
+                        </button>
+                        <button onclick="navigateTo('reading')" class="glass-card p-4 rounded-2xl text-left hover:border-blue-500/50 transition space-y-1">
+                            <span class="text-2xl">📄</span>
+                            <p class="font-extrabold text-xs text-white pt-1">Reading Split</p>
+                            <p class="text-[11px] text-slate-400">Highlight & Tra từ</p>
+                        </button>
+                        <button onclick="navigateTo('writing')" class="glass-card p-4 rounded-2xl text-left hover:border-rose-500/50 transition space-y-1">
+                            <span class="text-2xl">✍️</span>
+                            <p class="font-extrabold text-xs text-white pt-1">Writing Studio</p>
+                            <p class="text-[11px] text-slate-400">Sửa lỗi từng câu</p>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =====================================================================
+                 MODULE 2: VOCABULARY BANK, LEGACY MODULES, 6-STEP FLOW & SRS (PHẦN 2 & 3.2)
+                 ===================================================================== -->
+            <section id="page-vocabulary" class="module-page space-y-6">
+                <!-- Sub-Tab Navigation -->
+                <div class="glass-panel p-2 rounded-2xl flex flex-wrap gap-1.5">
+                    <button id="vtab-flashcards" onclick="switchVocabTab('flashcards')" class="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg">
+                        🃏 Thẻ Học
+                    </button>
+                    <button id="vtab-wordlist" onclick="switchVocabTab('wordlist')" class="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 text-slate-400 hover:text-white">
+                        📚 Kho Từ Vựng <span id="vtab-list-count" class="px-2 py-0.5 rounded-full bg-white/10 text-[10px]">20</span>
+                    </button>
+                    <button id="vtab-practice" onclick="switchVocabTab('practice')" class="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 text-slate-400 hover:text-white">
+                        🔥 Luyện Từ & Câu (6 Bước)
+                    </button>
+                    <button id="vtab-srs" onclick="switchVocabTab('srs')" class="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 text-slate-400 hover:text-white">
+                        🔄 Ôn Tập SRS
+                    </button>
+                    <button id="vtab-quiz" onclick="switchVocabTab('quiz')" class="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 text-slate-400 hover:text-white">
+                        🎯 Trắc Nghiệm
+                    </button>
+                    <button id="vtab-import" onclick="switchVocabTab('import')" class="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 text-slate-400 hover:text-white">
+                        ➕ Nhập & Quản Lý
+                    </button>
+                </div>
+
+                <!-- 2.1 SUB-TAB: FLASHCARDS (100% Preserved + SRS Quick Actions) -->
+                <div id="vsub-flashcards" class="space-y-5">
+                    <div class="glass-panel p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3">
+                        <div class="flex flex-wrap items-center gap-2 text-xs">
+                            <div class="flex items-center gap-1.5 bg-slate-950/90 px-3 py-2 rounded-xl border border-white/10">
+                                <span class="text-slate-400 font-bold">Ngày:</span>
+                                <input id="study-day-input" type="text" value="all" onchange="applyStudyFilter()" placeholder="VD: 1, 2 hoặc all" class="w-20 bg-transparent text-cyan-300 font-bold focus:outline-none">
+                            </div>
+                            <div class="flex items-center gap-1.5 bg-slate-950/90 px-3 py-2 rounded-xl border border-white/10">
+                                <span class="text-slate-400 font-bold">Số từ:</span>
+                                <input id="study-limit-input" type="number" min="1" placeholder="Tất cả" onchange="applyStudyFilter()" class="w-16 bg-transparent text-cyan-300 font-bold focus:outline-none">
+                            </div>
+                            <select id="study-order-select" onchange="applyStudyFilter()" class="bg-slate-950/90 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-slate-200 focus:outline-none">
+                                <option value="default">Thứ tự gốc</option>
+                                <option value="random">Trộn ngẫu nhiên</option>
+                                <option value="starred">Chỉ từ đánh dấu ⭐</option>
+                                <option value="srs_due">Từ cần ôn SRS</option>
+                            </select>
+                            <select id="study-level-select" onchange="applyStudyFilter()" class="bg-slate-950/90 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-violet-300 focus:outline-none">
+                                <option value="all">Mọi Level CEFR</option>
+                                <option value="A1">A1</option>
+                                <option value="A2">A2</option>
+                                <option value="B1">B1</option>
+                                <option value="B2">B2</option>
+                                <option value="C1">C1</option>
+                                <option value="C2">C2</option>
+                            </select>
+                        </div>
+                        <span id="card-counter" class="text-xs font-extrabold text-cyan-300 px-3 py-1.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20">1 / 20</span>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
+                        <div id="study-progress-bar" class="h-full bg-gradient-to-r from-violet-500 to-cyan-400 transition-all duration-300" style="width: 5%"></div>
+                    </div>
+
+                    <!-- 3D Flashcard -->
+                    <div class="max-w-2xl mx-auto perspective-1000 h-[390px] sm:h-[420px]">
+                        <div id="flashcard-inner" onclick="flipCard()" class="flashcard-inner cursor-pointer">
+                            <!-- Front Face -->
+                            <div class="flashcard-face glass-card p-6 sm:p-8 flex flex-col justify-between">
+                                <div class="flex items-center justify-between gap-2">
+                                    <span id="card-category-badge" class="text-xs font-bold px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">STEM • B1 • Ngày 1</span>
+                                    <div class="flex items-center gap-2" onclick="event.stopPropagation()">
+                                        <button onclick="playCurrentAudio(0.5)" class="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-white/10 text-amber-300 text-xs font-bold" title="Nghe chậm 0.5x">🐢</button>
+                                        <button onclick="playCurrentAudio()" class="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-white/10 text-cyan-300 text-xs font-bold" title="Phát âm chuẩn (Phím R)">🔊</button>
+                                        <button id="btn-star-current" onclick="toggleStarCurrent()" class="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-white/10 text-slate-500 transition" title="Đánh dấu từ khó / quan trọng">
+                                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="text-center space-y-3 my-auto">
+                                    <h3 id="card-term" class="text-4xl sm:text-5xl font-extrabold text-white tracking-tight">Semiconductor</h3>
+                                    <p id="card-ipa" class="text-lg sm:text-xl font-mono text-cyan-400 font-semibold">/ˌsem.i.kənˈdʌk.tər/ (n)</p>
+                                </div>
+
+                                <div class="text-center text-xs text-slate-400">
+                                    Nhấn vào thẻ hoặc phím <kbd class="px-2 py-0.5 rounded bg-slate-800 text-slate-200">Space</kbd> để lật xem nghĩa • <kbd class="px-2 py-0.5 rounded bg-slate-800 text-slate-200">←</kbd> <kbd class="px-2 py-0.5 rounded bg-slate-800 text-slate-200">→</kbd> chuyển thẻ
+                                </div>
+                            </div>
+
+                            <!-- Back Face -->
+                            <div class="flashcard-face flashcard-back glass-card p-6 sm:p-8 flex flex-col justify-between border-violet-500/35">
+                                <div class="flex items-center justify-between" onclick="event.stopPropagation()">
+                                    <span class="text-xs font-extrabold uppercase tracking-wider text-violet-300">Nghĩa Tiếng Việt & Ngữ Cảnh</span>
+                                    <div class="flex items-center gap-2">
+                                        <button onclick="saveCurrentCardToNotebook()" class="px-3 py-1 rounded-lg bg-slate-900 hover:bg-violet-600/30 border border-white/10 text-[11px] font-bold text-violet-200">+ Lưu Sổ Tay</button>
+                                        <button onclick="playExampleAudio()" class="px-3 py-1 rounded-lg bg-slate-900 hover:bg-cyan-600/30 border border-white/10 text-[11px] font-bold text-cyan-300">🔊 Nghe Ví Dụ</button>
+                                    </div>
+                                </div>
+
+                                <div class="space-y-3 my-auto">
+                                    <h4 id="card-definition" class="text-2xl sm:text-3xl font-extrabold text-emerald-300 text-center">Thuật toán.</h4>
+                                    <div id="card-example-box" class="p-3.5 rounded-2xl bg-slate-950/80 border border-white/10 text-center">
+                                        <p id="card-example" class="text-xs sm:text-sm text-slate-200 italic"></p>
+                                    </div>
+                                    <div id="card-extra-meta" class="text-center"></div>
+                                </div>
+
+                                <!-- Quick SRS Self-Rating -->
+                                <div class="flex items-center justify-center gap-3 pt-2" onclick="event.stopPropagation()">
+                                    <button onclick="markCurrentCardSRS(false)" class="px-4 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 text-xs font-extrabold transition">🔁 Chưa nhớ (Ôn sớm)</button>
+                                    <button onclick="markCurrentCardSRS(true)" class="px-4 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 text-xs font-extrabold transition">✅ Đã nhớ (+SRS)</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Navigation Controls -->
+                    <div class="flex items-center justify-center gap-3">
+                        <button onclick="prevCard()" class="px-5 py-3 rounded-2xl glass-panel hover:bg-slate-800 text-xs font-extrabold text-slate-200 transition">← Từ Trước</button>
+                        <button onclick="flipCard()" class="px-7 py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-xs font-extrabold text-white shadow-lg shadow-violet-600/30 transition">🔄 Lật Thẻ</button>
+                        <button onclick="nextCard()" class="px-5 py-3 rounded-2xl glass-panel hover:bg-slate-800 text-xs font-extrabold text-slate-200 transition">Từ Tiếp →</button>
+                    </div>
+                </div>
+
+                <!-- 2.2 SUB-TAB: WORD LIST / VOCABULARY BANK -->
+                <div id="vsub-wordlist" class="hidden space-y-4">
+                    <div class="glass-panel p-4 rounded-2xl space-y-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <input id="search-input" type="text" oninput="renderWordList()" placeholder="🔍 Tìm từ, IPA, nghĩa, đồng nghĩa..." class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-violet-500">
+                            <input id="list-day-input" type="text" oninput="renderWordList()" placeholder="📅 Lọc ngày (VD: 1, 2 hoặc để trống)" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-cyan-300 focus:outline-none focus:border-violet-500">
+                            <select id="list-level-select" onchange="renderWordList()" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-bold text-violet-300 focus:outline-none">
+                                <option value="all">Tất cả Level (A1–C2)</option>
+                                <option value="A1">A1</option>
+                                <option value="A2">A2</option>
+                                <option value="B1">B1</option>
+                                <option value="B2">B2</option>
+                                <option value="C1">C1</option>
+                                <option value="C2">C2</option>
+                            </select>
+                            <select id="list-srs-select" onchange="renderWordList()" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-bold text-emerald-300 focus:outline-none">
+                                <option value="all">Mọi trạng thái SRS</option>
+                                <option value="new">🆕 Từ mới</option>
+                                <option value="learning">📖 Đang học</option>
+                                <option value="due">⏰ Cần ôn tập</option>
+                                <option value="mastered">✅ Đã nhớ</option>
+                                <option value="leech">⚠️ Thường xuyên sai</option>
+                            </select>
+                        </div>
+                        <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <div id="dynamic-cat-filters" class="flex flex-wrap gap-1.5"></div>
+                                <button id="filter-btn-starred" onclick="toggleStarOnlyFilter()" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 text-slate-400 border border-white/10">⭐ Từ Khó / Đánh Sao</button>
+                            </div>
+                            <span id="wordlist-filter-summary" class="text-xs text-slate-400 font-semibold"></span>
+                        </div>
+                    </div>
+
+                    <div id="word-list-container" class="grid grid-cols-1 md:grid-cols-2 gap-3.5"></div>
+                </div>
+
+                <!-- 2.3 SUB-TAB: 6-STEP VOCABULARY LEARNING FLOW (PHẦN 3.2.B) -->
+                <div id="vsub-practice" class="hidden space-y-5">
+                    <!-- Setup Screen -->
+                    <div id="pr-setup" class="glass-panel p-6 rounded-3xl max-w-3xl mx-auto space-y-5">
+                        <div class="space-y-1">
+                            <span class="text-xs font-extrabold uppercase tracking-wider text-violet-400">Vocabulary Deep Mastery</span>
+                            <h3 class="text-xl font-extrabold text-white">🔥 Quy Trình Học Sâu Từ Vựng & Đặt Câu 6 Bước</h3>
+                            <p class="text-xs text-slate-400 leading-relaxed">
+                                Mỗi từ đi qua đủ 6 bước: <strong>(1) Nghe mẫu chuẩn/chậm & Đọc Micro</strong> → <strong>(2) Viết nghĩa Việt</strong> → <strong>(3) Dịch ngược sang Anh</strong> → <strong>(4) Tự đặt câu & Phân tích sửa lỗi ngữ pháp/tự nhiên</strong> → <strong>(5) 3–5 câu gợi ý mở rộng</strong> → <strong>(6) Đọc lại câu hoàn chỉnh</strong>.
+                            </p>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-xs font-bold text-slate-300 block mb-1.5">Chọn Ngày Học (để trống = tất cả):</label>
+                                <input id="pr-day-input" type="text" placeholder="VD: 1 hoặc 1,2" class="w-full bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-cyan-300 font-bold focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="text-xs font-bold text-slate-300 block mb-1.5">Số Lượng Từ Mỗi Phiên:</label>
+                                <input id="pr-limit-input" type="number" value="5" min="1" max="50" class="w-full bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-cyan-300 font-bold focus:outline-none">
+                            </div>
+                        </div>
+
+                        <button onclick="startPractice()" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-extrabold text-sm shadow-xl transition">
+                            🚀 Bắt Đầu Luyện Tập 6 Bước Ngay
+                        </button>
+
+                        <!-- Quick Add Words Directly Inside Practice -->
+                        <div class="pt-4 border-t border-white/10 space-y-2.5">
+                            <p class="text-xs font-bold text-slate-300">➕ Nhập nhanh từ mới để luyện ngay (Mỗi dòng: <code class="text-cyan-300">Từ - (/IPA/) Nghĩa | Ví dụ</code>):</p>
+                            <textarea id="pr-add-textarea" rows="3" placeholder="Hello - (/həˈləʊ/) Xin chào. | Hello teacher, my name is Quan." class="w-full bg-slate-950 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-violet-500"></textarea>
+                            <button onclick="addPracticeWords()" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-emerald-600/30 border border-white/10 text-xs font-bold text-emerald-300 transition">Lưu vào Kho & Đưa lên đầu danh sách luyện</button>
+                        </div>
+                    </div>
+
+                    <!-- Active 6-Step Session -->
+                    <div id="pr-session" class="hidden max-w-3xl mx-auto space-y-4">
+                        <div class="flex items-center justify-between gap-3">
+                            <span id="pr-progress" class="text-xs font-extrabold text-cyan-300">Từ 1/5</span>
+                            <button onclick="exitPractice()" class="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-white/10 text-xs font-bold text-slate-300">✕ Thoát phiên</button>
+                        </div>
+                        <div class="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
+                            <div id="pr-bar" class="h-full bg-gradient-to-r from-violet-500 to-cyan-400 transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                        <div id="pr-card" class="glass-card p-6 sm:p-8 rounded-3xl space-y-5"></div>
+                    </div>
+                </div>
+
+                <!-- 2.4 SUB-TAB: SPACED REPETITION SYSTEM - SRS (PHẦN 3.2.C) -->
+                <div id="vsub-srs" class="hidden space-y-5">
+                    <div class="glass-panel p-6 rounded-3xl space-y-5">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div>
+                                <h3 class="text-xl font-extrabold text-white">🔄 Hệ Thống Ôn Tập Ngắt Quãng (SRS 5 Trạng Thái)</h3>
+                                <p class="text-xs text-slate-400 mt-1">Chu kỳ chuẩn: <strong>1 ngày → 3 ngày → 7 ngày → 14 ngày → 30 ngày</strong>. Trả lời sai sẽ tự động rút ngắn chu kỳ để ôn sớm hơn.</p>
+                            </div>
+                            <button onclick="startSRSReview()" class="px-6 py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-cyan-600 hover:opacity-95 text-white font-extrabold text-xs shadow-lg shrink-0">
+                                ⚡ Bắt Đầu Phiên Ôn SRS Hôm Nay
+                            </button>
+                        </div>
+
+                        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                            <div class="p-4 rounded-2xl bg-slate-950/80 border border-cyan-500/20 text-center">
+                                <p class="text-[11px] text-slate-400 font-bold">🆕 Từ mới</p>
+                                <p id="srs-new" class="text-2xl font-black text-cyan-300 mt-1">0</p>
+                            </div>
+                            <div class="p-4 rounded-2xl bg-slate-950/80 border border-amber-500/20 text-center">
+                                <p class="text-[11px] text-slate-400 font-bold">📖 Đang học</p>
+                                <p id="srs-learning" class="text-2xl font-black text-amber-300 mt-1">0</p>
+                            </div>
+                            <div class="p-4 rounded-2xl bg-slate-950/80 border border-rose-500/25 text-center">
+                                <p class="text-[11px] text-slate-400 font-bold">⏰ Cần ôn tập</p>
+                                <p id="srs-review" class="text-2xl font-black text-rose-300 mt-1">0</p>
+                            </div>
+                            <div class="p-4 rounded-2xl bg-slate-950/80 border border-emerald-500/25 text-center">
+                                <p class="text-[11px] text-slate-400 font-bold">✅ Đã nhớ</p>
+                                <p id="srs-mastered" class="text-2xl font-black text-emerald-300 mt-1">0</p>
+                            </div>
+                            <div class="p-4 rounded-2xl bg-slate-950/80 border border-pink-500/30 text-center col-span-2 sm:col-span-1">
+                                <p class="text-[11px] text-slate-400 font-bold">⚠️ Hay sai</p>
+                                <p id="srs-leech" class="text-2xl font-black text-pink-300 mt-1">0</p>
+                            </div>
+                        </div>
+
+                        <!-- Active SRS Review Box -->
+                        <div id="srs-session" class="hidden pt-2"></div>
+
+                        <!-- Upcoming Schedule -->
+                        <div class="space-y-2 pt-2">
+                            <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-400">📅 Danh Sách Ưu Tiên Ôn Tập</h4>
+                            <div id="srs-schedule-table" class="space-y-2"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2.5 SUB-TAB: QUIZ (Preserved + Answer Review) -->
+                <div id="vsub-quiz" class="hidden space-y-5">
+                    <div class="glass-panel p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3">
+                        <div class="flex flex-wrap items-center gap-2 text-xs">
+                            <div class="flex items-center gap-1.5 bg-slate-950 px-3 py-2 rounded-xl border border-white/10">
+                                <span class="text-slate-400 font-bold">Ngày:</span>
+                                <input id="quiz-day-input" type="text" placeholder="all" class="w-16 bg-transparent text-cyan-300 font-bold focus:outline-none">
+                            </div>
+                            <div class="flex items-center gap-1.5 bg-slate-950 px-3 py-2 rounded-xl border border-white/10">
+                                <span class="text-slate-400 font-bold">Số câu:</span>
+                                <input id="quiz-limit-input" type="number" value="10" min="4" class="w-16 bg-transparent text-cyan-300 font-bold focus:outline-none">
+                            </div>
+                            <select id="quiz-order-select" class="bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-slate-200 focus:outline-none">
+                                <option value="random">Trộn ngẫu nhiên</option>
+                                <option value="starred">Ưu tiên từ sao ⭐</option>
+                            </select>
+                        </div>
+                        <button onclick="startNewQuiz()" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-xs font-extrabold shadow-lg">🎯 Bắt Đầu Đề Mới</button>
+                    </div>
+
+                    <div id="quiz-box" class="max-w-2xl mx-auto glass-card p-6 sm:p-8 rounded-3xl space-y-6">
+                        <div class="flex items-center justify-between text-xs font-bold">
+                            <span id="quiz-progress-text" class="text-slate-400">Câu 1 / 10</span>
+                            <span id="quiz-score" class="text-emerald-400">Điểm: 0</span>
+                        </div>
+                        <div class="text-center space-y-2 py-2">
+                            <span id="quiz-cat-badge" class="text-[11px] font-bold px-3 py-0.5 rounded-full bg-violet-500/15 text-violet-300">STEM</span>
+                            <div class="flex items-center justify-center gap-2 pt-2">
+                                <h3 id="quiz-term" class="text-3xl sm:text-4xl font-extrabold text-white">Algorithm</h3>
+                                <button onclick="playQuizAudio()" class="p-2 rounded-xl bg-slate-900 border border-white/10 text-cyan-300">🔊</button>
+                            </div>
+                            <p id="quiz-ipa" class="text-sm font-mono text-cyan-400">/ˈæl.ɡə.rɪ.ðəm/</p>
+                        </div>
+                        <div id="quiz-options" class="grid grid-cols-1 gap-3"></div>
+                    </div>
+
+                    <div id="quiz-result" class="hidden max-w-2xl mx-auto glass-card p-6 sm:p-8 rounded-3xl text-center space-y-5">
+                        <div class="text-5xl">🏆</div>
+                        <h3 class="text-2xl font-extrabold text-white">Hoàn Thành Bài Trắc Nghiệm!</h3>
+                        <p id="quiz-final-score" class="text-4xl font-black text-cyan-300">0 / 10</p>
+                        <div id="quiz-answer-review" class="text-left space-y-2 max-h-80 overflow-y-auto pr-1"></div>
+                        <button onclick="startNewQuiz()" class="px-6 py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold text-xs">🔄 Làm Lại Đề Mới</button>
+                    </div>
+                </div>
+
+                <!-- 2.6 SUB-TAB: IMPORT & DATA MANAGEMENT (Preserved + Single Rich Word Form) -->
+                <div id="vsub-import" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <!-- Single Rich Word Form -->
+                    <div class="lg:col-span-6 glass-panel p-6 rounded-3xl space-y-4">
+                        <h3 class="text-base font-extrabold text-white">➕ Thêm Từ Đơn Chi Tiết (Vocabulary Bank)</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div>
+                                <label class="text-slate-400 font-bold block mb-1">Từ tiếng Anh *</label>
+                                <input id="single-term" type="text" placeholder="VD: Resilient" class="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-violet-500">
+                            </div>
+                            <div>
+                                <label class="text-slate-400 font-bold block mb-1">Phiên âm IPA</label>
+                                <input id="single-ipa" type="text" placeholder="VD: /rɪˈzɪl.i.ənt/" class="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-cyan-300 font-mono focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="text-slate-400 font-bold block mb-1">Loại từ (POS)</label>
+                                <select id="single-pos" class="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-slate-200 focus:outline-none">
+                                    <option value="n">Danh từ (n)</option>
+                                    <option value="v">Động từ (v)</option>
+                                    <option value="adj">Tính từ (adj)</option>
+                                    <option value="adv">Trạng từ (adv)</option>
+                                    <option value="phrase">Cụm từ (phrase)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-slate-400 font-bold block mb-1">Trình độ CEFR</label>
+                                <select id="single-level" class="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-violet-300 font-bold focus:outline-none">
+                                    <option value="A1">A1</option>
+                                    <option value="A2">A2</option>
+                                    <option value="B1" selected>B1</option>
+                                    <option value="B2">B2</option>
+                                    <option value="C1">C1</option>
+                                    <option value="C2">C2</option>
+                                </select>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="text-slate-400 font-bold block mb-1">Nghĩa tiếng Việt *</label>
+                                <input id="single-def" type="text" placeholder="VD: Kiên cường, có khả năng phục hồi nhanh" class="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-violet-500">
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="text-slate-400 font-bold block mb-1">Câu ví dụ tiếng Anh</label>
+                                <input id="single-example" type="text" placeholder="VD: First-year students need to stay resilient during exams." class="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-white focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="text-slate-400 font-bold block mb-1">Từ đồng nghĩa (Synonyms)</label>
+                                <input id="single-synonyms" type="text" placeholder="VD: adaptable, strong" class="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-slate-200 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="text-slate-400 font-bold block mb-1">Từ trái nghĩa (Antonyms)</label>
+                                <input id="single-antonyms" type="text" placeholder="VD: fragile, weak" class="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-slate-200 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="text-slate-400 font-bold block mb-1">Chủ đề</label>
+                                <input id="single-category" type="text" value="Campus" placeholder="STEM / Campus / Academic..." class="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-cyan-300 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="text-slate-400 font-bold block mb-1">Ngày học</label>
+                                <input id="single-day" type="number" value="1" min="1" class="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-cyan-300 focus:outline-none">
+                            </div>
+                        </div>
+                        <label class="flex items-center gap-2 text-xs text-amber-300 font-bold cursor-pointer">
+                            <input id="single-starred" type="checkbox" class="rounded"> ⭐ Đánh dấu là từ khó cần chú ý
+                        </label>
+                        <button onclick="addSingleVocabWord()" class="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-95 text-white font-extrabold text-xs shadow-lg">
+                            💾 Lưu Từ Vào Kho Cá Nhân
+                        </button>
+                    </div>
+
+                    <!-- Preserved Batch Import + Deck Management -->
+                    <div class="lg:col-span-6 space-y-6">
+                        <div class="glass-panel p-6 rounded-3xl space-y-4">
+                            <div class="flex items-center justify-between">
+                                <h3 class="text-base font-extrabold text-white">📋 Nhập Hàng Loạt (Định Dạng Cũ Bảo Toàn)</h3>
+                                <button onclick="loadSampleImport()" class="text-xs font-bold text-cyan-300 hover:underline">+ Nạp 16 từ mẫu AI</button>
+                            </div>
+                            <p class="text-[11px] text-slate-400">Định dạng: <code class="text-cyan-300">Từ - (/IPA/) Nghĩa tiếng Việt. | Câu ví dụ 1 / Câu ví dụ 2</code></p>
+                            <div class="grid grid-cols-3 gap-2 text-xs">
+                                <select id="import-cat-select" class="bg-slate-950 border border-white/10 rounded-xl px-2.5 py-2 text-slate-200 font-bold">
+                                    <option value="STEM">STEM</option>
+                                    <option value="Campus">Campus</option>
+                                    <option value="Academic">Academic</option>
+                                    <option value="Daily">Daily</option>
+                                </select>
+                                <select id="import-level-select" class="bg-slate-950 border border-white/10 rounded-xl px-2.5 py-2 text-violet-300 font-bold">
+                                    <option value="A1">Level A1</option>
+                                    <option value="A2">Level A2</option>
+                                    <option value="B1" selected>Level B1</option>
+                                    <option value="B2">Level B2</option>
+                                    <option value="C1">Level C1</option>
+                                    <option value="C2">Level C2</option>
+                                </select>
+                                <input id="import-day-input" type="number" value="2" min="1" placeholder="Ngày" class="bg-slate-950 border border-white/10 rounded-xl px-2.5 py-2 text-cyan-300 font-bold">
+                            </div>
+                            <textarea id="import-textarea" rows="5" placeholder="Algorithm - (/ˈæl.ɡə.rɪ.ðəm/) Thuật toán. | Sorting algorithms organize data." class="w-full bg-slate-950 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-violet-500"></textarea>
+                            <button onclick="processBatchImport()" class="w-full py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold text-xs shadow-lg">🚀 Nhập Danh Sách Từ</button>
+                        </div>
+
+                        <!-- Preserved Deck Management & Backup -->
+                        <div class="glass-panel p-6 rounded-3xl space-y-3">
+                            <h3 class="text-base font-extrabold text-white">🛡️ Quản Lý & Khôi Phục Dữ Liệu Từ Vựng</h3>
+                            <div class="flex gap-2">
+                                <input id="delete-day-input" type="number" min="1" placeholder="Nhập số ngày muốn xóa..." class="flex-1 bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-white">
+                                <button onclick="deleteSpecificDay()" class="px-4 py-2 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold">Xóa Ngày</button>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                                <button onclick="restoreDefaultDeck()" class="py-2.5 px-3 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-xs font-bold">🔄 Khôi phục 20 từ gốc (Giữ từ đã thêm)</button>
+                                <button onclick="exportBackup()" class="py-2.5 px-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-bold">📥 Xuất Backup JSON</button>
+                                <label class="py-2.5 px-3 rounded-xl bg-violet-500/15 hover:bg-violet-500/25 border border-violet-500/30 text-violet-300 text-xs font-bold text-center cursor-pointer">
+                                    📤 Nhập Backup JSON
+                                    <input type="file" accept=".json" onchange="importBackup(event)" class="hidden">
+                                </label>
+                                <button onclick="clearAllDeck()" class="py-2.5 px-3 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-xs font-bold">🗑️ Xóa toàn bộ từ</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =====================================================================
+                 MODULE 3: GRAMMAR LEARNING — 16 CHỦ ĐỀ NGỮ PHÁP (PHẦN 3.2.D)
+                 ===================================================================== -->
+            <section id="page-grammar" class="module-page space-y-6">
+                <div id="grammar-filter-bar" class="glass-panel p-4 rounded-2xl grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <select id="grammar-level-filter" onchange="filterGrammarLessons()" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-bold text-cyan-300 focus:outline-none">
+                        <option value="all">Tất cả Level (A1 – C2)</option>
+                        <option value="A1">CEFR A1</option>
+                        <option value="A2">CEFR A2</option>
+                        <option value="B1">CEFR B1</option>
+                        <option value="B2">CEFR B2</option>
+                        <option value="C1">CEFR C1</option>
+                        <option value="C2">CEFR C2</option>
+                    </select>
+                    <select id="grammar-topic-filter" onchange="filterGrammarLessons()" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-bold text-violet-300 focus:outline-none">
+                        <option value="all">Tất cả 16 Chủ đề Ngữ pháp</option>
+                        <option value="Parts of Speech">1. Parts of Speech (Từ loại)</option>
+                        <option value="Nouns">2. Nouns (Danh từ)</option>
+                        <option value="Pronouns">3. Pronouns (Đại từ)</option>
+                        <option value="Articles">4. Articles (Mạo từ a/an/the)</option>
+                        <option value="Verbs">5. Verbs & Modal Verbs</option>
+                        <option value="Tenses">6. Tenses (Các thì tiếng Anh)</option>
+                        <option value="Subject-Verb Agreement">7. Subject-Verb Agreement</option>
+                        <option value="Adjectives">8. Adjectives (Tính từ)</option>
+                        <option value="Adverbs">9. Adverbs (Trạng từ)</option>
+                        <option value="Prepositions">10. Prepositions (Giới từ)</option>
+                        <option value="Conjunctions">11. Conjunctions (Liên từ)</option>
+                        <option value="Sentence Structures">12. Sentence Structures (Cấu trúc câu)</option>
+                        <option value="Conditional Sentences">13. Conditional Sentences (Câu điều kiện)</option>
+                        <option value="Passive Voice">14. Passive Voice (Câu bị động)</option>
+                        <option value="Reported Speech">15. Reported Speech (Câu tường thuật)</option>
+                        <option value="Relative Clauses">16. Relative Clauses (Mệnh đề quan hệ)</option>
+                    </select>
+                    <input id="grammar-search-input" type="text" oninput="filterGrammarLessons()" placeholder="🔍 Tìm công thức, chủ điểm..." class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-violet-500">
+                </div>
+
+                <div id="grammar-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+                <!-- Detailed Lesson View -->
+                <div id="grammar-lesson" class="hidden space-y-6">
+                    <button onclick="closeGrammarLesson()" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-white/10 text-xs font-bold text-slate-200">← Quay lại danh sách 16 chủ đề</button>
+                    <div id="grammar-lesson-content" class="glass-panel p-6 sm:p-8 rounded-3xl space-y-6"></div>
+                    <div class="glass-panel p-6 sm:p-8 rounded-3xl space-y-5">
+                        <h3 class="text-lg font-extrabold text-white">✍️ Bài Tập Thực Hành Có Chấm Điểm & Giải Thích</h3>
+                        <div id="grammar-exercises" class="space-y-4"></div>
+                        <button onclick="gradeGrammarExercises()" class="px-6 py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold text-xs shadow-lg">✅ Nộp Bài & Xem Giải Thích Chi Tiết</button>
+                        <div id="grammar-exercise-result" class="hidden pt-2"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =====================================================================
+                 MODULE 4: LISTENING — HỆ THỐNG LUYỆN NGHE 4 CHẾ ĐỘ (PHẦN 3.3)
+                 ===================================================================== -->
+            <section id="page-listening" class="module-page space-y-6">
+                <div id="listening-filter-bar" class="glass-panel p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div class="flex flex-wrap items-center gap-2.5">
+                        <select id="listening-level-filter" onchange="filterListeningExercises()" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-bold text-cyan-300 focus:outline-none">
+                            <option value="all">Tất cả trình độ (CEFR & IELTS)</option>
+                            <optgroup label="CEFR">
+                                <option value="A1">CEFR A1</option>
+                                <option value="A2">CEFR A2</option>
+                                <option value="B1">CEFR B1</option>
+                                <option value="B2">CEFR B2</option>
+                                <option value="C1">CEFR C1</option>
+                                <option value="C2">CEFR C2</option>
+                            </optgroup>
+                            <optgroup label="IELTS">
+                                <option value="IELTS 4.0">IELTS 4.0 – 5.0</option>
+                                <option value="IELTS 5.5">IELTS 5.5</option>
+                                <option value="IELTS 6.0">IELTS 6.0 – 6.5</option>
+                                <option value="IELTS 7.0">IELTS 7.0+</option>
+                            </optgroup>
+                        </select>
+                        <select id="listening-mode-filter" onchange="filterListeningExercises()" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-bold text-violet-300 focus:outline-none">
+                            <option value="all">Tất cả 4 chế độ luyện nghe</option>
+                            <option value="multiple_choice">🎯 Chế độ 1: Listen & Choose</option>
+                            <option value="dictation">⌨️ Chế độ 2: Daily Dictation (Chép chính tả)</option>
+                            <option value="fill_blanks">✍️ Chế độ 3: Listen & Fill in the Blanks</option>
+                            <option value="full_test">⏱️ Chế độ 4: Full Listening Test (Có bấm giờ)</option>
+                        </select>
+                    </div>
+                    <div id="listening-stats-summary" class="flex flex-wrap items-center gap-4 text-xs text-slate-300"></div>
+                </div>
+
+                <div id="listening-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+                <!-- Active Listening Workspace -->
+                <div id="listening-exercise" class="hidden space-y-5">
+                    <button onclick="closeListeningExercise()" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-white/10 text-xs font-bold text-slate-200">← Quay lại danh sách bài nghe</button>
+                    <div id="listening-exercise-content" class="space-y-5"></div>
+                </div>
+
+                <!-- History & Legal External Listening Sources (PHẦN 3.3.D) -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+                    <div class="glass-panel p-5 rounded-2xl space-y-3">
+                        <h4 class="text-sm font-extrabold text-white">📜 Lịch Sử Luyện Nghe & Tỷ Lệ Chính Xác</h4>
+                        <div id="listening-history-box" class="space-y-2"></div>
+                    </div>
+                    <div class="glass-panel p-5 rounded-2xl space-y-3">
+                        <h4 class="text-sm font-extrabold text-white">🌐 Nguồn Luyện Nghe Quốc Tế Hợp Pháp (Mở Tab Mới)</h4>
+                        <p class="text-xs text-slate-400">Liên kết trực tiếp hợp pháp, không sao chép trái phép dữ liệu bản quyền:</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                            <a href="https://dailydictation.com" target="_blank" rel="noopener noreferrer" class="p-3 rounded-xl bg-slate-950 hover:bg-slate-900 border border-white/10 font-bold text-amber-300 flex justify-between items-center"><span>⌨️ DailyDictation.com</span><span>↗</span></a>
+                            <a href="https://www.bbc.co.uk/learningenglish" target="_blank" rel="noopener noreferrer" class="p-3 rounded-xl bg-slate-950 hover:bg-slate-900 border border-white/10 font-bold text-cyan-300 flex justify-between items-center"><span>📻 BBC Learning English</span><span>↗</span></a>
+                            <a href="https://learnenglish.britishcouncil.org/skills/listening" target="_blank" rel="noopener noreferrer" class="p-3 rounded-xl bg-slate-950 hover:bg-slate-900 border border-white/10 font-bold text-violet-300 flex justify-between items-center"><span>🇬🇧 British Council A1–C1</span><span>↗</span></a>
+                            <a href="https://learningenglish.voanews.com" target="_blank" rel="noopener noreferrer" class="p-3 rounded-xl bg-slate-950 hover:bg-slate-900 border border-white/10 font-bold text-emerald-300 flex justify-between items-center"><span>🎙️ VOA Learning English</span><span>↗</span></a>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =====================================================================
+                 MODULE 5: SPEAKING — HỘI THOẠI TRỰC TIẾP, TOPIC & "PLEASE DO" (PHẦN 3.5)
+                 ===================================================================== -->
+            <section id="page-speaking" class="module-page space-y-6">
+                <!-- Honest AI & Audio Privacy Banner -->
+                <div class="glass-panel p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-cyan-500/20">
+                    <div class="flex items-center gap-3 text-xs">
+                        <span id="ai-status-icon" class="text-xl">🖥️</span>
+                        <div>
+                            <p id="ai-status-text" class="font-bold text-slate-200">Đang kiểm tra trạng thái Backend AI...</p>
+                            <p class="text-[11px] text-slate-400">🔒 Ghi âm giọng nói chỉ xử lý trên trình duyệt để bạn tự nghe lại, tuyệt đối không tự ý tải file ghi âm lên server bên ngoài.</p>
+                        </div>
+                    </div>
+                    <span class="px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[11px] font-extrabold shrink-0">Lệnh kết thúc: "Please do"</span>
+                </div>
+
+                <!-- 2 Speaking Mode Cards -->
+                <div id="speaking-mode-cards" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div onclick="startSpeakingMode('conversation')" class="glass-card p-6 sm:p-7 rounded-3xl cursor-pointer hover:border-violet-500/50 transition flex flex-col justify-between gap-5">
+                        <div class="space-y-2.5">
+                            <span class="px-3 py-1 rounded-full bg-violet-500/20 text-violet-300 text-xs font-extrabold">Chế độ 1 • Live Voice Conversation</span>
+                            <h3 class="text-2xl font-extrabold text-white">💬 Hội Thoại Trực Tiếp Với Trợ Lý</h3>
+                            <p class="text-xs text-slate-300 leading-relaxed">
+                                Bật micro và trò chuyện tự nhiên từng lượt bằng tiếng Anh về đời sống sinh viên FPT, học tập, công nghệ hoặc sở thích. Khi muốn dừng và nhận bảng nhận xét toàn bộ buổi nói, hãy nói hoặc gõ: <strong class="text-amber-300">"Please do"</strong>.
+                            </p>
+                        </div>
+                        <span class="inline-flex items-center gap-2 text-xs font-extrabold text-cyan-300">🎙️ Bắt đầu hội thoại ngay →</span>
+                    </div>
+
+                    <div onclick="startSpeakingMode('topic')" class="glass-card p-6 sm:p-7 rounded-3xl cursor-pointer hover:border-emerald-500/50 transition flex flex-col justify-between gap-5">
+                        <div class="space-y-2.5">
+                            <span class="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-extrabold">Chế độ 2 • Topic Speaking & Cue Card</span>
+                            <h3 class="text-2xl font-extrabold text-white">🎯 Luyện Nói Theo Chủ Đề (A1–C1 & IELTS)</h3>
+                            <p class="text-xs text-slate-300 leading-relaxed">
+                                Chọn chủ đề có sẵn dàn ý gợi ý & từ vựng ăn điểm, thu âm bài nói, nghe lại chính giọng của bạn, xem transcript nhận diện và nhận phân tích lỗi câu, độ trôi chảy cùng bài nói mẫu tham khảo.
+                            </p>
+                        </div>
+                        <span class="inline-flex items-center gap-2 text-xs font-extrabold text-emerald-300">📋 Chọn chủ đề luyện nói →</span>
+                    </div>
+                </div>
+
+                <!-- Topic Selector Grid -->
+                <div id="speaking-topics-list" class="hidden space-y-4">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <button onclick="closeSpeakingTopics()" class="px-4 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs font-bold text-slate-200">← Chọn lại chế độ Speaking</button>
+                        <select id="speaking-level-filter" onchange="renderSpeakingTopicsGrid()" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2 text-xs font-bold text-cyan-300">
+                            <option value="all">Tất cả trình độ</option>
+                            <option value="A1">A1</option>
+                            <option value="A2">A2</option>
+                            <option value="B1">B1 (FPT Level 3)</option>
+                            <option value="B2">B2</option>
+                            <option value="C1">C1</option>
+                            <option value="IELTS 6.0">IELTS Cue Cards</option>
+                        </select>
+                    </div>
+                    <div id="speaking-topics-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+                </div>
+
+                <!-- Active Speaking Session -->
+                <div id="speaking-session" class="hidden space-y-4">
+                    <button onclick="closeSpeakingSession()" class="px-4 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs font-bold text-slate-200">← Kết thúc & quay lại Speaking</button>
+                    <div id="speaking-content"></div>
+                </div>
+            </section>
+
+            <!-- =====================================================================
+                 MODULE 6: READING — KHÔNG GIAN ĐỌC HIỂU 2 CỘT, HIGHLIGHT & TRA TỪ (PHẦN 3.6)
+                 ===================================================================== -->
+            <section id="page-reading" class="module-page space-y-6">
+                <div id="reading-filter-bar" class="glass-panel p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-xs font-bold text-slate-400">Lọc bài đọc:</span>
+                        <select id="reading-level-filter" onchange="filterReadingPassages()" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2 text-xs font-bold text-cyan-300 focus:outline-none">
+                            <option value="all">Tất cả trình độ (A1–C2 & IELTS)</option>
+                            <option value="A1">CEFR A1</option>
+                            <option value="A2">CEFR A2</option>
+                            <option value="B1">CEFR B1 (FPT Level 3)</option>
+                            <option value="B2">CEFR B2</option>
+                            <option value="C1">CEFR C1</option>
+                            <option value="C2">CEFR C2</option>
+                            <option value="IELTS 6.0">IELTS Academic 6.0+</option>
+                        </select>
+                    </div>
+                    <span class="text-xs text-slate-400">💡 Bôi đen từ bất kỳ hoặc nhấp đúp chuột trong bài đọc để tra nghĩa & lưu vào Vocabulary Bank</span>
+                </div>
+
+                <div id="reading-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+                <!-- Split-Screen Reading Workspace -->
+                <div id="reading-session" class="hidden space-y-4">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <button onclick="closeReadingSession()" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-white/10 text-xs font-bold text-slate-200">← Danh sách bài đọc</button>
+
+                        <!-- Mobile Tab Switcher (PHẦN 3.6.A: Điện thoại chuyển sang tab) -->
+                        <div class="flex md:hidden rounded-xl bg-slate-900 p-1 border border-white/10">
+                            <button id="rmob-btn-passage" onclick="switchReadingMobileTab('passage')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-violet-600 text-white">📄 Bài Đọc</button>
+                            <button id="rmob-btn-questions" onclick="switchReadingMobileTab('questions')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-300">❓ Câu Hỏi</button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
+                        <!-- Left Column: Passage + 4-Color Highlighter + Instant Dictionary + Personal Notes -->
+                        <div id="reading-passage-pane" class="md:col-span-7 glass-panel p-5 sm:p-6 rounded-3xl space-y-4 md:max-h-[80vh] md:overflow-y-auto">
+                            <!-- Highlight & Lookup Toolbar -->
+                            <div class="sticky top-0 z-10 p-2.5 rounded-2xl bg-slate-950/95 border border-white/10 flex flex-wrap items-center justify-between gap-2">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-[11px] font-bold text-slate-400 mr-1">Highlight:</span>
+                                    <button data-hl="highlight-yellow" onclick="setHighlightColor('highlight-yellow')" class="hl-swatch-btn w-5 h-5 rounded-full bg-yellow-400 ring-2 ring-white" title="Vàng"></button>
+                                    <button data-hl="highlight-green" onclick="setHighlightColor('highlight-green')" class="hl-swatch-btn w-5 h-5 rounded-full bg-emerald-400" title="Xanh lá"></button>
+                                    <button data-hl="highlight-blue" onclick="setHighlightColor('highlight-blue')" class="hl-swatch-btn w-5 h-5 rounded-full bg-cyan-400" title="Xanh dương"></button>
+                                    <button data-hl="highlight-pink" onclick="setHighlightColor('highlight-pink')" class="hl-swatch-btn w-5 h-5 rounded-full bg-rose-400" title="Hồng"></button>
+                                    <button onclick="applySelectionHighlight()" class="ml-1 px-2.5 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 text-[11px] font-bold text-white">🖍️ Tô màu</button>
+                                    <button onclick="clearPassageHighlights()" class="px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-[11px] text-slate-400" title="Xóa highlight">↺</button>
+                                </div>
+                                <button onclick="handlePassageWordLookup()" class="px-3 py-1 rounded-lg bg-cyan-500/20 border border-cyan-500/30 text-[11px] font-bold text-cyan-300">🔍 Tra từ đang bôi đen</button>
+                            </div>
+
+                            <!-- Instant Word Lookup Box -->
+                            <div id="reading-lookup-box" class="hidden"></div>
+
+                            <h3 id="reading-title" class="text-lg sm:text-xl font-extrabold text-white"></h3>
+                            <article id="reading-passage-text" class="space-y-3 text-sm leading-relaxed"></article>
+
+                            <!-- Personal Passage Note -->
+                            <div class="pt-4 border-t border-white/10 space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <label for="reading-passage-note" class="text-xs font-bold text-slate-300">📝 Ghi chú tóm tắt ý chính của bạn cho bài đọc này:</label>
+                                    <button onclick="saveReadingNote(true)" class="text-[11px] font-bold text-violet-300 hover:underline">+ Đẩy vào English Notebook</button>
+                                </div>
+                                <textarea id="reading-passage-note" rows="2" oninput="saveReadingNote(false)" placeholder="Ghi từ khóa từng đoạn (Paragraph 1: ..., Paragraph 2: ...) — Tự động lưu..." class="w-full bg-slate-950 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-violet-500"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: Questions + Flagging + Detailed Evidence Review -->
+                        <div id="reading-questions-pane" class="hidden-mobile-pane md:col-span-5 glass-panel p-5 sm:p-6 rounded-3xl space-y-4 md:max-h-[80vh] md:overflow-y-auto">
+                            <div class="space-y-1.5">
+                                <div class="flex items-center justify-between text-xs font-bold">
+                                    <span class="text-white">📋 Câu Hỏi Đọc Hiểu</span>
+                                    <span id="reading-progress" class="text-cyan-300">Đã trả lời: 0/0</span>
+                                </div>
+                                <div class="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
+                                    <div id="reading-progress-bar" class="h-full bg-cyan-400 transition-all duration-300" style="width: 0%"></div>
+                                </div>
+                            </div>
+
+                            <div id="reading-questions" class="space-y-3.5"></div>
+
+                            <button onclick="submitReadingAnswers()" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:opacity-95 text-white font-extrabold text-xs shadow-lg">
+                                ✅ Nộp Bài & Định Vị Dẫn Chứng Trong Đoạn Văn
+                            </button>
+
+                            <div id="reading-results" class="hidden pt-2"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =====================================================================
+                 MODULE 7: WRITING — LUYỆN VIẾT, ĐẾM TỪ, AUTO-SAVE & CHẤM CHI TIẾT (PHẦN 3.4)
+                 ===================================================================== -->
+            <section id="page-writing" class="module-page space-y-6">
+                <div id="writing-filter-bar" class="glass-panel p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex flex-wrap items-center gap-2.5">
+                        <select id="writing-level-filter" onchange="filterWritingTopics()" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-bold text-cyan-300 focus:outline-none">
+                            <option value="all">Tất cả trình độ (A1–C2 & IELTS)</option>
+                            <option value="A1">CEFR A1</option>
+                            <option value="A2">CEFR A2</option>
+                            <option value="B1">CEFR B1 (FPT Level 3)</option>
+                            <option value="B2">CEFR B2</option>
+                            <option value="C1">CEFR C1</option>
+                            <option value="C2">CEFR C2</option>
+                            <option value="IELTS 6.0">IELTS Writing</option>
+                        </select>
+                        <select id="writing-type-filter" onchange="filterWritingTopics()" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-bold text-violet-300 focus:outline-none">
+                            <option value="all">Mọi dạng bài viết</option>
+                            <option value="paragraph">Đoạn văn (Paragraph)</option>
+                            <option value="email">Email học thuật / cá nhân</option>
+                            <option value="essay">Bài luận (Essay)</option>
+                            <option value="ielts_task2">IELTS Writing Task 2</option>
+                        </select>
+                    </div>
+                    <span class="text-xs text-slate-400">Tự động lưu nháp • Kiểm tra câu trực tiếp • Lưu lịch sử bài viết</span>
+                </div>
+
+                <div id="writing-topics-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+                <!-- Writing Split Workspace -->
+                <div id="writing-editor" class="hidden space-y-5">
+                    <button onclick="closeWritingEditor()" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-white/10 text-xs font-bold text-slate-200">← Danh sách đề Writing</button>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                        <!-- Left Column: Prompt, Outline & Vocab Suggestions -->
+                        <div class="lg:col-span-5 glass-panel p-6 rounded-3xl space-y-4">
+                            <h3 id="writing-topic-title" class="text-lg font-extrabold text-white"></h3>
+                            <div class="p-4 rounded-2xl bg-slate-950/85 border border-violet-500/25">
+                                <p class="text-[11px] font-extrabold uppercase text-violet-300 mb-1">📌 Đề Bài (Prompt):</p>
+                                <p id="writing-prompt" class="text-xs sm:text-sm text-slate-200 leading-relaxed"></p>
+                            </div>
+                            <div id="writing-guidelines" class="space-y-3"></div>
+                        </div>
+
+                        <!-- Right Column: Editor, Word Count, Timer, Inline Check & Submit -->
+                        <div class="lg:col-span-7 glass-panel p-6 rounded-3xl space-y-4">
+                            <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                <div class="flex items-center gap-3">
+                                    <span id="writing-word-count" class="font-extrabold text-amber-300">0 từ (Mục tiêu: 100+ từ)</span>
+                                    <span id="writing-autosave-status" class="text-[11px] text-slate-400">Tự động lưu nháp</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span id="writing-timer" class="font-mono font-extrabold text-cyan-300 px-2.5 py-1 rounded-lg bg-slate-950 border border-white/10">20:00</span>
+                                    <button onclick="startWritingCountdown()" class="px-3 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-white/10 text-[11px] font-bold text-slate-200">⏱️ Bấm giờ</button>
+                                </div>
+                            </div>
+
+                            <textarea id="writing-textarea" rows="12" oninput="updateWritingWordCount(); saveWritingDraft();" placeholder="Viết bài tiếng Anh của bạn tại đây... Nhấn vào các từ gợi ý bên trái để chèn nhanh vào bài." class="w-full bg-slate-950 border border-white/10 rounded-2xl p-4 text-sm text-white leading-relaxed focus:outline-none focus:border-violet-500"></textarea>
+
+                            <div id="writing-inline-check-box" class="hidden"></div>
+
+                            <div class="flex flex-wrap gap-3">
+                                <button onclick="runInlineWritingCheck()" class="px-4 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-white/15 text-xs font-bold text-cyan-300">🔍 Kiểm Tra Nhanh Chính Tả & Câu</button>
+                                <button onclick="submitWriting()" class="flex-1 py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:opacity-95 text-white font-extrabold text-xs shadow-lg">✨ Chấm Chi Tiết & Đề Xuất Bản Viết Cải Thiện</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="writing-evaluation" class="hidden pt-2"></div>
+                </div>
+
+                <!-- Saved Writings History -->
+                <div id="writing-history-panel" class="glass-panel p-5 rounded-2xl space-y-3">
+                    <h4 class="text-sm font-extrabold text-white">🗂️ Lịch Sử Bài Viết Đã Nộp</h4>
+                    <div id="writing-saved-history" class="space-y-2"></div>
+                </div>
+            </section>
+
+            <!-- =====================================================================
+                 MODULE 8: ENGLISH NOTEBOOK — SỔ GHI CHÚ CÁ NHÂN 5 PHÂN MỤC (PHẦN 6)
+                 ===================================================================== -->
+            <section id="page-notebook" class="module-page space-y-6">
+                <div class="glass-panel p-5 rounded-3xl space-y-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                            <h3 class="text-xl font-extrabold text-white">📓 English Notebook — Sổ Tay Học Tập Cá Nhân</h3>
+                            <p id="notebook-count-summary" class="text-xs text-slate-400 mt-0.5">Tự động lưu các lỗi sai từ bài tập & ghi chú cá nhân của bạn</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="createNote()" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-xs font-extrabold shadow-lg">➕ Tạo Ghi Chú Mới</button>
+                            <button onclick="exportNotebookData('md')" class="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-white/10 text-xs font-bold text-cyan-300">📄 Xuất Markdown</button>
+                            <button onclick="exportNotebookData('json')" class="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-white/10 text-xs font-bold text-emerald-300">📥 Xuất JSON</button>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col md:flex-row gap-3 justify-between">
+                        <div class="flex flex-wrap gap-1.5">
+                            <button data-nbtype="all" onclick="filterNotebook('all')" class="nb-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-violet-600 text-white shadow-md">Tất cả</button>
+                            <button data-nbtype="vocabulary" onclick="filterNotebook('vocabulary')" class="nb-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-900 text-slate-400 border border-white/10">📖 Vocabulary</button>
+                            <button data-nbtype="grammar" onclick="filterNotebook('grammar')" class="nb-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-900 text-slate-400 border border-white/10">📝 Grammar</button>
+                            <button data-nbtype="mistake" onclick="filterNotebook('mistake')" class="nb-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-900 text-slate-400 border border-white/10">⚠️ Mistake (Lỗi sai)</button>
+                            <button data-nbtype="writing" onclick="filterNotebook('writing')" class="nb-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-900 text-slate-400 border border-white/10">✍️ Writing</button>
+                            <button data-nbtype="speaking" onclick="filterNotebook('speaking')" class="nb-filter-btn px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-900 text-slate-400 border border-white/10">🎙️ Speaking</button>
+                            <button id="nb-important-filter-btn" onclick="toggleNotebookImportantFilter()" class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-900 text-slate-400 border border-white/10">📌 Quan trọng</button>
+                        </div>
+                        <input id="notebook-search" type="text" oninput="renderNotebook()" placeholder="🔍 Tìm trong sổ tay..." class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-violet-500 md:w-64">
+                    </div>
+                </div>
+
+                <!-- Structured Note Editor -->
+                <div id="note-editor" class="hidden glass-card p-6 rounded-3xl space-y-4 border-violet-500/40">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-extrabold text-white text-sm">✏️ Chỉnh Sửa Ghi Chú Có Cấu Trúc</h4>
+                        <div class="flex items-center gap-3">
+                            <span id="note-autosave-indicator" class="text-[11px] text-emerald-400">Tự động lưu bật</span>
+                            <button onclick="closeNoteEditor()" class="text-xs text-slate-400 hover:text-white">✕ Đóng</button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                        <div class="md:col-span-2">
+                            <label class="text-slate-300 font-bold block mb-1">Tiêu đề ghi chú</label>
+                            <input id="note-title" type="text" oninput="triggerNoteAutoSave()" placeholder="VD: Cấu trúc Mặc dù (Although vs Despite)" class="w-full bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500">
+                        </div>
+                        <div>
+                            <label class="text-slate-300 font-bold block mb-1">Phân loại sổ tay</label>
+                            <select id="note-type" onchange="onNoteTypeSelectChange(this.value); triggerNoteAutoSave();" class="w-full bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-cyan-300 font-bold focus:outline-none">
+                                <option value="vocabulary">📖 Vocabulary Notebook</option>
+                                <option value="grammar">📝 Grammar Notebook</option>
+                                <option value="mistake">⚠️ Mistake Notebook</option>
+                                <option value="writing">✍️ Writing Notebook</option>
+                                <option value="speaking">🎙️ Speaking Notebook</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Dynamic Schema Fields -->
+                    <div id="note-dynamic-fields" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+
+                    <div>
+                        <label class="text-xs text-slate-300 font-bold block mb-1">Ghi chú bổ sung</label>
+                        <textarea id="note-content" rows="2" oninput="triggerNoteAutoSave()" placeholder="Mẹo nhớ nhanh hoặc liên hệ cá nhân..." class="w-full bg-slate-950 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none"></textarea>
+                    </div>
+
+                    <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
+                        <label class="flex items-center gap-2 text-xs text-amber-300 font-bold cursor-pointer">
+                            <input id="note-important-chk" type="checkbox" onchange="triggerNoteAutoSave()"> 📌 Ghim là ghi chú quan trọng
+                        </label>
+                        <div class="flex gap-2">
+                            <button id="note-delete-btn" onclick="deleteCurrentNote()" class="hidden px-4 py-2 rounded-xl bg-rose-500/20 text-rose-300 text-xs font-bold">🗑️ Xóa</button>
+                            <button onclick="saveNote(false); closeNoteEditor();" class="px-5 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-xs font-extrabold">💾 Lưu & Đóng</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="notebook-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+            </section>
+
+            <!-- =====================================================================
+                 MODULE 9: PROGRESS ANALYTICS & ADAPTIVE LEARNING (PHẦN 7)
+                 ===================================================================== -->
+            <section id="page-progress" class="module-page space-y-6">
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="glass-panel p-4 rounded-2xl">
+                        <p class="text-xs text-slate-400">Tổng số ngày có học</p>
+                        <p id="prog-total-days" class="text-2xl font-black text-white mt-1">0</p>
+                    </div>
+                    <div class="glass-panel p-4 rounded-2xl">
+                        <p class="text-xs text-slate-400">Từ vựng đã học</p>
+                        <p id="prog-total-words" class="text-2xl font-black text-violet-300 mt-1">0 / 20</p>
+                    </div>
+                    <div class="glass-panel p-4 rounded-2xl">
+                        <p class="text-xs text-slate-400">Tổng bài tập hoàn thành</p>
+                        <p id="prog-total-lessons" class="text-2xl font-black text-cyan-300 mt-1">0</p>
+                    </div>
+                    <div class="glass-panel p-4 rounded-2xl">
+                        <p class="text-xs text-slate-400">Tổng thời lượng tích lũy</p>
+                        <p id="prog-total-time" class="text-2xl font-black text-emerald-300 mt-1">0p</p>
+                    </div>
+                </div>
+
+                <!-- 7.1 Daily Report -->
+                <div class="glass-panel p-6 rounded-3xl space-y-3">
+                    <h3 class="text-base font-extrabold text-white">📅 Báo Cáo Học Tập Hôm Nay (Daily Report)</h3>
+                    <div id="prog-daily-report"></div>
+                </div>
+
+                <!-- 7.2 Weekly Comparison + Bar Chart -->
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <div class="lg:col-span-7 glass-panel p-6 rounded-3xl space-y-3">
+                        <h3 class="text-base font-extrabold text-white">📈 Đối Chiếu Tuần Trước vs Tuần Này (Dữ Liệu Thực 100%)</h3>
+                        <div id="prog-weekly-comparison"></div>
+                    </div>
+                    <div class="lg:col-span-5 glass-panel p-6 rounded-3xl space-y-3">
+                        <h3 class="text-base font-extrabold text-white">⏱️ Số Phút Học Trong Tuần</h3>
+                        <div class="h-56">
+                            <canvas id="prog-weekly-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 7.3 Adaptive Learning Recommendations -->
+                <div class="glass-panel p-6 rounded-3xl space-y-3">
+                    <div>
+                        <h3 class="text-base font-extrabold text-white">🧭 Đề Xuất Học Tập Thích Ứng (Adaptive Learning)</h3>
+                        <p class="text-xs text-slate-400">Phân tích tổng hợp từ nhiều bài luyện tập thực tế (không kết luận vội vàng chỉ sau 1 bài duy nhất)</p>
+                    </div>
+                    <div id="prog-adaptive-box" class="space-y-3"></div>
+                </div>
+
+                <!-- Activity Log -->
+                <div class="glass-panel p-6 rounded-3xl space-y-3">
+                    <h3 class="text-base font-extrabold text-white">🕒 Nhật Ký Hoạt Động Gần Đây</h3>
+                    <p id="activity-empty" class="text-xs text-slate-400">Chưa có hoạt động nào được ghi nhận. Hãy hoàn thành 1 bài học để bắt đầu theo dõi!</p>
+                    <div id="activity-log" class="space-y-2 max-h-80 overflow-y-auto pr-1"></div>
+                </div>
+            </section>
+
+            <!-- =====================================================================
+                 MODULE 10: SETTINGS, HONEST BACKEND AI & CONTENT MANAGEMENT (PHẦN 5, 9, 10)
+                 ===================================================================== -->
+            <section id="page-settings" class="module-page space-y-6">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <!-- Backend AI Security Settings (ZERO FRONTEND API KEY!) -->
+                    <div class="lg:col-span-6 glass-panel p-6 rounded-3xl space-y-4">
+                        <div class="space-y-1">
+                            <span class="text-[11px] font-extrabold uppercase text-cyan-400">Bảo Mật Chuẩn Production (Phần 9.3 & Phần 10)</span>
+                            <h3 class="text-lg font-extrabold text-white">🔐 Kết Nối Backend AI An Toàn (Không Lưu API Key Ở Frontend)</h3>
+                            <p class="text-xs text-slate-400 leading-relaxed">
+                                Để bảo vệ tuyệt đối tài khoản của bạn, QEnglish <strong>không bao giờ</strong> yêu cầu nhập hay lưu API Key trên trình duyệt (<code class="text-rose-300">localStorage</code> / mã nguồn JS). Mọi yêu cầu AI nâng cao đều đi qua Backend (<code class="text-cyan-300">server.js</code> hoặc Vercel Serverless <code class="text-cyan-300">/api/ai/*</code>) đọc biến môi trường <code class="text-emerald-300">.env</code> trên máy chủ.
+                            </p>
+                        </div>
+
+                        <div id="settings-ai-status-box"></div>
+
+                        <div class="space-y-3 text-xs">
+                            <div>
+                                <label for="setting-backend-url" class="font-bold text-slate-300 block mb-1">Địa chỉ Backend API Endpoint:</label>
+                                <input id="setting-backend-url" type="text" value="/api/ai" placeholder="/api/ai hoặc http://localhost:3000/api/ai" class="w-full bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-cyan-300 font-mono focus:outline-none focus:border-violet-500">
+                            </div>
+                            <label class="flex items-start gap-2.5 text-slate-300 cursor-pointer p-3 rounded-xl bg-slate-950/70 border border-white/5">
+                                <input id="setting-ai-consent" type="checkbox" checked class="mt-0.5 rounded">
+                                <span>Tôi đồng ý gửi <strong>nội dung văn bản bài viết / câu hội thoại đang chấm</strong> tới Backend AI do tôi cấu hình (Không bao giờ tự động tải file ghi âm giọng nói).</span>
+                            </label>
+                            <button onclick="saveBackendSettingsAndTest()" class="w-full py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold text-xs shadow-lg">
+                                🔌 Lưu Cấu Hình & Kiểm Tra Kết Nối Backend AI
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Goals, Data Source Legend & Full Backup -->
+                    <div class="lg:col-span-6 space-y-6">
+                        <div class="glass-panel p-6 rounded-3xl space-y-4">
+                            <h3 class="text-lg font-extrabold text-white">🎯 Mục Tiêu Hàng Ngày & Nguồn Lưu Trữ</h3>
+                            <div class="grid grid-cols-2 gap-3 text-xs">
+                                <div>
+                                    <label class="font-bold text-slate-300 block mb-1">Số từ mới mỗi ngày:</label>
+                                    <input id="setting-daily-words" type="number" value="10" min="1" max="100" class="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-cyan-300 font-bold">
+                                </div>
+                                <div>
+                                    <label class="font-bold text-slate-300 block mb-1">Thời gian mục tiêu (phút/ngày):</label>
+                                    <input id="setting-daily-time" type="number" value="60" min="15" max="360" class="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-cyan-300 font-bold">
+                                </div>
+                            </div>
+                            <button onclick="saveLearningSettings()" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold">💾 Lưu Mục Tiêu</button>
+
+                            <div class="pt-3 border-t border-white/10 space-y-2 text-xs">
+                                <p class="font-bold text-slate-300">Nhãn phân biệt nguồn dữ liệu minh bạch trong hệ thống:</p>
+                                <div class="flex flex-wrap gap-1.5">
+                                    <span class="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold border border-white/10">📦 Mặc định (Built-in)</span>
+                                    <span class="px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-300 text-[10px] font-bold border border-cyan-500/25">🖥️ Lưu trên trình duyệt</span>
+                                    <span class="px-2.5 py-1 rounded-full bg-violet-500/15 text-violet-300 text-[10px] font-bold border border-violet-500/30">🤖 Tạo bởi AI</span>
+                                    <span class="px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 text-[10px] font-bold border border-amber-500/30">🌐 Nguồn bên ngoài</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel p-6 rounded-3xl space-y-3">
+                            <h3 class="text-base font-extrabold text-white">💾 Sao Lưu Toàn Hệ Thống (Từ Vựng + Sổ Tay + Tiến Độ)</h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                                <button onclick="exportAllData()" class="py-2.5 px-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold">📥 Xuất Toàn Bộ JSON</button>
+                                <label class="py-2.5 px-3 rounded-xl bg-violet-500/15 border border-violet-500/30 text-violet-300 font-bold text-center cursor-pointer">
+                                    📤 Khôi Phục JSON
+                                    <input type="file" accept=".json" onchange="importAllData(event)" class="hidden">
+                                </label>
+                                <button onclick="clearAllProgress()" class="py-2.5 px-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 font-bold">🔄 Đặt Lại Tiến Độ</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PHẦN 5: LEARNING CONTENT MANAGEMENT SYSTEM (ADMIN IMPORT + AI GENERATOR + ANTI-DUPLICATE) -->
+                <div class="glass-panel p-6 sm:p-7 rounded-3xl space-y-6">
+                    <div>
+                        <span class="text-[11px] font-extrabold uppercase text-violet-400">Content Studio & Anti-Duplication Engine (Phần 5)</span>
+                        <h3 class="text-xl font-extrabold text-white">📚 Quản Lý Học Liệu Mở Rộng (Tự Nhập & Tạo Bằng AI Có Kiểm Duyệt)</h3>
+                        <p class="text-xs text-slate-400 mt-1">Tự động kiểm tra chống trùng lặp ID, tiêu đề, chủ đề + trình độ và độ tương đồng nội dung (&gt;85%) trước khi lưu.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- 5.1 Admin / Student Content Import -->
+                        <div class="p-5 rounded-2xl bg-slate-950/75 border border-white/10 space-y-3 text-xs">
+                            <h4 class="font-extrabold text-white text-sm">✍️ Cách 1: Nhập Học Liệu Mới Trực Tiếp</h4>
+                            <div class="grid grid-cols-2 gap-2.5">
+                                <select id="cms-skill" class="bg-slate-900 border border-white/10 rounded-xl px-3 py-2 font-bold text-cyan-300">
+                                    <option value="reading">Reading Passage</option>
+                                    <option value="listening">Listening Dictation/MC</option>
+                                    <option value="writing">Writing Prompt</option>
+                                    <option value="speaking">Speaking Topic</option>
+                                    <option value="grammar">Grammar Lesson</option>
+                                </select>
+                                <select id="cms-level" class="bg-slate-900 border border-white/10 rounded-xl px-3 py-2 font-bold text-violet-300">
+                                    <option value="A1">CEFR A1</option>
+                                    <option value="A2">CEFR A2</option>
+                                    <option value="B1" selected>CEFR B1</option>
+                                    <option value="B2">CEFR B2</option>
+                                    <option value="C1">CEFR C1</option>
+                                    <option value="C2">CEFR C2</option>
+                                    <option value="IELTS 6.0">IELTS 6.0</option>
+                                </select>
+                            </div>
+                            <input id="cms-title" type="text" placeholder="Tiêu đề bài học *" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-white">
+                            <input id="cms-topic" type="text" placeholder="Chủ đề (VD: Campus Life, Technology...)" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-slate-200">
+                            <textarea id="cms-body" rows="4" placeholder="Nội dung bài đọc / Transcript bài nghe / Đề bài viết / Giải thích ngữ pháp *" class="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white"></textarea>
+                            <input id="cms-question" type="text" placeholder="Câu hỏi đi kèm (tùy chọn cho Reading/Listening/Grammar)" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-slate-200">
+                            <input id="cms-answer" type="text" placeholder="Đáp án đúng (nếu có câu hỏi)" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-emerald-300">
+                            <button onclick="submitAdminCMSImport()" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold">✅ Kiểm Tra Chống Trùng & Lưu Học Liệu</button>
+                        </div>
+
+                        <!-- 5.2 AI Content Generator with Mandatory Preview -->
+                        <div class="p-5 rounded-2xl bg-slate-950/75 border border-white/10 space-y-3 text-xs">
+                            <h4 class="font-extrabold text-white text-sm">🤖 Cách 2: Tạo Đề Luyện Mới Bằng Backend AI (Xem Trước Khi Lưu)</h4>
+                            <div class="grid grid-cols-3 gap-2">
+                                <select id="ai-gen-skill" class="bg-slate-900 border border-white/10 rounded-xl px-2.5 py-2 font-bold text-cyan-300">
+                                    <option value="reading">Reading</option>
+                                    <option value="listening">Listening</option>
+                                    <option value="writing">Writing</option>
+                                    <option value="speaking">Speaking</option>
+                                    <option value="grammar">Grammar</option>
+                                </select>
+                                <select id="ai-gen-level" class="bg-slate-900 border border-white/10 rounded-xl px-2.5 py-2 font-bold text-violet-300">
+                                    <option value="A2">A2</option>
+                                    <option value="B1" selected>B1</option>
+                                    <option value="B2">B2</option>
+                                    <option value="C1">C1</option>
+                                    <option value="IELTS 6.0">IELTS 6.0</option>
+                                </select>
+                                <input id="ai-gen-count" type="number" value="3" min="1" max="6" title="Số câu hỏi" class="bg-slate-900 border border-white/10 rounded-xl px-2.5 py-2 text-white font-bold">
+                            </div>
+                            <input id="ai-gen-topic" type="text" placeholder="Nhập chủ đề muốn tạo (VD: First week at FPT University HCM)..." class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-white">
+                            <button onclick="generateAIContentPreview()" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold">✨ Yêu Cầu Backend AI Sinh Nội Dung Xem Trước</button>
+                            <div id="ai-gen-preview" class="hidden pt-2"></div>
+                        </div>
+                    </div>
+
+                    <!-- Custom Added Items & External Resources -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+                        <div class="space-y-2">
+                            <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-400">📦 Học Liệu Đã Thêm Bởi Bạn / AI</h4>
+                            <div id="cms-items-list" class="space-y-2 max-h-64 overflow-y-auto pr-1"></div>
+                        </div>
+                        <div class="space-y-2">
+                            <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-400">🌐 Danh Mục Nguồn Học Liệu Quốc Tế Hợp Pháp</h4>
+                            <div id="cms-external-resources-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ==================== MOBILE BOTTOM NAVIGATION ==================== -->
+    <nav class="lg:hidden fixed bottom-0 left-0 right-0 z-40 glass-panel border-t border-white/10 px-2 py-2 flex items-center justify-around">
+        <button data-mob="dashboard" onclick="navigateTo('dashboard')" class="mob-nav-btn flex flex-col items-center gap-0.5 text-[10px] font-bold text-violet-400">
+            <span class="text-base">🏠</span><span>Home</span>
+        </button>
+        <button data-mob="vocabulary" onclick="navigateTo('vocabulary')" class="mob-nav-btn flex flex-col items-center gap-0.5 text-[10px] font-bold text-slate-400">
+            <span class="text-base">📖</span><span>Vocab</span>
+        </button>
+        <button data-mob="listening" onclick="navigateTo('listening')" class="mob-nav-btn flex flex-col items-center gap-0.5 text-[10px] font-bold text-slate-400">
+            <span class="text-base">🎧</span><span>Listen</span>
+        </button>
+        <button data-mob="speaking" onclick="navigateTo('speaking')" class="mob-nav-btn flex flex-col items-center gap-0.5 text-[10px] font-bold text-slate-400">
+            <span class="text-base">🎙️</span><span>Speak</span>
+        </button>
+        <button data-mob="reading" onclick="navigateTo('reading')" class="mob-nav-btn flex flex-col items-center gap-0.5 text-[10px] font-bold text-slate-400">
+            <span class="text-base">📄</span><span>Read</span>
+        </button>
+        <button data-mob="writing" onclick="navigateTo('writing')" class="mob-nav-btn flex flex-col items-center gap-0.5 text-[10px] font-bold text-slate-400">
+            <span class="text-base">✍️</span><span>Write</span>
+        </button>
+        <button data-mob="notebook" onclick="navigateTo('notebook')" class="mob-nav-btn flex flex-col items-center gap-0.5 text-[10px] font-bold text-slate-400">
+            <span class="text-base">📓</span><span>Notes</span>
+        </button>
+    </nav>
+
+    <!-- ==================== FIRST-TIME STUDENT ONBOARDING MODAL (PHẦN 8.4) ==================== -->
+    <div id="onboarding-modal" class="hidden fixed inset-0 z-[80] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="glass-card max-w-2xl w-full rounded-3xl p-6 sm:p-8 space-y-5 border-violet-500/40 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between">
+                <span class="px-3 py-1 rounded-full bg-violet-500/20 text-violet-300 text-xs font-extrabold">🎓 Lộ Trình FPT University — English Level 3</span>
+                <button onclick="closeOnboardingModal()" class="text-slate-400 hover:text-white text-sm font-bold">✕</button>
+            </div>
+            <h3 class="text-2xl font-extrabold text-white">Chào mừng bạn đến với Hệ Thống Học Tiếng Anh Cá Nhân QEnglish!</h3>
+            <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                Toàn bộ <strong>20 từ vựng gốc, từ đã thêm và dấu sao</strong> của bạn đều được bảo toàn nguyên vẹn 100%. Để hoàn thành tốt <strong>English Level 3 (04/11/2026 – 17/12/2026)</strong> dù nền tảng còn yếu, hãy áp dụng quy trình 5 bước mỗi ngày:
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-white/10 space-y-1">
+                    <p class="font-extrabold text-violet-300">1️⃣ Vocabulary 6 Bước + SRS (15p)</p>
+                    <p class="text-slate-400">Đừng chỉ lật thẻ — hãy vào <strong>Luyện 6 Bước</strong> để tự gõ nghĩa, viết câu và để hệ thống chỉ lỗi ngữ pháp từng câu.</p>
+                </div>
+                <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-white/10 space-y-1">
+                    <p class="font-extrabold text-cyan-300">2️⃣ Listening Dictation (15–20p)</p>
+                    <p class="text-slate-400">Nghe tốc độ 0.75x–1.0x và chép chính tả từng câu ngắn để cải thiện tai nghe từ gốc.</p>
+                </div>
+                <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-white/10 space-y-1">
+                    <p class="font-extrabold text-emerald-300">3️⃣ Speaking & Lệnh "Please do" (15p)</p>
+                    <p class="text-slate-400">Luyện nói hội thoại hoặc theo chủ đề. Khi nói xong, nói <strong>"Please do"</strong> để nhận bảng sửa câu chi tiết.</p>
+                </div>
+                <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-white/10 space-y-1">
+                    <p class="font-extrabold text-amber-300">4️⃣ Reading + Writing + Notebook (20p)</p>
+                    <p class="text-slate-400">Tận dụng thế mạnh Reading để bôi đen lưu từ mới sang Kho từ, và viết đoạn văn ngắn có chấm sửa từng lỗi.</p>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 pt-2">
+                <button onclick="closeOnboardingModal()" class="px-6 py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold text-xs shadow-lg">🚀 Bắt Đầu Học Ngay!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== MODULAR SCRIPTS (file:// & Server Compatible) ==================== -->
+    <script src="js/data/default-deck.js"></script>
+    <script src="js/data/grammar-data.js"></script>
+    <script src="js/data/listening-data.js"></script>
+    <script src="js/data/reading-data.js"></script>
+    <script src="js/data/writing-data.js"></script>
+    <script src="js/data/speaking-data.js"></script>
+    <script src="js/data/extra-levels-data.js"></script>
+
+    <script src="js/core/storage.js"></script>
+    <script src="js/core/audio-ai.js"></script>
+
+    <script src="js/modules/vocabulary.js"></script>
+    <script src="js/modules/grammar.js"></script>
+    <script src="js/modules/listening.js"></script>
+    <script src="js/modules/reading.js"></script>
+    <script src="js/modules/writing.js"></script>
+    <script src="js/modules/speaking.js"></script>
+    <script src="js/modules/notebook-cms.js"></script>
+    <script src="js/modules/dashboard-progress.js"></script>
+</body>
+</html>
