@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="QEnglish — Hệ thống học tiếng Anh cá nhân hóa dành cho sinh viên FPT University (Listening, Speaking, Reading, Writing, Grammar & Vocabulary)">
-    <title>QEnglish — Personal English Learning System (FPT University)</title>
+    <meta name="description" content="QEnglish — Hệ thống học tiếng Anh thông minh toàn diện 5 kỹ năng (Listening, Speaking, Reading, Writing, Grammar & Vocabulary)">
+    <title>QEnglish — Học Tiếng Anh Thông Minh Toàn Diện</title>
 
     <!-- Fonts & UI Frameworks -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -405,7 +405,7 @@ select optgroup {
                         <h1 class="font-extrabold text-base tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-300">
                             QEnglish
                         </h1>
-                        <p class="text-[10px] text-cyan-400 font-bold uppercase tracking-wider">FPT Level 3 System</p>
+                        <p class="text-[10px] text-cyan-400 font-bold uppercase tracking-wider">Smart Learning System</p>
                     </div>
                 </div>
                 <button onclick="toggleSidebar(true)" class="lg:hidden p-2 rounded-lg text-slate-400 hover:text-white">✕</button>
@@ -422,7 +422,7 @@ select optgroup {
                     <optgroup label="Chuẩn CEFR (A1 – C2)">
                         <option value="A1">CEFR A1 — Beginner</option>
                         <option value="A2">CEFR A2 — Elementary</option>
-                        <option value="B1">CEFR B1 — Intermediate (FPT Lv3)</option>
+                        <option value="B1">CEFR B1 — Intermediate</option>
                         <option value="B2">CEFR B2 — Upper-Intermediate</option>
                         <option value="C1">CEFR C1 — Advanced</option>
                         <option value="C2">CEFR C2 — Proficiency</option>
@@ -503,19 +503,24 @@ select optgroup {
             </nav>
         </div>
 
-        <!-- 6-Week FPT Level 3 Goal Card -->
+        <!-- Active Account & Personal Goal Card -->
         <div class="mt-4 p-3.5 rounded-2xl bg-gradient-to-br from-violet-950/70 to-slate-950 border border-violet-500/25 space-y-2">
             <div class="flex items-center justify-between text-[11px]">
-                <span class="font-extrabold text-violet-300">🎓 FPT HCM — Level 3</span>
-                <span class="text-slate-400">6 Tuần</span>
+                <span id="sidebar-account-name" class="font-extrabold text-violet-300 truncate">🚀 Học viên 1 (Chính)</span>
+                <button onclick="openAccountModal()" class="text-[10px] font-extrabold text-cyan-300 hover:underline shrink-0">Đổi TK</button>
             </div>
-            <p class="text-[11px] text-slate-300 leading-snug">04/11/2026 → 17/12/2026</p>
+            <p id="sidebar-account-goal" class="text-[11px] text-slate-300 leading-snug truncate">Chinh phục 5 kỹ năng Tiếng Anh</p>
             <div class="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
                 <div id="sidebar-goal-bar" class="h-full bg-gradient-to-r from-violet-500 to-cyan-400 transition-all duration-500" style="width: 12%"></div>
             </div>
-            <button onclick="openOnboardingModal()" class="w-full py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-bold text-cyan-300 transition">
-                ❓ Hướng dẫn học hiệu quả
-            </button>
+            <div class="grid grid-cols-2 gap-1.5 pt-0.5">
+                <button onclick="openAccountModal()" class="py-1.5 px-2 rounded-lg bg-violet-600/30 hover:bg-violet-600/45 border border-violet-400/30 text-[11px] font-bold text-white transition">
+                    👥 Tài khoản
+                </button>
+                <button onclick="openOnboardingModal()" class="py-1.5 px-2 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-bold text-cyan-300 transition">
+                    ❓ Hướng dẫn
+                </button>
+            </div>
         </div>
     </aside>
 
@@ -534,8 +539,12 @@ select optgroup {
                     </div>
                 </div>
 
-                <!-- Preserved Audio Controls + Honest AI Status Badge -->
+                <!-- Account Switcher + Preserved Audio Controls + Honest AI Status Badge -->
                 <div class="flex items-center gap-2 shrink-0">
+                    <button id="header-account-btn" onclick="openAccountModal()" class="px-3 py-1.5 rounded-xl bg-violet-600/25 hover:bg-violet-600/40 border border-violet-400/35 text-xs font-extrabold text-white inline-flex items-center gap-1.5 transition" title="Quản lý & Chuyển đổi tài khoản học tập">
+                        <span>🚀</span><span class="max-w-[110px] truncate">Tài khoản</span><span class="text-[10px] text-cyan-300">▾</span>
+                    </button>
+
                     <div id="header-ai-badge" class="hidden md:block cursor-pointer" onclick="navigateTo('settings')" title="Xem trạng thái Backend AI"></div>
 
                     <div class="flex items-center gap-1.5 bg-slate-900/90 px-2.5 py-1.5 rounded-xl border border-white/10" title="Điều chỉnh tốc độ đọc phát âm (0.1x – 3.0x)">
@@ -573,16 +582,17 @@ select optgroup {
                 <div class="rounded-3xl p-6 md:p-7 bg-gradient-to-r from-violet-900/65 via-indigo-950/75 to-slate-900/90 border border-violet-500/30 shadow-2xl grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
                     <div class="lg:col-span-2 space-y-2.5">
                         <div class="flex flex-wrap items-center gap-2">
-                            <span class="px-3 py-1 rounded-full bg-violet-500/25 border border-violet-400/30 text-violet-200 text-xs font-extrabold">🎓 Sinh viên Năm Nhất — FPT University HCM</span>
+                            <span id="dash-user-badge" onclick="openAccountModal()" class="cursor-pointer px-3 py-1 rounded-full bg-violet-500/25 border border-violet-400/30 text-violet-200 text-xs font-extrabold hover:bg-violet-500/35 transition">🚀 QEnglish — Hệ Thống Đa Tài Khoản</span>
                             <span id="dash-current-level-badge" class="px-3 py-1 rounded-full bg-cyan-500/20 border border-cyan-400/30 text-cyan-300 text-xs font-extrabold">Tất cả trình độ</span>
                         </div>
-                        <h3 class="text-2xl md:text-3xl font-extrabold text-white tracking-tight">Chào bạn! Sẵn sàng chinh phục English Level 3 hôm nay?</h3>
-                        <p id="dash-goal-countdown" class="text-xs md:text-sm text-slate-300 font-medium">Lộ trình 6 tuần: 04/11/2026 – 17/12/2026 • Ưu tiên hiểu bản chất, tự sửa lỗi và duy trì thói quen mỗi ngày.</p>
+                        <h3 id="dash-hero-greeting" class="text-2xl md:text-3xl font-extrabold text-white tracking-tight">Chào bạn! Sẵn sàng bứt phá Tiếng Anh hôm nay?</h3>
+                        <p id="dash-goal-countdown" class="text-xs md:text-sm text-slate-300 font-medium">Lộ trình cá nhân hóa 5 kỹ năng • Ưu tiên hiểu bản chất, tự sửa lỗi và duy trì thói quen mỗi ngày.</p>
                         <div class="flex flex-wrap gap-2.5 pt-1">
                             <button onclick="navigateTo('vocabulary','practice')" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-extrabold text-xs shadow-lg transition">🔥 Luyện Từ 6 Bước</button>
                             <button onclick="navigateTo('listening')" class="px-4 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-white/15 text-cyan-300 font-bold text-xs transition">🎧 Luyện Nghe</button>
                             <button onclick="navigateTo('speaking')" class="px-4 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-white/15 text-emerald-300 font-bold text-xs transition">🎙️ Luyện Nói</button>
                             <button onclick="navigateTo('writing')" class="px-4 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-white/15 text-amber-300 font-bold text-xs transition">✍️ Viết Đoạn Văn</button>
+                            <button onclick="openAccountModal()" class="px-4 py-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-extrabold text-xs transition">👥 Đổi / Tạo Tài Khoản Nhóm</button>
                         </div>
                     </div>
 
@@ -1296,7 +1306,7 @@ select optgroup {
                             <span class="px-3 py-1 rounded-full bg-violet-500/20 text-violet-300 text-xs font-extrabold">Chế độ 1 • Live Voice Conversation</span>
                             <h3 class="text-2xl font-extrabold text-white">💬 Hội Thoại Trực Tiếp Với Trợ Lý</h3>
                             <p class="text-xs text-slate-300 leading-relaxed">
-                                Bật micro và trò chuyện tự nhiên từng lượt bằng tiếng Anh về đời sống sinh viên FPT, học tập, công nghệ hoặc sở thích. Khi muốn dừng và nhận bảng nhận xét toàn bộ buổi nói, hãy nói hoặc gõ: <strong class="text-amber-300">"Please do"</strong>.
+                                Bật micro và trò chuyện tự nhiên từng lượt bằng tiếng Anh về đời sống đại học, học tập, công nghệ hoặc sở thích. Khi muốn dừng và nhận bảng nhận xét toàn bộ buổi nói, hãy nói hoặc gõ: <strong class="text-amber-300">"Please do"</strong>.
                             </p>
                         </div>
                         <span class="inline-flex items-center gap-2 text-xs font-extrabold text-cyan-300">🎙️ Bắt đầu hội thoại ngay →</span>
@@ -1322,7 +1332,7 @@ select optgroup {
                             <option value="all">Tất cả trình độ</option>
                             <option value="A1">A1</option>
                             <option value="A2">A2</option>
-                            <option value="B1">B1 (FPT Level 3)</option>
+                            <option value="B1">B1 (Intermediate)</option>
                             <option value="B2">B2</option>
                             <option value="C1">C1</option>
                             <option value="IELTS 6.0">IELTS Cue Cards</option>
@@ -1349,7 +1359,7 @@ select optgroup {
                             <option value="all">Tất cả trình độ (A1–C2 & IELTS)</option>
                             <option value="A1">CEFR A1</option>
                             <option value="A2">CEFR A2</option>
-                            <option value="B1">CEFR B1 (FPT Level 3)</option>
+                            <option value="B1">CEFR B1 (Intermediate)</option>
                             <option value="B2">CEFR B2</option>
                             <option value="C1">CEFR C1</option>
                             <option value="C2">CEFR C2</option>
@@ -1440,7 +1450,7 @@ select optgroup {
                             <option value="all">Tất cả trình độ (A1–C2 & IELTS)</option>
                             <option value="A1">CEFR A1</option>
                             <option value="A2">CEFR A2</option>
-                            <option value="B1">CEFR B1 (FPT Level 3)</option>
+                            <option value="B1">CEFR B1 (Intermediate)</option>
                             <option value="B2">CEFR B2</option>
                             <option value="C1">CEFR C1</option>
                             <option value="C2">CEFR C2</option>
@@ -1779,7 +1789,7 @@ select optgroup {
                                 </select>
                                 <input id="ai-gen-count" type="number" value="3" min="1" max="6" title="Số câu hỏi" class="bg-slate-900 border border-white/10 rounded-xl px-2.5 py-2 text-white font-bold">
                             </div>
-                            <input id="ai-gen-topic" type="text" placeholder="Nhập chủ đề muốn tạo (VD: First week at FPT University HCM)..." class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-white">
+                            <input id="ai-gen-topic" type="text" placeholder="Nhập chủ đề muốn tạo (VD: Campus Life, Artificial Intelligence)..." class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-white">
                             <button onclick="generateAIContentPreview()" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold">✨ Yêu Cầu Backend AI Sinh Nội Dung Xem Trước</button>
                             <div id="ai-gen-preview" class="hidden pt-2"></div>
                         </div>
@@ -1826,16 +1836,16 @@ select optgroup {
         </button>
     </nav>
 
-    <!-- ==================== FIRST-TIME STUDENT ONBOARDING MODAL (PHẦN 8.4) ==================== -->
+    <!-- ==================== FIRST-TIME STUDENT ONBOARDING MODAL ==================== -->
     <div id="onboarding-modal" class="hidden fixed inset-0 z-[80] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
         <div class="glass-card max-w-2xl w-full rounded-3xl p-6 sm:p-8 space-y-5 border-violet-500/40 max-h-[90vh] overflow-y-auto">
             <div class="flex items-center justify-between">
-                <span class="px-3 py-1 rounded-full bg-violet-500/20 text-violet-300 text-xs font-extrabold">🎓 Lộ Trình FPT University — English Level 3</span>
+                <span class="px-3 py-1 rounded-full bg-violet-500/20 text-violet-300 text-xs font-extrabold">🚀 QEnglish — Smart English Learning System</span>
                 <button onclick="closeOnboardingModal()" class="text-slate-400 hover:text-white text-sm font-bold">✕</button>
             </div>
-            <h3 class="text-2xl font-extrabold text-white">Chào mừng bạn đến với Hệ Thống Học Tiếng Anh Cá Nhân QEnglish!</h3>
+            <h3 class="text-2xl font-extrabold text-white">Chào mừng bạn đến với Hệ Thống Học Tiếng Anh QEnglish!</h3>
             <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                Toàn bộ <strong>20 từ vựng gốc, từ đã thêm và dấu sao</strong> của bạn đều được bảo toàn nguyên vẹn 100%. Để hoàn thành tốt <strong>English Level 3 (04/11/2026 – 17/12/2026)</strong> dù nền tảng còn yếu, hãy áp dụng quy trình 5 bước mỗi ngày:
+                Toàn bộ <strong>20 từ vựng gốc, từ đã thêm và dấu sao</strong> của bạn đều được bảo toàn nguyên vẹn 100%. Nếu học cùng nhóm bạn, bạn có thể bấm nút <strong>👥 Tài khoản</strong> trên thanh công cụ để tạo tài khoản riêng cho từng người!
             </p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-white/10 space-y-1">
@@ -1852,11 +1862,96 @@ select optgroup {
                 </div>
                 <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-white/10 space-y-1">
                     <p class="font-extrabold text-amber-300">4️⃣ Reading + Writing + Notebook (20p)</p>
-                    <p class="text-slate-400">Tận dụng thế mạnh Reading để bôi đen lưu từ mới sang Kho từ, và viết đoạn văn ngắn có chấm sửa từng lỗi.</p>
+                    <p class="text-slate-400">Bôi đen từ mới trong bài Reading để lưu sang Kho từ, và viết đoạn văn ngắn có chấm sửa từng lỗi.</p>
                 </div>
             </div>
             <div class="flex justify-end gap-3 pt-2">
+                <button onclick="closeOnboardingModal(); openAccountModal();" class="px-5 py-3 rounded-2xl bg-slate-900 border border-white/15 text-cyan-300 font-extrabold text-xs">👥 Tạo / Đổi Tài Khoản</button>
                 <button onclick="closeOnboardingModal()" class="px-6 py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold text-xs shadow-lg">🚀 Bắt Đầu Học Ngay!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== MULTI-ACCOUNT & GROUP STUDY MODAL ==================== -->
+    <div id="account-modal" class="hidden fixed inset-0 z-[85] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="glass-card max-w-3xl w-full rounded-3xl p-6 sm:p-8 space-y-6 border-violet-500/40 max-h-[92vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-white/10 pb-4">
+                <div>
+                    <span class="text-[11px] font-extrabold uppercase tracking-wider text-cyan-400">QEnglish Multi-Account & Group Study</span>
+                    <h3 class="text-xl sm:text-2xl font-extrabold text-white mt-0.5">👥 Quản Lý Tài Khoản & Bảng Thi Đua Nhóm</h3>
+                </div>
+                <button onclick="closeAccountModal()" class="p-2 rounded-xl bg-slate-900 border border-white/10 text-slate-400 hover:text-white text-sm font-bold">✕</button>
+            </div>
+
+            <!-- Active Account Quick Edit -->
+            <div class="p-4 rounded-2xl bg-slate-950/85 border border-violet-500/30 space-y-3 text-xs">
+                <p class="font-extrabold text-violet-300 uppercase tracking-wider">✨ Hồ sơ tài khoản đang đăng nhập của bạn</p>
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                    <div>
+                        <label class="text-slate-400 font-bold block mb-1">Biểu tượng</label>
+                        <select id="acc-edit-avatar" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-white font-bold">
+                            <option value="🚀">🚀 Tên lửa</option>
+                            <option value="🌟">🌟 Ngôi sao</option>
+                            <option value="🔥">🔥 Ngọn lửa</option>
+                            <option value="🦁">🦁 Sư tử</option>
+                            <option value="🦉">🦉 Cú thông thái</option>
+                            <option value="💎">💎 Kim cương</option>
+                            <option value="🎧">🎧 Tai nghe</option>
+                            <option value="👑">👑 Vương miện</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-slate-400 font-bold block mb-1">Tên hiển thị</label>
+                        <input id="acc-edit-name" type="text" placeholder="Tên của bạn" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-white font-bold">
+                    </div>
+                    <div>
+                        <label class="text-slate-400 font-bold block mb-1">Mục tiêu cá nhân</label>
+                        <input id="acc-edit-goal" type="text" placeholder="VD: IELTS 6.5 / Giao tiếp" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-cyan-300">
+                    </div>
+                    <div>
+                        <label class="text-slate-400 font-bold block mb-1">Mã PIN khóa (Tùy chọn)</label>
+                        <input id="acc-edit-pin" type="password" maxlength="8" placeholder="Để trống = Không khóa" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-amber-300">
+                    </div>
+                </div>
+                <div class="flex flex-wrap justify-between items-center gap-2 pt-1">
+                    <span class="text-[11px] text-slate-400">💡 Mỗi tài khoản có kho từ vựng, SRS, điểm số và sổ tay hoàn toàn riêng biệt.</span>
+                    <button onclick="handleSaveActiveAccountProfile()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold">💾 Lưu Hồ Sơ Của Tôi</button>
+                </div>
+            </div>
+
+            <!-- Group Leaderboard & Account Switcher List -->
+            <div class="space-y-2.5">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <h4 class="text-sm font-extrabold text-white">🏆 Danh Sách Tài Khoản & Bảng Xếp Hạng Học Tập</h4>
+                    <label class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-white/10 text-xs font-bold text-cyan-300 cursor-pointer">
+                        📤 Nhập Hồ Sơ Tài Khoản (.json)
+                        <input type="file" accept=".json" onchange="handleImportAccountFile(event)" class="hidden">
+                    </label>
+                </div>
+                <div id="accounts-leaderboard-list" class="space-y-2.5 max-h-64 overflow-y-auto pr-1"></div>
+            </div>
+
+            <!-- Create New Friend Account Form -->
+            <div class="p-4 rounded-2xl bg-slate-950/75 border border-white/10 space-y-3 text-xs">
+                <h4 class="font-extrabold text-emerald-300 text-sm">➕ Tạo Tài Khoản Mới (Dành Cho Bạn Bè Hoặc Thành Viên Mới)</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-5 gap-2.5">
+                    <select id="new-acc-avatar" class="bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-white font-bold">
+                        <option value="🌟">🌟 Avatar Sao</option>
+                        <option value="🚀">🚀 Avatar Tên lửa</option>
+                        <option value="🔥">🔥 Avatar Lửa</option>
+                        <option value="🦁">🦁 Avatar Sư tử</option>
+                        <option value="🦉">🦉 Avatar Cú</option>
+                        <option value="💎">💎 Avatar Kim cương</option>
+                        <option value="👑">👑 Avatar Vương miện</option>
+                    </select>
+                    <input id="new-acc-name" type="text" placeholder="Tên người học * (VD: Minh)" class="bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-white font-bold">
+                    <input id="new-acc-username" type="text" placeholder="Username (VD: minh)" class="bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-cyan-300">
+                    <input id="new-acc-goal" type="text" value="Giao tiếp & Từ vựng toàn diện" placeholder="Mục tiêu học tập" class="bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-slate-200">
+                    <input id="new-acc-pin" type="password" maxlength="8" placeholder="Mã PIN (Tùy chọn)" class="bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-amber-300">
+                </div>
+                <button onclick="handleCreateNewAccountSubmit()" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:opacity-95 text-white font-extrabold shadow-lg">
+                    🚀 Tạo Tài Khoản Riêng & Bắt Đầu Học Ngay
+                </button>
             </div>
         </div>
     </div>
@@ -1905,7 +2000,7 @@ Bandwidth - (/ˈbænd.wɪdθ/) Băng thông. | High bandwidth is required to str
 Architecture - (/ˈɑːr.kə.tek.tʃər/) Kiến trúc hệ thống / Máy tính. | Students analyzed ARM architecture in the advanced computer systems module.
 Protocol - (/ˈproʊ.tə.kɑːl/) Giao thức mạng. | HTTPS is a secure communication protocol used across modern web applications.
 Hardware - (/ˈhɑːrd.wer/) Phần cứng máy tính. | The engineering lab provided specialized hardware for microcontroller programming.
-Internship - (/ˈɪntɜːrnʃɪp/) Kỳ thực tập. | FPT students complete a four-month software engineering internship in their third year.
+Internship - (/ˈɪntɜːrnʃɪp/) Kỳ thực tập. | university students complete a four-month software engineering internship in their third year.
 Curriculum - (/kəˈrɪk.jə.ləm/) Chương trình học. | The academic curriculum is updated annually to match tech industry demands.
 Presentation - (/ˌprez.ənˈteɪ.ʃən/) Bài thuyết trình. | Each project team gave a ten-minute presentation to the industry experts.
 Attendance - (/əˈten.dəns/) Điểm danh / Chuyên cần. | High attendance in lab sessions is mandatory for passing the module.
@@ -1933,8 +2028,8 @@ const DYNAMIC_EXAMPLE_TEMPLATES = [
         structure: `prepare a report + focusing on + N (Rút gọn mệnh đề quan hệ V-ing)`
     }),
     (t) => ({
-        en: `During the FPT University workshop, speakers highlighted the practical value of ${t.toLowerCase()}.`,
-        vi: `Trong buổi hội thảo tại Đại học FPT, các diễn giả đã nhấn mạnh giá trị thực tiễn của "${t}".`,
+        en: `During the the university workshop, speakers highlighted the practical value of ${t.toLowerCase()}.`,
+        vi: `Trong buổi hội thảo tại trường đại học, các diễn giả đã nhấn mạnh giá trị thực tiễn của "${t}".`,
         structure: `highlight the value/importance of + N (Nhấn mạnh tầm quan trọng)`
     })
 ];
@@ -1943,7 +2038,7 @@ const DYNAMIC_EXAMPLE_TEMPLATES = [
 const VOCAB_ENRICHMENT_MAP = {
     semiconductor: { pos: "noun", level: "B2", synonyms: "chip material, wafer", antonyms: "insulator", extraExamples: [
         { en: "Vietnam is rapidly developing its semiconductor industry.", vi: "Việt Nam đang phát triển nhanh chóng ngành công nghiệp bán dẫn.", structure: "be + adv + V-ing (Hiện tại tiếp diễn diễn tả xu hướng)" },
-        { en: "Many FPT graduates aspire to work in semiconductor design.", vi: "Nhiều sinh viên tốt nghiệp FPT mong muốn làm việc trong lĩnh vực thiết kế bán dẫn.", structure: "aspire to + V (Khao khát, hướng tới làm gì)" },
+        { en: "Many university graduates aspire to work in semiconductor design.", vi: "Nhiều sinh viên tốt nghiệp đại học mong muốn làm việc trong lĩnh vực thiết kế bán dẫn.", structure: "aspire to + V (Khao khát, hướng tới làm gì)" },
         { en: "A semiconductor conducts electricity better than glass but worse than copper.", vi: "Chất bán dẫn dẫn điện tốt hơn thủy tinh nhưng kém hơn đồng.", structure: "better than ... but worse than ... (Cấu trúc so sánh đối chiếu)" }
     ]},
     circuit: { pos: "noun", level: "B1", synonyms: "loop, network, wiring", antonyms: "disconnection", extraExamples: [
@@ -1979,7 +2074,7 @@ const VOCAB_ENRICHMENT_MAP = {
     component: { pos: "noun", level: "B1", synonyms: "part, element, module", antonyms: "whole, entirety", extraExamples: [
         { en: "Vocabulary is a key component of English proficiency.", vi: "Từ vựng là một thành phần then chốt của năng lực tiếng Anh.", structure: "be a key component of + N (Là thành phần chủ chốt của)" },
         { en: "We replaced the damaged component on the motherboard.", vi: "Chúng tôi đã thay thế linh kiện bị hỏng trên bo mạch chủ.", structure: "replace + the + V-ed/adj + N" },
-        { en: "Teamwork is an essential component of every FPT project.", vi: "Làm việc nhóm là yếu tố thiết yếu của mọi dự án tại FPT.", structure: "an essential component of + N" }
+        { en: "Teamwork is an essential component of every team project.", vi: "Làm việc nhóm là yếu tố thiết yếu của mọi dự án trong học tập.", structure: "an essential component of + N" }
     ]},
     resistance: { pos: "noun", level: "B2", synonyms: "impedance, opposition", antonyms: "conductivity, acceptance", extraExamples: [
         { en: "Electrical resistance is measured in ohms.", vi: "Điện trở được đo bằng đơn vị ôm (ohm).", structure: "be measured in + đơn vị (Bị động)" },
@@ -1992,7 +2087,7 @@ const VOCAB_ENRICHMENT_MAP = {
         { en: "System integration testing starts next Monday.", vi: "Kiểm thử tích hợp hệ thống sẽ bắt đầu vào thứ Hai tới.", structure: "Present Simple cho lịch trình cố định" }
     ]},
     syllabus: { pos: "noun", level: "B1", synonyms: "curriculum outline, course plan", antonyms: "improvisation", extraExamples: [
-        { en: "You can download the English Level 3 syllabus from FAP or CMS.", vi: "Bạn có thể tải đề cương môn Tiếng Anh Level 3 từ hệ thống FAP hoặc CMS.", structure: "download + N + from + nguồn" },
+        { en: "You can download the Intermediate English syllabus from the student portal.", vi: "Bạn có thể tải đề cương môn Tiếng Anh Trung cấp từ hệ thống FAP hoặc CMS.", structure: "download + N + from + nguồn" },
         { en: "The lecturer went through the syllabus on the first day of class.", vi: "Giảng viên đã phổ biến kỹ đề cương môn học vào ngày đầu tiên của lớp.", structure: "go through + N (Xem xét/phổ biến kỹ lưỡng)" },
         { en: "All exam topics are listed clearly in the course syllabus.", vi: "Tất cả chủ đề thi đều được liệt kê rõ ràng trong đề cương khóa học.", structure: "be listed + adv + in + N" }
     ]},
@@ -2012,7 +2107,7 @@ const VOCAB_ENRICHMENT_MAP = {
         { en: "Recording the lecture requires permission from the instructor.", vi: "Việc ghi âm bài giảng cần có sự cho phép của giảng viên.", structure: "require permission from + ai đó" }
     ]},
     campus: { pos: "noun", level: "A2", synonyms: "university grounds, college site", antonyms: "off-campus", extraExamples: [
-        { en: "FPT University Ho Chi Minh campus has lots of green trees.", vi: "Khuôn viên Đại học FPT TP.HCM có rất nhiều cây xanh.", structure: "have lots of + N" },
+        { en: "our university campus has lots of green trees.", vi: "Khuôn viên trường đại học có rất nhiều cây xanh.", structure: "have lots of + N" },
         { en: "First-year students enjoy meeting friends at the campus cafe.", vi: "Sinh viên năm nhất thích gặp gỡ bạn bè tại quán cà phê trong khuôn viên trường.", structure: "enjoy + V-ing (Thích làm gì)" },
         { en: "Shuttle buses run directly to the campus every morning.", vi: "Xe buýt đưa đón chạy thẳng tới khuôn viên trường mỗi sáng.", structure: "run directly to + địa điểm" }
     ]},
@@ -2022,7 +2117,7 @@ const VOCAB_ENRICHMENT_MAP = {
         { en: "We have a five-minute Q&A session after each presentation.", vi: "Chúng tôi có phần hỏi đáp 5 phút sau mỗi bài thuyết trình.", structure: "five-minute (Tính từ ghép có gạch nối không thêm 's')" }
     ]},
     attendance: { pos: "noun", level: "B1", synonyms: "presence, turnout", antonyms: "absence, truancy", extraExamples: [
-        { en: "At FPT University, at least 80% attendance is required to take the final exam.", vi: "Tại Đại học FPT, sinh viên cần điểm danh tối thiểu 80% để được dự thi cuối kỳ.", structure: "be required to + V (Được yêu cầu để làm gì)" },
+        { en: "At the university, at least 80% attendance is required to take the final exam.", vi: "Tại trường đại học, sinh viên cần điểm danh tối thiểu 80% để được dự thi cuối kỳ.", structure: "be required to + V (Được yêu cầu để làm gì)" },
         { en: "The teacher checks attendance at the beginning of every slot.", vi: "Giảng viên kiểm tra điểm danh vào đầu mỗi ca học.", structure: "check/take attendance (Điểm danh — Collocation chuẩn)" },
         { en: "Regular attendance helps you understand the lessons much better.", vi: "Đi học đều đặn giúp bạn hiểu bài tốt hơn nhiều.", structure: "help + O + (to) V" }
     ]},
@@ -2032,7 +2127,7 @@ const VOCAB_ENRICHMENT_MAP = {
         { en: "Listening carefully is just as important as speaking in a discussion.", vi: "Lắng nghe kỹ cũng quan trọng không kém việc nói trong một cuộc thảo luận.", structure: "as + adj + as (So sánh ngang bằng)" }
     ]},
     prerequisite: { pos: "noun", level: "B2", synonyms: "requirement, precondition", antonyms: "elective, optional item", extraExamples: [
-        { en: "Passing English Level 2 is a prerequisite for entering Level 3.", vi: "Vượt qua Tiếng Anh Level 2 là điều kiện tiên quyết để vào học Level 3.", structure: "be a prerequisite for + N/V-ing" },
+        { en: "Passing Elementary English is a prerequisite for entering B1 Intermediate.", vi: "Vượt qua Tiếng Anh Sơ cấp là điều kiện tiên quyết để vào học B1 Intermediate.", structure: "be a prerequisite for + N/V-ing" },
         { en: "Consistent daily practice is a prerequisite for fluency.", vi: "Luyện tập đều đặn hàng ngày là điều kiện tiên quyết để đạt sự trôi chảy.", structure: "prerequisite for + N" },
         { en: "Check the prerequisite courses before registering for next semester.", vi: "Hãy kiểm tra các môn tiên quyết trước khi đăng ký học kỳ tới.", structure: "before + V-ing" }
     ]},
@@ -2205,7 +2300,7 @@ const GRAMMAR_LESSONS = [
         explanation: "Lỗi kinh điển số 1 của người học Việt Nam là ghép trực tiếp 'am/is/are' với động từ nguyên mẫu (VD: 'I am study English' — SAI!). Quy tắc vàng: (1) To be chỉ đi với Danh từ, Tính từ, Cụm giới từ, V-ing (tiếp diễn) hoặc V3/ed (bị động). (2) Động từ thường ở thì đơn đứng trực tiếp sau chủ ngữ, khi phủ định/nghi vấn phải mượn trợ động từ do/does/did. (3) Động từ khuyết thiếu (can, could, will, would, should, must, may, might) luôn cộng trực tiếp với V nguyên mẫu không 'to'!",
         formula: "To be: S + am/is/are + Adj/N  •  Action Verb: S + V(s/es) / don't-doesn't + V  •  Modal: S + can/should/must + V(bare)",
         examples: [
-            { en: "I study at FPT University, and my major is Software Engineering.", vi: "'study' là động từ thường đứng thẳng sau 'I'; 'is' là to be nối với danh từ ngành học." },
+            { en: "I study at the university, and my major is Software Engineering.", vi: "'study' là động từ thường đứng thẳng sau 'I'; 'is' là to be nối với danh từ ngành học." },
             { en: "You should review new vocabulary every evening.", vi: "Sau modal verb 'should' là động từ nguyên mẫu 'review' (không có 'to')." },
             { en: "Does she understand the grammar formula?", vi: "Câu hỏi với động từ thường 'understand' phải mượn trợ động từ 'Does' và đưa động từ chính về nguyên mẫu." }
         ],
@@ -2224,13 +2319,13 @@ const GRAMMAR_LESSONS = [
         topic: "Tenses",
         title: "Tenses (Part 1) — Hiện tại đơn, Hiện tại tiếp diễn, Quá khứ đơn & Tương lai",
         level: "A2",
-        intro: "Bốn thì cốt lõi chiếm hơn 75% giao tiếp và bài viết ở trình độ English Level 3.",
+        intro: "Bốn thì cốt lõi chiếm hơn 75% giao tiếp và bài viết ở trình độ Intermediate English.",
         explanation: "1) Present Simple (Hiện tại đơn): Thói quen hàng ngày, sự thật hiển nhiên, lịch trình cố định (always, usually, every day). 2) Present Continuous (Hiện tại tiếp diễn): Hành động đang diễn ra ngay lúc nói hoặc tạm thời trong giai đoạn hiện tại (now, right now, this week). 3) Past Simple (Quá khứ đơn): Hành động đã xảy ra và ĐÃ KẾT THÚC tại thời điểm xác định trong quá khứ (yesterday, last week, in 2024, ago). 4) Future (will vs be going to): 'will + V' cho quyết định tức thì hoặc dự đoán; 'be going to + V' cho kế hoạch đã dự định trước.",
         formula: "HTĐ: S + V(s/es) | HTTD: S + am/is/are + V-ing | QKĐ: S + V2/ed | TL: S + will + V / am-is-are going to + V",
         examples: [
             { en: "I usually take the bus, but today I am riding my motorbike.", vi: "Thói quen hàng ngày dùng Hiện tại đơn ('take'), hành động tạm thời hôm nay dùng Tiếp diễn ('am riding')." },
             { en: "Last night, I completed two reading passages and learned ten words.", vi: "'Last night' là mốc quá khứ đã kết thúc -> chia Quá khứ đơn ('completed', 'learned')." },
-            { en: "I am going to finish Level 3 successfully by December.", vi: "Kế hoạch mục tiêu đã định rõ -> dùng 'am going to finish'." }
+            { en: "I am going to finish B1 Intermediate successfully by December.", vi: "Kế hoạch mục tiêu đã định rõ -> dùng 'am going to finish'." }
         ],
         commonMistakes: [
             { wrong: "Yesterday I go to the library and study for three hours.", correct: "Yesterday I went to the library and studied for three hours.", why: "Có mốc quá khứ 'Yesterday' nhưng quên chia động từ sang quá khứ ('went', 'studied') — lỗi rất phổ biến khi viết và nói!" },
@@ -2251,7 +2346,7 @@ const GRAMMAR_LESSONS = [
         explanation: "1) Present Perfect (have/has + V3/ed): Dùng cho hành động bắt đầu trong quá khứ nhưng CÒN KÉO DÀI đến hiện tại (for + khoảng thời gian, since + mốc thời gian), trải nghiệm tính đến nay (ever, never), hoặc hành động vừa xảy ra mà kết quả còn ảnh hưởng hiện tại (already, yet, just, recently). Tuyệt đối KHÔNG dùng Present Perfect với mốc quá khứ cụ thể như 'yesterday', 'in 2022'! 2) Past Continuous (was/were + V-ing): Hành động đang diễn ra tại một thời điểm trong quá khứ hoặc đang diễn ra thì hành động khác xen vào (chia QKĐ).",
         formula: "Present Perfect: S + have/has + V3/ed (since/for/already/yet)  •  Past Continuous: While S + was/were + V-ing, S + V2/ed",
         examples: [
-            { en: "I have studied at FPT University since September.", vi: "Tôi bắt đầu học từ tháng 9 và hiện tại vẫn đang học -> Hiện tại hoàn thành." },
+            { en: "I have studied at the university since September.", vi: "Tôi bắt đầu học từ tháng 9 và hiện tại vẫn đang học -> Hiện tại hoàn thành." },
             { en: "While I was reading an English article, my friend called me.", vi: "Đang đọc bài báo (was reading - hành động nền kéo dài) thì bạn gọi điện xen vào (called - Quá khứ đơn)." }
         ],
         commonMistakes: [
@@ -2274,7 +2369,7 @@ const GRAMMAR_LESSONS = [
         formula: "V-ing + V(số ít) | Everyone/Each + V(số ít) | N1 + of + N2 -> chia theo N1",
         examples: [
             { en: "Practicing English for thirty minutes every day builds strong habits.", vi: "Chủ ngữ là cụm V-ing 'Practicing English...' (việc luyện tiếng Anh), không phải 'minutes', nên động từ thêm s ('builds')." },
-            { en: "Everyone in our class wants to pass Level 3.", vi: "'Everyone' luôn đi với động từ số ít ('wants')." },
+            { en: "Everyone in our class wants to pass B1 Intermediate.", vi: "'Everyone' luôn đi với động từ số ít ('wants')." },
             { en: "The impact of social media platforms on teenagers is undeniable.", vi: "Chủ ngữ chính là 'The impact' (số ít), không phải 'platforms' hay 'teenagers' -> dùng 'is'." }
         ],
         commonMistakes: [
@@ -2337,10 +2432,10 @@ const GRAMMAR_LESSONS = [
         title: "Prepositions — Giới từ chỉ thời gian, nơi chốn & Collocations",
         level: "B1",
         intro: "Sử dụng chuẩn IN - ON - AT và các cụm giới từ cố định (Dependent Prepositions) thường xuyên xuất hiện trong bài thi.",
-        explanation: "1) Quy tắc IN - ON - AT cho Thời gian & Địa điểm (từ rộng -> hẹp): IN + năm, tháng, mùa, buổi trong ngày, quốc gia, thành phố (in 2026, in November, in the morning, in Vietnam); ON + ngày trong tuần, ngày tháng cụ thể, bề mặt, phương tiện lớn/nền tảng số (on Monday, on November 4th, on the internet, on social media, on campus - hoặc at campus khi chỉ điểm hẹn); AT + giờ cụ thể, thời điểm lễ, địa điểm cụ thể (at 8:00 AM, at night, at noon, at FPT University, at home). 2) Cụm cố định bắt buộc nhớ: depend ON, focus ON, interested IN, good AT, responsible FOR, impact ON, participate IN, pay attention TO.",
+        explanation: "1) Quy tắc IN - ON - AT cho Thời gian & Địa điểm (từ rộng -> hẹp): IN + năm, tháng, mùa, buổi trong ngày, quốc gia, thành phố (in 2026, in November, in the morning, in Vietnam); ON + ngày trong tuần, ngày tháng cụ thể, bề mặt, phương tiện lớn/nền tảng số (on Monday, on November 4th, on the internet, on social media, on campus - hoặc at campus khi chỉ điểm hẹn); AT + giờ cụ thể, thời điểm lễ, địa điểm cụ thể (at 8:00 AM, at night, at noon, at the university, at home). 2) Cụm cố định bắt buộc nhớ: depend ON, focus ON, interested IN, good AT, responsible FOR, impact ON, participate IN, pay attention TO.",
         formula: "IN (tháng/năm/thành phố) > ON (ngày/nền tảng) > AT (giờ/địa điểm cụ thể)  •  Prep + V-ing / Noun",
         examples: [
-            { en: "Our English Level 3 course starts on November 4th, 2026 at 7:30 AM.", vi: "Ngày tháng cụ thể dùng 'on', giờ chính xác dùng 'at'." },
+            { en: "Our Intermediate English course starts on November 4th, 2026 at 7:30 AM.", vi: "Ngày tháng cụ thể dùng 'on', giờ chính xác dùng 'at'." },
             { en: "Instead of worrying about mistakes, focus on communicating your ideas.", vi: "Sau giới từ ('Instead of', 'about', 'on') động từ luôn phải chia ở dạng V-ing!" }
         ],
         commonMistakes: [
@@ -2388,7 +2483,7 @@ const GRAMMAR_LESSONS = [
             { en: "When students understand sentence structures, their writing becomes much clearer.", vi: "Câu phức chuẩn: Mệnh đề phụ 'When...' + dấu phẩy + mệnh đề chính." }
         ],
         commonMistakes: [
-            { wrong: "FPT University is modern, it has great labs.", correct: "FPT University is modern, and it has great labs.", why: "Lỗi Comma Splice: Hai mệnh đề hoàn chỉnh không được nối với nhau chỉ bằng một dấu phẩy mà không có liên từ!" },
+            { wrong: "the university is modern, it has great labs.", correct: "the university is modern, and it has great labs.", why: "Lỗi Comma Splice: Hai mệnh đề hoàn chỉnh không được nối với nhau chỉ bằng một dấu phẩy mà không có liên từ!" },
             { wrong: "For example, watching English videos with subtitles.", correct: "For example, students can watch English videos with subtitles.", why: "Lỗi Sentence Fragment: Cụm 'watching English videos...' chưa có chủ ngữ và động từ chia thì nên chưa phải là một câu hoàn chỉnh." }
         ],
         exercises: [
@@ -2476,7 +2571,7 @@ const GRAMMAR_LESSONS = [
         examples: [
             { en: "Students who review mistakes regularly progress much faster.", vi: "Mệnh đề xác định 'who review mistakes regularly' làm rõ nhóm sinh viên nào." },
             { en: "He practices English every evening, which has greatly improved his confidence.", vi: "', which' thay thế cho toàn bộ hành động phía trước và chia động từ số ít ('has')." },
-            { en: "FPT University is a place where students learn through real-world projects.", vi: "'where' chỉ nơi chốn (= at which), theo sau là mệnh đề S + V." }
+            { en: "the university is a place where students learn through real-world projects.", vi: "'where' chỉ nơi chốn (= at which), theo sau là mệnh đề S + V." }
         ],
         commonMistakes: [
             { wrong: "The book which I bought it yesterday is very useful.", correct: "The book which I bought yesterday is very useful.", why: "'Which' đã thay thế cho 'the book' rồi nên tuyệt đối không lặp lại đại từ 'it' ở sau 'bought' nữa!" },
@@ -2539,11 +2634,11 @@ const LISTENING_EXERCISES = [
     title: 'Introducing Yourself at University',
     level: 'B1',
     type: 'dictation',
-    transcript: `Hello everyone. My name is Minh and I am a first-year student at FPT University. I am studying software engineering because I am passionate about technology. In my free time, I enjoy playing basketball and reading books about artificial intelligence. I hope to become a skilled developer after graduation. Nice to meet all of you.`,
-    audioText: `Hello everyone. My name is Minh and I am a first-year student at FPT University. I am studying software engineering because I am passionate about technology. In my free time, I enjoy playing basketball and reading books about artificial intelligence. I hope to become a skilled developer after graduation. Nice to meet all of you.`,
+    transcript: `Hello everyone. My name is Minh and I am a first-year student at the university. I am studying software engineering because I am passionate about technology. In my free time, I enjoy playing basketball and reading books about artificial intelligence. I hope to become a skilled developer after graduation. Nice to meet all of you.`,
+    audioText: `Hello everyone. My name is Minh and I am a first-year student at the university. I am studying software engineering because I am passionate about technology. In my free time, I enjoy playing basketball and reading books about artificial intelligence. I hope to become a skilled developer after graduation. Nice to meet all of you.`,
     sentences: [
       'Hello everyone.',
-      'My name is Minh and I am a first-year student at FPT University.',
+      'My name is Minh and I am a first-year student at the university.',
       'I am studying software engineering because I am passionate about technology.',
       'In my free time, I enjoy playing basketball and reading books about artificial intelligence.',
       'I hope to become a skilled developer after graduation.',
@@ -2670,10 +2765,10 @@ const LISTENING_EXERCISES = [
     title: 'A University Campus Tour',
     level: 'B1',
     type: 'multiple_choice',
-    transcript: `Welcome to FPT University! I will be your guide today as we tour the campus. Let me start with the main building, which is right behind me. This is where most of the lectures take place. It has twenty classrooms, each equipped with modern projectors and air conditioning. On the second floor, you will find the computer labs where students practice programming. Moving to the left, we have the library. It is open from seven in the morning until nine at night on weekdays, and from eight to five on weekends. The library has over fifty thousand books and a large digital collection. Now, if you follow me this way, I will show you the student dormitories. Each room accommodates four students and includes basic furniture, Wi-Fi, and air conditioning. The monthly rent is one point five million dong, which includes electricity and water. Finally, let me show you the sports facilities. We have a football field, basketball courts, and a swimming pool. Students can use these facilities for free with their student ID.`,
-    audioText: `Welcome to FPT University! I will be your guide today as we tour the campus. Let me start with the main building, which is right behind me. This is where most of the lectures take place. It has twenty classrooms, each equipped with modern projectors and air conditioning. On the second floor, you will find the computer labs where students practice programming. Moving to the left, we have the library. It is open from seven in the morning until nine at night on weekdays, and from eight to five on weekends. The library has over fifty thousand books and a large digital collection. Now, if you follow me this way, I will show you the student dormitories. Each room accommodates four students and includes basic furniture, Wi-Fi, and air conditioning. The monthly rent is one point five million dong, which includes electricity and water. Finally, let me show you the sports facilities. We have a football field, basketball courts, and a swimming pool. Students can use these facilities for free with their student ID.`,
+    transcript: `Welcome to the university! I will be your guide today as we tour the campus. Let me start with the main building, which is right behind me. This is where most of the lectures take place. It has twenty classrooms, each equipped with modern projectors and air conditioning. On the second floor, you will find the computer labs where students practice programming. Moving to the left, we have the library. It is open from seven in the morning until nine at night on weekdays, and from eight to five on weekends. The library has over fifty thousand books and a large digital collection. Now, if you follow me this way, I will show you the student dormitories. Each room accommodates four students and includes basic furniture, Wi-Fi, and air conditioning. The monthly rent is one point five million dong, which includes electricity and water. Finally, let me show you the sports facilities. We have a football field, basketball courts, and a swimming pool. Students can use these facilities for free with their student ID.`,
+    audioText: `Welcome to the university! I will be your guide today as we tour the campus. Let me start with the main building, which is right behind me. This is where most of the lectures take place. It has twenty classrooms, each equipped with modern projectors and air conditioning. On the second floor, you will find the computer labs where students practice programming. Moving to the left, we have the library. It is open from seven in the morning until nine at night on weekdays, and from eight to five on weekends. The library has over fifty thousand books and a large digital collection. Now, if you follow me this way, I will show you the student dormitories. Each room accommodates four students and includes basic furniture, Wi-Fi, and air conditioning. The monthly rent is one point five million dong, which includes electricity and water. Finally, let me show you the sports facilities. We have a football field, basketball courts, and a swimming pool. Students can use these facilities for free with their student ID.`,
     sentences: [
-      'Welcome to FPT University!',
+      'Welcome to the university!',
       'I will be your guide today as we tour the campus.',
       'Let me start with the main building, which is right behind me.',
       'This is where most of the lectures take place.',
@@ -2970,13 +3065,13 @@ const LISTENING_EXERCISES = [
     title: 'Conversation: Planning a Study Abroad Trip',
     level: 'B2',
     type: 'multiple_choice',
-    transcript: `Hey Tuan, have you heard about the exchange program with the university in Australia? Yes, I saw the announcement yesterday. It sounds like an amazing opportunity. Students can study there for one semester and the credits transfer back to FPT. That is right. I have been thinking about applying, but I am a bit worried about the cost. Let me check. The tuition is covered by the scholarship, but you need to pay for accommodation and living expenses yourself. They estimate about two thousand Australian dollars per month for everything. That is quite a lot. But I think working part-time could help. International students in Australia can work up to forty hours per fortnight during the semester. That would definitely help with expenses. What about the English requirement? You need an IELTS score of at least six point five overall, with no band below six. I got six point five last time, but my writing was only five point five. So I would need to retake it. You should also consider the cultural adjustment. Living in a completely different country can be challenging at first. But it is also the best way to improve your English and broaden your perspective. You are right. I think the benefits outweigh the challenges. Let us start preparing our applications together. The deadline is next month.`,
-    audioText: `Hey Tuan, have you heard about the exchange program with the university in Australia? Yes, I saw the announcement yesterday. It sounds like an amazing opportunity. Students can study there for one semester and the credits transfer back to FPT. That is right. I have been thinking about applying, but I am a bit worried about the cost. Let me check. The tuition is covered by the scholarship, but you need to pay for accommodation and living expenses yourself. They estimate about two thousand Australian dollars per month for everything. That is quite a lot. But I think working part-time could help. International students in Australia can work up to forty hours per fortnight during the semester. That would definitely help with expenses. What about the English requirement? You need an IELTS score of at least six point five overall, with no band below six. I got six point five last time, but my writing was only five point five. So I would need to retake it. You should also consider the cultural adjustment. Living in a completely different country can be challenging at first. But it is also the best way to improve your English and broaden your perspective. You are right. I think the benefits outweigh the challenges. Let us start preparing our applications together. The deadline is next month.`,
+    transcript: `Hey Tuan, have you heard about the exchange program with the university in Australia? Yes, I saw the announcement yesterday. It sounds like an amazing opportunity. Students can study there for one semester and the credits transfer back to our university. That is right. I have been thinking about applying, but I am a bit worried about the cost. Let me check. The tuition is covered by the scholarship, but you need to pay for accommodation and living expenses yourself. They estimate about two thousand Australian dollars per month for everything. That is quite a lot. But I think working part-time could help. International students in Australia can work up to forty hours per fortnight during the semester. That would definitely help with expenses. What about the English requirement? You need an IELTS score of at least six point five overall, with no band below six. I got six point five last time, but my writing was only five point five. So I would need to retake it. You should also consider the cultural adjustment. Living in a completely different country can be challenging at first. But it is also the best way to improve your English and broaden your perspective. You are right. I think the benefits outweigh the challenges. Let us start preparing our applications together. The deadline is next month.`,
+    audioText: `Hey Tuan, have you heard about the exchange program with the university in Australia? Yes, I saw the announcement yesterday. It sounds like an amazing opportunity. Students can study there for one semester and the credits transfer back to our university. That is right. I have been thinking about applying, but I am a bit worried about the cost. Let me check. The tuition is covered by the scholarship, but you need to pay for accommodation and living expenses yourself. They estimate about two thousand Australian dollars per month for everything. That is quite a lot. But I think working part-time could help. International students in Australia can work up to forty hours per fortnight during the semester. That would definitely help with expenses. What about the English requirement? You need an IELTS score of at least six point five overall, with no band below six. I got six point five last time, but my writing was only five point five. So I would need to retake it. You should also consider the cultural adjustment. Living in a completely different country can be challenging at first. But it is also the best way to improve your English and broaden your perspective. You are right. I think the benefits outweigh the challenges. Let us start preparing our applications together. The deadline is next month.`,
     sentences: [
       'Hey Tuan, have you heard about the exchange program with the university in Australia?',
       'Yes, I saw the announcement yesterday.',
       'It sounds like an amazing opportunity.',
-      'Students can study there for one semester and the credits transfer back to FPT.',
+      'Students can study there for one semester and the credits transfer back to our university.',
       'That is right. I have been thinking about applying, but I am a bit worried about the cost.',
       'Let me check. The tuition is covered by the scholarship, but you need to pay for accommodation and living expenses yourself.',
       'They estimate about two thousand Australian dollars per month for everything.',
@@ -3051,7 +3146,7 @@ const READING_PASSAGES = [
     title: 'My First Week at University',
     level: 'A2',
     topic: 'University Life',
-    passage: `Last week was my first week at FPT University. I was very nervous but also excited. On Monday, I arrived at the campus early. The campus is very big and modern. There are many buildings with classrooms, a library, and a canteen.
+    passage: `Last week was my first week at the university. I was very nervous but also excited. On Monday, I arrived at the campus early. The campus is very big and modern. There are many buildings with classrooms, a library, and a canteen.
 
 I met my classmates on the first day. They are friendly and come from many different cities in Vietnam. My teacher introduced herself and explained the rules of the class. We have to attend all classes and submit homework on time.
 
@@ -3167,7 +3262,7 @@ One popular example is AI-powered language learning apps. These apps can analyze
 
 AI tutors are another exciting development. These virtual tutors can answer students' questions 24 hours a day, seven days a week. Unlike human tutors, they never get tired or impatient. However, many experts believe that AI tutors cannot completely replace human teachers. Human teachers provide emotional support, motivation, and real-world experience that AI cannot offer.
 
-At FPT University, students are encouraged to use AI tools to support their studies. However, teachers remind students that AI should be a tool, not a replacement for critical thinking. Students still need to think independently, analyze information, and develop their own ideas. The best approach is to combine AI tools with traditional learning methods.
+At the university, students are encouraged to use AI tools to support their studies. However, teachers remind students that AI should be a tool, not a replacement for critical thinking. Students still need to think independently, analyze information, and develop their own ideas. The best approach is to combine AI tools with traditional learning methods.
 
 The future of AI in education looks promising. As technology continues to improve, AI tools will become even more helpful. But we must remember that the goal of education is not just to memorize facts — it is to develop creative, thoughtful, and responsible individuals.`,
     questions: [
@@ -3204,13 +3299,13 @@ The future of AI in education looks promising. As technology continues to improv
       },
       {
         type: 'fill_blank',
-        question: 'At FPT University, AI should be a tool, not a replacement for _______ thinking.',
+        question: 'At the university, AI should be a tool, not a replacement for _______ thinking.',
         answer: 'critical',
         explanation: 'AI nên là công cụ, không thay thế cho "critical thinking" - tư duy phản biện.'
       },
       {
         type: 'true_false_notgiven',
-        question: 'FPT University bans students from using AI tools.',
+        question: 'the university bans students from using AI tools.',
         options: ['True', 'False', 'Not Given'],
         answer: 'False',
         explanation: 'Ngược lại, bài viết nói "students are encouraged to use AI tools" - sinh viên được khuyến khích sử dụng AI.'
@@ -3293,10 +3388,10 @@ With good preparation, you can feel more confident and increase your chances of 
       },
       {
         type: 'true_false_notgiven',
-        question: 'Most FPT University graduates find jobs within one month.',
+        question: 'Most the university graduates find jobs within one month.',
         options: ['True', 'False', 'Not Given'],
         answer: 'Not Given',
-        explanation: 'Bài viết không đề cập đến thời gian sinh viên FPT tìm được việc - thông tin không được đưa ra.'
+        explanation: 'Bài viết không đề cập đến thời gian sinh viên đại học tìm được việc - thông tin không được đưa ra.'
       },
       {
         type: 'short_answer',
@@ -3325,7 +3420,7 @@ With good preparation, you can feel more confident and increase your chances of 
     topic: 'Learning English',
     passage: `In today's globalized world, knowing a second language is more important than ever. For Vietnamese students, English is the most popular second language to learn. But have you ever wondered why learning a new language is so beneficial?
 
-First, learning a second language improves your career opportunities. Many international companies in Vietnam, such as Samsung, Intel, and FPT Software, require employees to communicate in English. Workers who speak English often receive higher salaries and have more chances for promotion. In the technology industry, almost all programming documentation and technical resources are written in English.
+First, learning a second language improves your career opportunities. Many international companies in Vietnam, such as Samsung, Intel, and global tech companies, require employees to communicate in English. Workers who speak English often receive higher salaries and have more chances for promotion. In the technology industry, almost all programming documentation and technical resources are written in English.
 
 Second, learning a new language makes your brain stronger. Research shows that bilingual people have better memory, improved concentration, and stronger problem-solving skills. When you learn a new language, your brain creates new neural connections, which keeps it healthy and active. Some studies even suggest that being bilingual can delay the onset of diseases like Alzheimer's.
 
@@ -3333,7 +3428,7 @@ Third, knowing another language allows you to connect with people from different
 
 However, learning a new language requires time and effort. Many students give up because they expect quick results. Language experts recommend studying a little every day rather than studying a lot once a week. Consistency is the key to success. Setting small, achievable goals — such as learning five new words a day — can help you stay motivated.
 
-At FPT University, English is not just a subject; it is a skill that will accompany students throughout their careers. So keep practicing, and remember that every expert was once a beginner!`,
+At the university, English is not just a subject; it is a skill that will accompany students throughout their careers. So keep practicing, and remember that every expert was once a beginner!`,
     questions: [
       {
         type: 'multiple_choice',
@@ -3562,7 +3657,7 @@ Despite these challenges, it is important to recognize that AI also offers treme
 
 Proponents of remote work highlight numerous advantages. Employees save time and money by eliminating their daily commute. Studies have shown that remote workers often report higher levels of job satisfaction and productivity. The flexibility to choose when and where to work allows individuals to achieve a better work-life balance. Parents, for example, can be more present for their children while still meeting their professional responsibilities.
 
-For employers, remote work can reduce operational costs significantly. Companies can downsize their office space, lower utility bills, and access a global talent pool unrestricted by geographical boundaries. This is particularly relevant for the technology sector in Vietnam, where companies like FPT Software have embraced hybrid work models to attract top talent from across the country.
+For employers, remote work can reduce operational costs significantly. Companies can downsize their office space, lower utility bills, and access a global talent pool unrestricted by geographical boundaries. This is particularly relevant for the technology sector in Vietnam, where companies like global tech companies have embraced hybrid work models to attract top talent from across the country.
 
 However, remote work is not without its drawbacks. Many employees report feelings of isolation and loneliness when working from home for extended periods. The blurring of boundaries between work and personal life can lead to overwork and burnout. Without face-to-face interaction, building team cohesion and maintaining company culture becomes considerably more challenging.
 
@@ -3609,10 +3704,10 @@ Looking ahead, most experts predict that the future of work will be hybrid — a
       },
       {
         type: 'true_false_notgiven',
-        question: 'FPT Software has adopted a fully remote work model.',
+        question: 'global tech companies has adopted a fully remote work model.',
         options: ['True', 'False', 'Not Given'],
         answer: 'False',
-        explanation: 'Bài viết nói FPT Software "embraced hybrid work models" - mô hình làm việc kết hợp, không phải hoàn toàn từ xa.'
+        explanation: 'Bài viết nói global tech companies "embraced hybrid work models" - mô hình làm việc kết hợp, không phải hoàn toàn từ xa.'
       },
       {
         type: 'short_answer',
@@ -3744,7 +3839,7 @@ Hierarchy and decision-making processes differ as well. In many Western organiza
 
 Gift-giving etiquette presents another area of cultural variation. In Vietnam, gifts are commonly exchanged during business meetings, holidays, and special occasions. However, in some Western countries, business gifts may be viewed with suspicion or even considered unethical, particularly if they are expensive. Knowing when and how to give gifts appropriately can strengthen or damage a business relationship.
 
-For FPT University students preparing for international careers, developing cultural intelligence is just as important as developing technical skills. Reading about different cultures, traveling when possible, and building friendships with international students are all valuable ways to broaden one's cultural perspective.`,
+For the university students preparing for international careers, developing cultural intelligence is just as important as developing technical skills. Reading about different cultures, traveling when possible, and building friendships with international students are all valuable ways to broaden one's cultural perspective.`,
     questions: [
       {
         type: 'multiple_choice',
@@ -4128,7 +4223,7 @@ const WRITING_TOPICS = [
       'Begin with an introduction about technology in modern education.',
       'Discuss at least two benefits of using technology in learning.',
       'Mention one or two challenges or disadvantages.',
-      'Include personal examples from your experience at FPT University.',
+      'Include personal examples from your experience at the university.',
       'Conclude with your overall opinion.'
     ],
     minWords: 120,
@@ -4199,7 +4294,7 @@ const WRITING_TOPICS = [
       'Introduction: Your dream career',
       'Body 1: Why you chose this career',
       'Body 2: Required skills and qualifications',
-      'Body 3: How you are preparing at FPT University',
+      'Body 3: How you are preparing at the university',
       'Conclusion: Future goals and vision'
     ],
     vocabulary: [
@@ -4389,19 +4484,19 @@ const SPEAKING_TOPICS = [
     title: 'Greeting and Self-Introduction',
     level: 'A1',
     type: 'conversation',
-    prompt: 'Practice introducing yourself to a new classmate at FPT University. Share your name, where you come from, and what you study.',
-    promptVi: 'Thực hành giới thiệu bản thân với một bạn cùng lớp mới tại Đại học FPT. Chia sẻ tên, quê quán và ngành học của bạn.',
+    prompt: 'Practice introducing yourself to a new classmate at the university. Share your name, where you come from, and what you study.',
+    promptVi: 'Thực hành giới thiệu bản thân với một bạn cùng lớp mới tại trường đại học. Chia sẻ tên, quê quán và ngành học của bạn.',
     suggestedQuestions: [
       'What is your name?',
       'Where are you from?',
-      'What do you study at FPT University?',
+      'What do you study at the university?',
       'How old are you?',
       'What do you like to do in your free time?'
     ],
     suggestedQuestionsVi: [
       'Bạn tên là gì?',
       'Bạn đến từ đâu?',
-      'Bạn học ngành gì tại Đại học FPT?',
+      'Bạn học ngành gì tại trường đại học?',
       'Bạn bao nhiêu tuổi?',
       'Bạn thích làm gì trong thời gian rảnh?'
     ],
@@ -4410,7 +4505,7 @@ const SPEAKING_TOPICS = [
       'I\'m studying...', 'I\'m a first-year student.', 'How about you?',
       'I like to...', 'What\'s your major?'
     ],
-    sampleAnswer: 'Hi! My name is Minh. Nice to meet you! I\'m from Da Nang, and I\'m 19 years old. I\'m a first-year student at FPT University, and I\'m studying Software Engineering. In my free time, I like to play football and listen to music. What about you? What\'s your name and where are you from?',
+    sampleAnswer: 'Hi! My name is Minh. Nice to meet you! I\'m from Da Nang, and I\'m 19 years old. I\'m a first-year student at the university, and I\'m studying Software Engineering. In my free time, I like to play football and listen to music. What about you? What\'s your name and where are you from?',
     duration: 60
   },
   {
@@ -4418,8 +4513,8 @@ const SPEAKING_TOPICS = [
     title: 'My Daily Life',
     level: 'A1',
     type: 'monologue',
-    prompt: 'Talk about your typical day as a student at FPT University. Describe what you do from morning to evening.',
-    promptVi: 'Nói về một ngày bình thường của bạn với tư cách sinh viên Đại học FPT. Mô tả những gì bạn làm từ sáng đến tối.',
+    prompt: 'Talk about your typical day as a student at the university. Describe what you do from morning to evening.',
+    promptVi: 'Nói về một ngày bình thường của bạn với tư cách sinh viên trường đại học. Mô tả những gì bạn làm từ sáng đến tối.',
     suggestedQuestions: [
       'What time do you usually wake up?',
       'How do you get to university?',
@@ -4439,7 +4534,7 @@ const SPEAKING_TOPICS = [
       'After class, I...', 'In the evening, I...', 'I go to bed at...',
       'I take the bus to...', 'I have lunch at the canteen.'
     ],
-    sampleAnswer: 'I usually wake up at 6:30 in the morning. First, I take a shower and have breakfast. Then I go to FPT University by bus. My classes start at 8 o\'clock. I study until 11:30 and then have lunch at the canteen. In the afternoon, I have more classes or study at the library. After class, I go home and do my homework. In the evening, I sometimes play games or watch YouTube. I usually go to bed at 11 o\'clock.',
+    sampleAnswer: 'I usually wake up at 6:30 in the morning. First, I take a shower and have breakfast. Then I go to the university by bus. My classes start at 8 o\'clock. I study until 11:30 and then have lunch at the canteen. In the afternoon, I have more classes or study at the library. After class, I go home and do my homework. In the evening, I sometimes play games or watch YouTube. I usually go to bed at 11 o\'clock.',
     duration: 60
   },
   {
@@ -4500,7 +4595,7 @@ const SPEAKING_TOPICS = [
       'What I love most about my hometown is...',
       'There are many... in my hometown.', 'You should visit...'
     ],
-    sampleAnswer: 'My hometown is Hue, and it is located in central Vietnam. It is famous for its beautiful ancient buildings and delicious food, like bun bo Hue. The weather is hot in summer and rainy in winter. People there are very friendly and kind. There are many temples and pagodas to visit. What I love most about my hometown is the Perfume River — it is very peaceful, especially in the evening. I hope to go back and live there someday after I finish my studies at FPT.',
+    sampleAnswer: 'My hometown is Hue, and it is located in central Vietnam. It is famous for its beautiful ancient buildings and delicious food, like bun bo Hue. The weather is hot in summer and rainy in winter. People there are very friendly and kind. There are many temples and pagodas to visit. What I love most about my hometown is the Perfume River — it is very peaceful, especially in the evening. I hope to go back and live there someday after I finish my studies at university.',
     duration: 90
   },
   {
@@ -4529,7 +4624,7 @@ const SPEAKING_TOPICS = [
       'I\'m planning to...', 'Let\'s go to...', 'I\'d love to!',
       'Sorry, I\'m busy on...', 'What time works for you?'
     ],
-    sampleAnswer: 'This weekend, I\'m planning to go to the new shopping mall near FPT University. I heard there are some good restaurants there. On Saturday morning, I need to finish my programming homework, but in the afternoon I\'m free. How about we go together? We could have lunch and then watch a movie. On Sunday, I want to rest and maybe play some games online. What are your plans? Do you want to join me on Saturday?',
+    sampleAnswer: 'This weekend, I\'m planning to go to the new shopping mall near the university. I heard there are some good restaurants there. On Saturday morning, I need to finish my programming homework, but in the afternoon I\'m free. How about we go together? We could have lunch and then watch a movie. On Sunday, I want to rest and maybe play some games online. What are your plans? Do you want to join me on Saturday?',
     duration: 90
   },
   {
@@ -4565,11 +4660,11 @@ const SPEAKING_TOPICS = [
   // ============ B1 LEVEL ============
   {
     id: 's-b1-01',
-    title: 'University Life at FPT',
+    title: 'University Life at university',
     level: 'B1',
     type: 'monologue',
-    prompt: 'Talk about your experience as a student at FPT University. Discuss the courses, campus life, challenges, and what you enjoy most.',
-    promptVi: 'Nói về trải nghiệm của bạn với tư cách sinh viên tại Đại học FPT. Thảo luận về các khóa học, đời sống sinh viên, thách thức và điều bạn thích nhất.',
+    prompt: 'Talk about your experience as a student at the university. Discuss the courses, campus life, challenges, and what you enjoy most.',
+    promptVi: 'Nói về trải nghiệm của bạn với tư cách sinh viên tại trường đại học. Thảo luận về các khóa học, đời sống sinh viên, thách thức và điều bạn thích nhất.',
     suggestedQuestions: [
       'What do you study and why did you choose this major?',
       'What is your favorite course so far?',
@@ -4585,12 +4680,12 @@ const SPEAKING_TOPICS = [
       'Bạn sẽ đưa ra lời khuyên gì cho sinh viên mới?'
     ],
     usefulPhrases: [
-      'I\'m currently studying...', 'What I enjoy most about FPT is...',
+      'I\'m currently studying...', 'What I enjoy most about my university is...',
       'One of the biggest challenges is...', 'I manage my time by...',
       'I would recommend that new students...', 'In my experience...',
       'The most valuable thing I\'ve learned is...'
     ],
-    sampleAnswer: 'I\'m currently a second-year student at FPT University, studying Software Engineering. I chose this major because I\'ve always been interested in technology and programming. My favorite course so far has been Web Development because we get to build real projects. The campus life at FPT is very active — there are many clubs and events. One of the biggest challenges for me is managing my time, especially during exam season when I have multiple projects due at the same time. I manage this by making a weekly schedule and prioritizing my tasks. What I enjoy most about FPT is the practical approach to learning. We don\'t just study theory; we actually build things. My advice for new students would be to join a club, make friends, and don\'t be afraid to ask questions in class.',
+    sampleAnswer: 'I\'m currently a second-year student at the university, studying Software Engineering. I chose this major because I\'ve always been interested in technology and programming. My favorite course so far has been Web Development because we get to build real projects. The campus life at university is very active — there are many clubs and events. One of the biggest challenges for me is managing my time, especially during exam season when I have multiple projects due at the same time. I manage this by making a weekly schedule and prioritizing my tasks. What I enjoy most about my university is the practical approach to learning. We don\'t just study theory; we actually build things. My advice for new students would be to join a club, make friends, and don\'t be afraid to ask questions in class.',
     duration: 120
   },
   {
@@ -4620,7 +4715,7 @@ const SPEAKING_TOPICS = [
       'It\'s hard to imagine life without...', 'The main advantage/disadvantage is...',
       'Looking ahead, I think...'
     ],
-    sampleAnswer: 'Technology has significantly changed almost every aspect of our lives. In terms of education, I remember during COVID-19, all our classes at FPT moved online, and we used Zoom and Google Classroom every day. It was challenging at first, but it showed us that learning doesn\'t have to happen in a physical classroom. Personally, I think smartphones are both helpful and distracting. They help me access information quickly and communicate with my classmates, but I often catch myself scrolling through social media when I should be studying. The technology I couldn\'t live without is probably my laptop because I need it for coding and all my university work. Looking ahead, I believe AI will change how we learn and work. As an IT student, I find this both exciting and a little concerning because it means we need to keep updating our skills constantly.',
+    sampleAnswer: 'Technology has significantly changed almost every aspect of our lives. In terms of education, I remember during COVID-19, all our classes at university moved online, and we used Zoom and Google Classroom every day. It was challenging at first, but it showed us that learning doesn\'t have to happen in a physical classroom. Personally, I think smartphones are both helpful and distracting. They help me access information quickly and communicate with my classmates, but I often catch myself scrolling through social media when I should be studying. The technology I couldn\'t live without is probably my laptop because I need it for coding and all my university work. Looking ahead, I believe AI will change how we learn and work. As an IT student, I find this both exciting and a little concerning because it means we need to keep updating our skills constantly.',
     duration: 120
   },
   {
@@ -4682,7 +4777,7 @@ const SPEAKING_TOPICS = [
       'The demand for... is increasing.', 'This raises the question of...',
       'To remain competitive, developers need to...', 'Taking everything into account...'
     ],
-    sampleAnswer: 'The IT industry is rapidly evolving, and I think the most significant change we\'re seeing is the integration of AI into software development. Tools like GitHub Copilot and ChatGPT are already helping developers write code faster, which means the role of a software developer is shifting. Rather than just writing code, developers will need to be skilled at designing systems, understanding business requirements, and working effectively with AI tools. In my view, the most important skills for future developers are problem-solving, system design, and adaptability. Soft skills like communication and teamwork are becoming equally important because most projects involve collaboration across teams and even countries. Regarding remote work, the pandemic proved that many IT jobs can be done remotely, and I think hybrid work models will become the standard. As an FPT student, I\'m particularly excited about cloud computing and AI/ML because I believe these technologies will shape the next decade of software development.',
+    sampleAnswer: 'The IT industry is rapidly evolving, and I think the most significant change we\'re seeing is the integration of AI into software development. Tools like GitHub Copilot and ChatGPT are already helping developers write code faster, which means the role of a software developer is shifting. Rather than just writing code, developers will need to be skilled at designing systems, understanding business requirements, and working effectively with AI tools. In my view, the most important skills for future developers are problem-solving, system design, and adaptability. Soft skills like communication and teamwork are becoming equally important because most projects involve collaboration across teams and even countries. Regarding remote work, the pandemic proved that many IT jobs can be done remotely, and I think hybrid work models will become the standard. As an IT student, I\'m particularly excited about cloud computing and AI/ML because I believe these technologies will shape the next decade of software development.',
     duration: 150
   },
   {
@@ -4713,7 +4808,7 @@ const SPEAKING_TOPICS = [
       'Both individual and collective action are needed.',
       'Sustainability should be at the heart of...'
     ],
-    sampleAnswer: 'Environmental issues are among the most pressing challenges of our generation, and I believe young people, especially university students, have a crucial role to play. The problem that concerns me most is plastic pollution, particularly in Vietnam where single-use plastics are still very common. At FPT University, students can start with simple actions like using reusable water bottles and bags, reducing food waste, and choosing public transport or cycling. However, individual actions alone are not enough. We need collective efforts such as organizing campus clean-up events, creating awareness campaigns on social media, and even developing technology solutions. As IT students, we\'re in a unique position because we can build apps and platforms that help people track their carbon footprint or connect recycling services. I strongly believe that environmental education should be integrated into university curricula because understanding the science behind climate change is essential for making informed decisions.',
+    sampleAnswer: 'Environmental issues are among the most pressing challenges of our generation, and I believe young people, especially university students, have a crucial role to play. The problem that concerns me most is plastic pollution, particularly in Vietnam where single-use plastics are still very common. At the university, students can start with simple actions like using reusable water bottles and bags, reducing food waste, and choosing public transport or cycling. However, individual actions alone are not enough. We need collective efforts such as organizing campus clean-up events, creating awareness campaigns on social media, and even developing technology solutions. As IT students, we\'re in a unique position because we can build apps and platforms that help people track their carbon footprint or connect recycling services. I strongly believe that environmental education should be integrated into university curricula because understanding the science behind climate change is essential for making informed decisions.',
     duration: 150
   },
   {
@@ -4808,7 +4903,7 @@ const SPEAKING_TOPICS = [
       'This represents a departure from...', 'It would be reductive to suggest that...',
       'A more sophisticated analysis reveals...', 'The interplay between... and... is complex.'
     ],
-    sampleAnswer: 'Globalization has had a profound impact on Vietnamese culture, manifesting in ways that are both visible and subtle. The most obvious changes can be observed in urban areas like Ho Chi Minh City and Hanoi, where international fast-food chains, Western fashion brands, and K-pop culture have become ubiquitous. Young Vietnamese people, including students at universities like FPT, consume global media daily through platforms such as Netflix, YouTube, and TikTok, which inevitably shapes their worldview and cultural preferences. However, it would be reductive to suggest that globalization is simply erasing Vietnamese identity. A more sophisticated analysis reveals what scholars call "glocalization" — the adaptation of global trends to local contexts. For example, Vietnamese coffee culture has not been displaced by Starbucks; rather, establishments like Highlands Coffee have blended international café aesthetics with distinctly Vietnamese flavors and traditions. Similarly, while young people embrace global fashion trends, traditional áo dài remains a proud symbol of cultural identity worn at important occasions. What is particularly noteworthy about Vietnam\'s experience is the resilience of family-centered values and community bonds, which continue to anchor cultural identity even as younger generations adopt more individualistic lifestyles. The interplay between the global and the local is complex, and Vietnam\'s ability to selectively adopt and adapt foreign influences while maintaining its cultural core suggests that globalization need not be a zero-sum game for cultural identity.',
+    sampleAnswer: 'Globalization has had a profound impact on Vietnamese culture, manifesting in ways that are both visible and subtle. The most obvious changes can be observed in urban areas like Ho Chi Minh City and Hanoi, where international fast-food chains, Western fashion brands, and K-pop culture have become ubiquitous. Young Vietnamese people, including students at modern universities, consume global media daily through platforms such as Netflix, YouTube, and TikTok, which inevitably shapes their worldview and cultural preferences. However, it would be reductive to suggest that globalization is simply erasing Vietnamese identity. A more sophisticated analysis reveals what scholars call "glocalization" — the adaptation of global trends to local contexts. For example, Vietnamese coffee culture has not been displaced by Starbucks; rather, establishments like Highlands Coffee have blended international café aesthetics with distinctly Vietnamese flavors and traditions. Similarly, while young people embrace global fashion trends, traditional áo dài remains a proud symbol of cultural identity worn at important occasions. What is particularly noteworthy about Vietnam\'s experience is the resilience of family-centered values and community bonds, which continue to anchor cultural identity even as younger generations adopt more individualistic lifestyles. The interplay between the global and the local is complex, and Vietnam\'s ability to selectively adopt and adapt foreign influences while maintaining its cultural core suggests that globalization need not be a zero-sum game for cultural identity.',
     duration: 180
   }
 ];
@@ -5016,7 +5111,7 @@ const CONVERSATION_STARTERS = [
     followUps: [
       'What alternatives to a university degree exist?',
       'Do employers value experience or qualifications more?',
-      'Has studying at FPT changed your perspective on this?'
+      'Has studying at university changed your perspective on this?'
     ]
   },
   {
@@ -5088,7 +5183,7 @@ There are ten wooden tables near the window. Students often sit there to read bo
 
 [Paragraph B] In response, universities and employers have increasingly embraced micro-credentials—short, focused certifications that verify specific competencies such as cloud architecture, semiconductor testing, or business communication. Unlike general degrees, micro-credentials can be updated within months to reflect industry standards.
 
-[Paragraph C] At institutions like FPT University, academic programs often combine foundational degree coursework with industry certificates and mandatory company internships. Educators argue that this hybrid model gives undergraduates both theoretical depth and immediate workplace readiness.
+[Paragraph C] At institutions like the university, academic programs often combine foundational degree coursework with industry certificates and mandatory company internships. Educators argue that this hybrid model gives undergraduates both theoretical depth and immediate workplace readiness.
 
 [Paragraph D] Critics nevertheless warn against replacing broad university education entirely with narrow skill badges. Without foundational training in critical thinking, ethics, and academic writing, graduates may struggle to adapt when current tools become obsolete.`,
                 keyVocab: [
@@ -5335,7 +5430,7 @@ There are ten wooden tables near the window. Students often sit there to read bo
         SPEAKING_TOPICS.push(
             {
                 id: "s-b1-uni",
-                title: "My University — FPT Campus Life",
+                title: "My University — University Campus Life",
                 level: "B1",
                 levelSystem: "CEFR",
                 type: "monologue",
@@ -5344,17 +5439,17 @@ There are ten wooden tables near the window. Students often sit there to read bo
                 suggestedQuestions: [
                     "Where is your university campus located?",
                     "What facilities on campus do you use most often?",
-                    "Why did you choose FPT University?",
-                    "How do you feel about English Level 3 so far?"
+                    "Why did you choose the university?",
+                    "How do you feel about Intermediate English so far?"
                 ],
                 suggestedQuestionsVi: [
                     "Khuôn viên trường bạn nằm ở đâu?",
                     "Bạn hay sử dụng cơ sở vật chất nào nhất?",
-                    "Vì sao bạn chọn Đại học FPT?",
-                    "Bạn cảm thấy thế nào về chương trình Tiếng Anh Level 3 hiện tại?"
+                    "Vì sao bạn chọn trường đại học?",
+                    "Bạn cảm thấy thế nào về chương trình Tiếng Anh Trung cấp hiện tại?"
                 ],
                 usefulPhrases: ["Currently, I am a freshman at...", "What impresses me most about the campus is...", "My go-to place for self-study is...", "One reason I chose this university is its practical curriculum."],
-                sampleAnswer: "Currently, I am a freshman at FPT University in Ho Chi Minh City. What impresses me most about our campus is the green space and modern computer labs. My go-to place for self-study is the library because it is quiet and air-conditioned. Right now, I am focusing on completing English Level 3 so I can read technical documents and communicate confidently in my major.",
+                sampleAnswer: "Currently, I am a freshman at the university in Ho Chi Minh City. What impresses me most about our campus is the green space and modern computer labs. My go-to place for self-study is the library because it is quiet and air-conditioned. Right now, I am focusing on completing Intermediate English so I can read technical documents and communicate confidently in my major.",
                 duration: 90
             },
             {
@@ -5475,7 +5570,7 @@ const DAILY_QUOTES = [
     { en: "Small daily improvements over time lead to stunning results.", vi: "Mỗi ngày tiến bộ một chút theo thời gian sẽ tạo ra kết quả đáng kinh ngạc.", author: "Robin Sharma", tip: "Đừng cố học 100 từ một đêm — hãy hoàn thành đều đặn 10 từ + 1 bài nghe mỗi ngày cho tới 17/12/2026!" },
     { en: "Mistakes are proof that you are trying.", vi: "Lỗi sai chính là bằng chứng cho thấy bạn đang nỗ lực luyện tập.", author: "Proverb", tip: "Mỗi khi viết sai câu, hãy xem giải thích trong Mistake Notebook và tự viết lại câu đó 1 lần!" },
     { en: "To have another language is to possess a second soul.", vi: "Biết thêm một ngôn ngữ là sở hữu thêm một tâm hồn thứ hai.", author: "Charlemagne", tip: "Hãy đọc to (shadowing) các câu ví dụ trong Flashcard để kết nối cả tai nghe và cơ miệng!" },
-    { en: "Consistency beats intensity when building language fluency.", vi: "Sự đều đặn luôn chiến thắng sự bộc phát nhất thời khi xây dựng phản xạ ngoại ngữ.", author: "EdTech Principle", tip: "Dù ngày bận thi ở FPT, chỉ cần giữ chuỗi Streak 15 phút nghe và ôn SRS là bạn đã thắng!" },
+    { en: "Consistency beats intensity when building language fluency.", vi: "Sự đều đặn luôn chiến thắng sự bộc phát nhất thời khi xây dựng phản xạ ngoại ngữ.", author: "EdTech Principle", tip: "Dù ngày bận thi nhiều môn, chỉ cần giữ chuỗi Streak 15 phút nghe và ôn SRS là bạn đã thắng!" },
     { en: "First understand the pattern, then make the sentence your own.", vi: "Trước hết hãy hiểu công thức câu, sau đó biến câu nói thành của riêng bạn.", author: "QEnglish Method", tip: "Khi học từ mới, hãy đặt câu gắn với chính ngành học và cuộc sống tại campus HCM của bạn." }
 ];
 
@@ -6371,6 +6466,261 @@ function importAllBackupJSON(file, onComplete) {
     };
     reader.onerror = () => {
         if (typeof showToast === "function") showToast("Không thể đọc file từ thiết bị.", "error");
+    };
+    reader.readAsText(file);
+}
+
+/* ==================== 9. MULTI-ACCOUNT & GROUP STUDY SYSTEM ==================== */
+const ACCOUNTS_STORAGE_KEY = "qenglish_accounts_v1";
+const USER_SCOPED_KEYS = [
+    STORAGE_KEYS.DECK_V2,
+    STORAGE_KEYS.SRS,
+    STORAGE_KEYS.PROGRESS,
+    STORAGE_KEYS.DASHBOARD,
+    STORAGE_KEYS.GRAMMAR,
+    STORAGE_KEYS.LISTENING,
+    STORAGE_KEYS.SPEAKING,
+    STORAGE_KEYS.READING,
+    STORAGE_KEYS.WRITING,
+    STORAGE_KEYS.NOTEBOOK,
+    STORAGE_KEYS.SETTINGS
+];
+
+let accountsStore = null;
+
+function loadAccountsStore() {
+    const raw = localStorage.getItem(ACCOUNTS_STORAGE_KEY);
+    const parsed = safeParseJSON(raw, null);
+    if (parsed && parsed.activeAccountId && parsed.accounts && typeof parsed.accounts === "object") {
+        accountsStore = parsed;
+    } else {
+        const primaryId = "acc-primary";
+        const initialSnapshot = {};
+        USER_SCOPED_KEYS.forEach(k => {
+            const val = localStorage.getItem(k);
+            if (val !== null) initialSnapshot[k] = val;
+        });
+        accountsStore = {
+            activeAccountId: primaryId,
+            accounts: {
+                [primaryId]: {
+                    id: primaryId,
+                    name: "Học viên 1 (Chính)",
+                    username: "member1",
+                    avatar: "🚀",
+                    goal: "Chinh phục 5 kỹ năng Tiếng Anh",
+                    pin: "",
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    statsSummary: { streak: 0, wordsLearned: 0, wordsMastered: 0, totalMinutes: 0, avgScore: null },
+                    data: initialSnapshot
+                }
+            }
+        };
+        safeWriteJSON(ACCOUNTS_STORAGE_KEY, accountsStore);
+    }
+    return accountsStore;
+}
+
+function saveAccountsStore() {
+    if (!accountsStore) return;
+    safeWriteJSON(ACCOUNTS_STORAGE_KEY, accountsStore);
+}
+
+function getActiveAccount() {
+    if (!accountsStore) loadAccountsStore();
+    return accountsStore.accounts[accountsStore.activeAccountId] || Object.values(accountsStore.accounts)[0];
+}
+
+function syncCurrentAccountSnapshot() {
+    if (!accountsStore) loadAccountsStore();
+    const acc = getActiveAccount();
+    if (!acc) return;
+
+    const snap = {};
+    USER_SCOPED_KEYS.forEach(k => {
+        const val = localStorage.getItem(k);
+        if (val !== null) snap[k] = val;
+    });
+    acc.data = snap;
+    acc.updatedAt = new Date().toISOString();
+
+    try {
+        const st = computeOverallAnalytics();
+        acc.statsSummary = {
+            streak: st.streak || 0,
+            wordsLearned: st.wordsLearned || 0,
+            wordsMastered: st.wordsMastered || 0,
+            totalMinutes: st.totalMinutes || 0,
+            avgScore: st.avgScore
+        };
+    } catch (e) {}
+
+    saveAccountsStore();
+}
+
+function reloadAllActiveAccountStates() {
+    loadSettings();
+    loadDeckFromStorage();
+    loadSRSState();
+    loadProgressState();
+    loadNotebook();
+    loadCMSItems();
+}
+
+function createNewUserAccount({ name, username, avatar = "🌟", goal = "Giao tiếp & Từ vựng toàn diện", pin = "" }) {
+    const cleanName = String(name || "").trim();
+    if (!cleanName) return { ok: false, error: "Vui lòng nhập Tên hiển thị của tài khoản." };
+    const cleanUser = String(username || cleanName).toLowerCase().replace(/[^a-z0-9_]/g, "") || ("user" + Date.now().toString().slice(-4));
+
+    syncCurrentAccountSnapshot();
+
+    const exists = Object.values(accountsStore.accounts).some(a => a.username === cleanUser);
+    if (exists) {
+        return { ok: false, error: `Tên tài khoản "@${cleanUser}" đã tồn tại. Hãy chọn tên khác hoặc bấm chuyển tài khoản!` };
+    }
+
+    const newId = "acc-" + Date.now();
+    const freshDeck = DEFAULT_DECK.map(item => normalizeWordItem(item, 0));
+
+    // Clear user-scoped keys and initialize fresh default deck for the new member
+    USER_SCOPED_KEYS.forEach(k => localStorage.removeItem(k));
+    safeWriteJSON(STORAGE_KEYS.DECK_V2, freshDeck);
+    safeWriteJSON(STORAGE_KEYS.SETTINGS, { ...DEFAULT_SETTINGS, onboardingCompleted: true });
+
+    const newAccSnapshot = {};
+    USER_SCOPED_KEYS.forEach(k => {
+        const v = localStorage.getItem(k);
+        if (v !== null) newAccSnapshot[k] = v;
+    });
+
+    accountsStore.accounts[newId] = {
+        id: newId,
+        name: cleanName,
+        username: cleanUser,
+        avatar: avatar || "🌟",
+        goal: String(goal || "Giao tiếp & Từ vựng toàn diện").trim(),
+        pin: String(pin || "").trim(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        statsSummary: { streak: 0, wordsLearned: 0, wordsMastered: 0, totalMinutes: 0, avgScore: null },
+        data: newAccSnapshot
+    };
+    accountsStore.activeAccountId = newId;
+    saveAccountsStore();
+
+    reloadAllActiveAccountStates();
+    syncCurrentAccountSnapshot();
+    return { ok: true, account: accountsStore.accounts[newId] };
+}
+
+function switchToUserAccount(targetAccountId, enteredPin = null) {
+    if (!accountsStore) loadAccountsStore();
+    const target = accountsStore.accounts[targetAccountId];
+    if (!target) return { ok: false, error: "Không tìm thấy tài khoản này." };
+    if (targetAccountId === accountsStore.activeAccountId) return { ok: true, account: target };
+
+    if (target.pin && String(target.pin).trim() !== "") {
+        const pinToCheck = enteredPin !== null ? enteredPin : prompt(`🔒 Nhập mã PIN của tài khoản "${target.name}" (@${target.username}):`);
+        if (pinToCheck === null) return { ok: false, cancelled: true };
+        if (String(pinToCheck).trim() !== String(target.pin).trim()) {
+            return { ok: false, error: "Mã PIN không chính xác!" };
+        }
+    }
+
+    // 1. Save current account snapshot safely
+    syncCurrentAccountSnapshot();
+
+    // 2. Clear user-scoped keys and restore target account's keys
+    USER_SCOPED_KEYS.forEach(k => localStorage.removeItem(k));
+    const targetData = target.data || {};
+    Object.keys(targetData).forEach(k => {
+        if (targetData[k] !== null && targetData[k] !== undefined) {
+            localStorage.setItem(k, targetData[k]);
+        }
+    });
+
+    // Ensure target has a valid v2 deck if empty
+    if (!localStorage.getItem(STORAGE_KEYS.DECK_V2)) {
+        safeWriteJSON(STORAGE_KEYS.DECK_V2, DEFAULT_DECK.map(item => normalizeWordItem(item, 0)));
+    }
+
+    accountsStore.activeAccountId = targetAccountId;
+    saveAccountsStore();
+
+    reloadAllActiveAccountStates();
+    syncCurrentAccountSnapshot();
+    return { ok: true, account: target };
+}
+
+function updateActiveAccountProfile({ name, goal, avatar, pin }) {
+    const acc = getActiveAccount();
+    if (!acc) return;
+    if (name && String(name).trim()) acc.name = String(name).trim();
+    if (goal !== undefined) acc.goal = String(goal || "Chinh phục 5 kỹ năng Tiếng Anh").trim();
+    if (avatar) acc.avatar = avatar;
+    if (pin !== undefined) acc.pin = String(pin).trim();
+    syncCurrentAccountSnapshot();
+}
+
+function deleteUserAccount(accountId) {
+    if (!accountsStore) loadAccountsStore();
+    const allIds = Object.keys(accountsStore.accounts);
+    if (allIds.length <= 1) {
+        return { ok: false, error: "Hệ thống cần giữ ít nhất 1 tài khoản hoạt động." };
+    }
+    if (accountId === accountsStore.activeAccountId) {
+        return { ok: false, error: "Hãy chuyển sang tài khoản khác trước khi xóa tài khoản này." };
+    }
+    delete accountsStore.accounts[accountId];
+    saveAccountsStore();
+    return { ok: true };
+}
+
+function exportActiveAccountJSON() {
+    syncCurrentAccountSnapshot();
+    const acc = getActiveAccount();
+    const payload = {
+        format: "qenglish_account_profile_v1",
+        exportedAt: new Date().toISOString(),
+        account: acc
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `qenglish-account-${acc.username || "profile"}-${getLocalDateKey()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    if (typeof showToast === "function") showToast(`Đã tải hồ sơ tài khoản "${acc.name}"!`);
+}
+
+function importUserAccountJSON(file, onComplete) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const parsed = JSON.parse(String(e.target?.result || ""));
+            if (!parsed || parsed.format !== "qenglish_account_profile_v1" || !parsed.account) {
+                throw new Error("File không phải định dạng Hồ sơ Tài khoản QEnglish.");
+            }
+            syncCurrentAccountSnapshot();
+            const incoming = parsed.account;
+            const id = incoming.id || ("acc-" + Date.now());
+            accountsStore.accounts[id] = {
+                ...incoming,
+                id,
+                updatedAt: new Date().toISOString()
+            };
+            saveAccountsStore();
+            switchToUserAccount(id, incoming.pin || "");
+            if (typeof onComplete === "function") onComplete();
+            if (typeof showToast === "function") showToast(`Đã nhập và chuyển sang tài khoản "${incoming.name}"!`);
+        } catch (err) {
+            if (typeof showToast === "function") showToast("Lỗi nhập hồ sơ: " + err.message, "error");
+        }
     };
     reader.readAsText(file);
 }
@@ -10639,7 +10989,7 @@ function initLiveConversationSession() {
         .filter(s => s.level === targetLv);
     guidedStarterPool = starters.length ? starters : (typeof CONVERSATION_STARTERS !== "undefined" ? CONVERSATION_STARTERS : []);
     currentStarterObj = guidedStarterPool[Math.floor(Math.random() * Math.max(1, guidedStarterPool.length))] || {
-        question: "Hello! Could you introduce yourself and tell me about your major at FPT University?",
+        question: "Hello! Could you introduce yourself and tell me about your major at the university?",
         topic: "University Life",
         followUps: [
             "What do you enjoy most about studying your major?",
@@ -11902,21 +12252,24 @@ function refreshDashboardUI() {
     setTxt("dash-speaking-done", `${stats.totalSpeaking}`);
     setTxt("dash-avg", stats.avgScore !== null ? `${stats.avgScore}%` : "Chưa có");
 
-    // 6-Week FPT Level 3 Goal Timeline (04/11/2026 -> 17/12/2026 = 43 days)
-    const startMs = new Date("2026-11-04T00:00:00").getTime();
-    const endMs = new Date("2026-12-17T23:59:59").getTime();
-    const nowMs = Date.now();
-    const totalSpanDays = 44;
-    const dayNum = Math.max(1, Math.min(totalSpanDays, Math.floor((nowMs - startMs) / 86400000) + 1));
-    const daysLeft = Math.max(0, Math.ceil((endMs - nowMs) / 86400000));
-    const timelinePct = Math.min(100, Math.max(5, Math.round((dayNum / totalSpanDays) * 100)));
+    // Personal Goal & Overall Mastery Progress
+    const activeAcc = typeof getActiveAccount === "function" ? getActiveAccount() : null;
+    const avgMasteryPct = Math.min(100, Math.max(5, Math.round(
+        (stats.skills.listening + stats.skills.speaking + stats.skills.reading + stats.skills.writing + stats.skills.vocabGrammar) / 5
+    )));
 
     const goalBar = document.getElementById("sidebar-goal-bar");
-    if (goalBar) goalBar.style.width = `${timelinePct}%`;
+    if (goalBar) goalBar.style.width = `${avgMasteryPct}%`;
     const goalText = document.getElementById("dash-goal-countdown");
     if (goalText) {
-        goalText.textContent = `Ngày ${dayNum}/${totalSpanDays} của lộ trình Level 3 (Còn ${daysLeft} ngày đến 17/12/2026)`;
+        goalText.textContent = `🎯 Mục tiêu cá nhân: ${activeAcc?.goal || "Chinh phục 5 kỹ năng Tiếng Anh"} • Mức độ hoàn thiện tổng thể: ${avgMasteryPct}%`;
     }
+    const heroGreeting = document.getElementById("dash-hero-greeting");
+    if (heroGreeting && activeAcc) {
+        heroGreeting.textContent = `Chào ${activeAcc.name}! Sẵn sàng bứt phá Tiếng Anh hôm nay?`;
+    }
+    if (typeof syncAccountBadgesUI === "function") syncAccountBadgesUI();
+    if (typeof syncCurrentAccountSnapshot === "function") syncCurrentAccountSnapshot();
 
     // B. Skill Progress Bars
     const barMap = [
@@ -12312,14 +12665,187 @@ function closeOnboardingModal() {
     saveSettings({ onboardingCompleted: true });
 }
 
+/* ==================== MULTI-ACCOUNT & GROUP LEADERBOARD UI ==================== */
+function syncAccountBadgesUI() {
+    if (typeof getActiveAccount !== "function") return;
+    const acc = getActiveAccount();
+    if (!acc) return;
+
+    const headerBtn = document.getElementById("header-account-btn");
+    if (headerBtn) {
+        headerBtn.innerHTML = `<span>${escHtml(acc.avatar || "🚀")}</span><span class="max-w-[110px] truncate">${escHtml(acc.name)}</span><span class="text-[10px] text-cyan-300">▾</span>`;
+    }
+    const sbName = document.getElementById("sidebar-account-name");
+    if (sbName) sbName.textContent = `${acc.avatar || "🚀"} ${acc.name}`;
+    const sbGoal = document.getElementById("sidebar-account-goal");
+    if (sbGoal) sbGoal.textContent = acc.goal || "QEnglish Personal System";
+    const dashBadge = document.getElementById("dash-user-badge");
+    if (dashBadge) dashBadge.textContent = `${acc.avatar || "🚀"} Tài khoản: ${acc.name} (@${acc.username})`;
+}
+
+function openAccountModal() {
+    syncCurrentAccountSnapshot();
+    renderAccountModalUI();
+    document.getElementById("account-modal")?.classList.remove("hidden");
+}
+
+function closeAccountModal() {
+    document.getElementById("account-modal")?.classList.add("hidden");
+}
+
+function renderAccountModalUI() {
+    const store = loadAccountsStore();
+    const active = getActiveAccount();
+    const allAccounts = Object.values(store.accounts || {});
+
+    const editName = document.getElementById("acc-edit-name");
+    if (editName) editName.value = active.name || "";
+    const editGoal = document.getElementById("acc-edit-goal");
+    if (editGoal) editGoal.value = active.goal || "";
+    const editAvatar = document.getElementById("acc-edit-avatar");
+    if (editAvatar) editAvatar.value = active.avatar || "🚀";
+    const editPin = document.getElementById("acc-edit-pin");
+    if (editPin) editPin.value = active.pin || "";
+
+    const listEl = document.getElementById("accounts-leaderboard-list");
+    if (listEl) {
+        const sorted = [...allAccounts].sort((a, b) => {
+            const sa = a.statsSummary || {};
+            const sb = b.statsSummary || {};
+            return ((sb.wordsMastered || 0) * 10 + (sb.totalMinutes || 0)) - ((sa.wordsMastered || 0) * 10 + (sa.totalMinutes || 0));
+        });
+
+        listEl.innerHTML = sorted.map((acc, idx) => {
+            const isCurrent = acc.id === store.activeAccountId;
+            const st = acc.statsSummary || {};
+            const hasPin = Boolean(acc.pin && String(acc.pin).trim());
+            return `
+                <div class="p-3.5 rounded-2xl border ${isCurrent ? "bg-violet-600/20 border-violet-400/50" : "bg-slate-950/80 border-white/10"} flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-slate-900 border border-white/10 flex items-center justify-center text-xl shrink-0">
+                            ${escHtml(acc.avatar || "🌟")}
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="font-extrabold text-white text-sm">#${idx + 1} ${escHtml(acc.name)}</span>
+                                <span class="text-slate-400">@${escHtml(acc.username)}</span>
+                                ${hasPin ? `<span class="text-amber-300" title="Có mã PIN bảo vệ">🔒</span>` : ""}
+                                ${isCurrent ? `<span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold">Đang dùng</span>` : ""}
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-0.5">${escHtml(acc.goal || "Chinh phục Tiếng Anh")}</p>
+                            <div class="flex flex-wrap gap-3 mt-1 text-[11px] font-bold">
+                                <span class="text-amber-300">🔥 ${st.streak || 0} ngày</span>
+                                <span class="text-violet-300">📖 ${st.wordsLearned || 0} từ học (${st.wordsMastered || 0} thuộc)</span>
+                                <span class="text-cyan-300">⏱️ ${st.totalMinutes || 0} phút</span>
+                                ${st.avgScore !== null && st.avgScore !== undefined ? `<span class="text-emerald-300">🎯 TB ${st.avgScore}%</span>` : ""}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        ${!isCurrent ? `
+                            <button onclick="handleSwitchAccount('${acc.id}')" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold hover:opacity-95 transition">
+                                Chuyển vào học →
+                            </button>
+                            <button onclick="handleDeleteAccount('${acc.id}')" class="p-2 rounded-xl bg-rose-500/15 text-rose-300 hover:bg-rose-500/30" title="Xóa tài khoản này">🗑️</button>
+                        ` : `
+                            <button onclick="exportActiveAccountJSON()" class="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold">
+                                📥 Tải hồ sơ
+                            </button>
+                        `}
+                    </div>
+                </div>
+            `;
+        }).join("");
+    }
+}
+
+function handleSaveActiveAccountProfile() {
+    const name = document.getElementById("acc-edit-name")?.value || "";
+    const goal = document.getElementById("acc-edit-goal")?.value || "";
+    const avatar = document.getElementById("acc-edit-avatar")?.value || "🚀";
+    const pin = document.getElementById("acc-edit-pin")?.value || "";
+    updateActiveAccountProfile({ name, goal, avatar, pin });
+    syncAccountBadgesUI();
+    refreshDashboardUI();
+    renderAccountModalUI();
+    showToast("Đã cập nhật thông tin tài khoản của bạn!");
+}
+
+function handleCreateNewAccountSubmit() {
+    const name = (document.getElementById("new-acc-name")?.value || "").trim();
+    const username = (document.getElementById("new-acc-username")?.value || "").trim();
+    const goal = (document.getElementById("new-acc-goal")?.value || "Giao tiếp & Từ vựng toàn diện").trim();
+    const avatar = document.getElementById("new-acc-avatar")?.value || "🌟";
+    const pin = (document.getElementById("new-acc-pin")?.value || "").trim();
+
+    const res = createNewUserAccount({ name, username, avatar, goal, pin });
+    if (!res.ok) {
+        showToast(res.error, "error");
+        return;
+    }
+
+    document.getElementById("new-acc-name").value = "";
+    document.getElementById("new-acc-username").value = "";
+    document.getElementById("new-acc-pin").value = "";
+
+    applyStudyFilter();
+    renderWordList();
+    syncAccountBadgesUI();
+    refreshDashboardUI();
+    renderAccountModalUI();
+    closeAccountModal();
+    showToast(`🎉 Đã tạo và chuyển sang tài khoản riêng của "${res.account.name}"!`);
+}
+
+function handleSwitchAccount(accountId) {
+    const res = switchToUserAccount(accountId);
+    if (!res.ok) {
+        if (!res.cancelled && res.error) showToast(res.error, "error");
+        return;
+    }
+    applyStudyFilter();
+    renderWordList();
+    syncAccountBadgesUI();
+    navigateTo(activeMainPage, currentVocabSubTab);
+    renderAccountModalUI();
+    closeAccountModal();
+    showToast(`👋 Chào mừng quay lại, ${res.account.name}! Dữ liệu riêng của bạn đã được nạp.`);
+}
+
+function handleDeleteAccount(accountId) {
+    if (!confirm("Bạn có chắc muốn xóa tài khoản này khỏi thiết bị?")) return;
+    const res = deleteUserAccount(accountId);
+    if (!res.ok) {
+        showToast(res.error, "error");
+        return;
+    }
+    renderAccountModalUI();
+    showToast("Đã xóa tài khoản.");
+}
+
+function handleImportAccountFile(event) {
+    const file = event?.target?.files?.[0];
+    importUserAccountJSON(file, () => {
+        applyStudyFilter();
+        renderWordList();
+        syncAccountBadgesUI();
+        refreshDashboardUI();
+        renderAccountModalUI();
+    });
+    if (event?.target) event.target.value = "";
+}
+
 /* ==================== MASTER APPLICATION BOOTSTRAP ==================== */
 window.addEventListener("DOMContentLoaded", () => {
+    loadAccountsStore();
     loadSettings();
     loadDeckFromStorage();
     loadSRSState();
     loadProgressState();
     loadNotebook();
     loadCMSItems();
+    syncAccountBadgesUI();
+    syncCurrentAccountSnapshot();
 
     // Sync saved audio & level preferences
     speechRate = appSettings.speechRate || 1.0;
