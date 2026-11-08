@@ -1,9 +1,3 @@
 {
-  "version": 2,
-  "rewrites": [
-    {
-      "source": "/api/ai/:task",
-      "destination": "/api/ai?task=:task"
-    }
-  ]
+  "cleanUrls": false
 }

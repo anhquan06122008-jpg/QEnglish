@@ -1,23 +1,6 @@
 {
   "name": "qenglish-personal-learning-system",
   "version": "2.0.0",
-  "description": "Personal English Learning System for FPT University Students (Listening, Speaking, Reading, Writing, Grammar & Vocabulary)",
-  "main": "server.js",
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
-  },
-  "keywords": [
-    "edtech",
-    "english-learning",
-    "fpt-university",
-    "flashcards",
-    "srs",
-    "ielts",
-    "cefr"
-  ],
-  "license": "MIT"
+  "private": true,
+  "description": "Personal English Learning System for FPT University Students"
 }
