@@ -106,7 +106,7 @@ const GRAMMAR_LESSONS = [
         explanation: "Lỗi kinh điển số 1 của người học Việt Nam là ghép trực tiếp 'am/is/are' với động từ nguyên mẫu (VD: 'I am study English' — SAI!). Quy tắc vàng: (1) To be chỉ đi với Danh từ, Tính từ, Cụm giới từ, V-ing (tiếp diễn) hoặc V3/ed (bị động). (2) Động từ thường ở thì đơn đứng trực tiếp sau chủ ngữ, khi phủ định/nghi vấn phải mượn trợ động từ do/does/did. (3) Động từ khuyết thiếu (can, could, will, would, should, must, may, might) luôn cộng trực tiếp với V nguyên mẫu không 'to'!",
         formula: "To be: S + am/is/are + Adj/N  •  Action Verb: S + V(s/es) / don't-doesn't + V  •  Modal: S + can/should/must + V(bare)",
         examples: [
-            { en: "I study at FPT University, and my major is Software Engineering.", vi: "'study' là động từ thường đứng thẳng sau 'I'; 'is' là to be nối với danh từ ngành học." },
+            { en: "I study at the university, and my major is Software Engineering.", vi: "'study' là động từ thường đứng thẳng sau 'I'; 'is' là to be nối với danh từ ngành học." },
             { en: "You should review new vocabulary every evening.", vi: "Sau modal verb 'should' là động từ nguyên mẫu 'review' (không có 'to')." },
             { en: "Does she understand the grammar formula?", vi: "Câu hỏi với động từ thường 'understand' phải mượn trợ động từ 'Does' và đưa động từ chính về nguyên mẫu." }
         ],
@@ -125,13 +125,13 @@ const GRAMMAR_LESSONS = [
         topic: "Tenses",
         title: "Tenses (Part 1) — Hiện tại đơn, Hiện tại tiếp diễn, Quá khứ đơn & Tương lai",
         level: "A2",
-        intro: "Bốn thì cốt lõi chiếm hơn 75% giao tiếp và bài viết ở trình độ English Level 3.",
+        intro: "Bốn thì cốt lõi chiếm hơn 75% giao tiếp và bài viết ở trình độ Intermediate English.",
         explanation: "1) Present Simple (Hiện tại đơn): Thói quen hàng ngày, sự thật hiển nhiên, lịch trình cố định (always, usually, every day). 2) Present Continuous (Hiện tại tiếp diễn): Hành động đang diễn ra ngay lúc nói hoặc tạm thời trong giai đoạn hiện tại (now, right now, this week). 3) Past Simple (Quá khứ đơn): Hành động đã xảy ra và ĐÃ KẾT THÚC tại thời điểm xác định trong quá khứ (yesterday, last week, in 2024, ago). 4) Future (will vs be going to): 'will + V' cho quyết định tức thì hoặc dự đoán; 'be going to + V' cho kế hoạch đã dự định trước.",
         formula: "HTĐ: S + V(s/es) | HTTD: S + am/is/are + V-ing | QKĐ: S + V2/ed | TL: S + will + V / am-is-are going to + V",
         examples: [
             { en: "I usually take the bus, but today I am riding my motorbike.", vi: "Thói quen hàng ngày dùng Hiện tại đơn ('take'), hành động tạm thời hôm nay dùng Tiếp diễn ('am riding')." },
             { en: "Last night, I completed two reading passages and learned ten words.", vi: "'Last night' là mốc quá khứ đã kết thúc -> chia Quá khứ đơn ('completed', 'learned')." },
-            { en: "I am going to finish Level 3 successfully by December.", vi: "Kế hoạch mục tiêu đã định rõ -> dùng 'am going to finish'." }
+            { en: "I am going to finish B1 Intermediate successfully by December.", vi: "Kế hoạch mục tiêu đã định rõ -> dùng 'am going to finish'." }
         ],
         commonMistakes: [
             { wrong: "Yesterday I go to the library and study for three hours.", correct: "Yesterday I went to the library and studied for three hours.", why: "Có mốc quá khứ 'Yesterday' nhưng quên chia động từ sang quá khứ ('went', 'studied') — lỗi rất phổ biến khi viết và nói!" },
@@ -152,7 +152,7 @@ const GRAMMAR_LESSONS = [
         explanation: "1) Present Perfect (have/has + V3/ed): Dùng cho hành động bắt đầu trong quá khứ nhưng CÒN KÉO DÀI đến hiện tại (for + khoảng thời gian, since + mốc thời gian), trải nghiệm tính đến nay (ever, never), hoặc hành động vừa xảy ra mà kết quả còn ảnh hưởng hiện tại (already, yet, just, recently). Tuyệt đối KHÔNG dùng Present Perfect với mốc quá khứ cụ thể như 'yesterday', 'in 2022'! 2) Past Continuous (was/were + V-ing): Hành động đang diễn ra tại một thời điểm trong quá khứ hoặc đang diễn ra thì hành động khác xen vào (chia QKĐ).",
         formula: "Present Perfect: S + have/has + V3/ed (since/for/already/yet)  •  Past Continuous: While S + was/were + V-ing, S + V2/ed",
         examples: [
-            { en: "I have studied at FPT University since September.", vi: "Tôi bắt đầu học từ tháng 9 và hiện tại vẫn đang học -> Hiện tại hoàn thành." },
+            { en: "I have studied at the university since September.", vi: "Tôi bắt đầu học từ tháng 9 và hiện tại vẫn đang học -> Hiện tại hoàn thành." },
             { en: "While I was reading an English article, my friend called me.", vi: "Đang đọc bài báo (was reading - hành động nền kéo dài) thì bạn gọi điện xen vào (called - Quá khứ đơn)." }
         ],
         commonMistakes: [
@@ -175,7 +175,7 @@ const GRAMMAR_LESSONS = [
         formula: "V-ing + V(số ít) | Everyone/Each + V(số ít) | N1 + of + N2 -> chia theo N1",
         examples: [
             { en: "Practicing English for thirty minutes every day builds strong habits.", vi: "Chủ ngữ là cụm V-ing 'Practicing English...' (việc luyện tiếng Anh), không phải 'minutes', nên động từ thêm s ('builds')." },
-            { en: "Everyone in our class wants to pass Level 3.", vi: "'Everyone' luôn đi với động từ số ít ('wants')." },
+            { en: "Everyone in our class wants to pass B1 Intermediate.", vi: "'Everyone' luôn đi với động từ số ít ('wants')." },
             { en: "The impact of social media platforms on teenagers is undeniable.", vi: "Chủ ngữ chính là 'The impact' (số ít), không phải 'platforms' hay 'teenagers' -> dùng 'is'." }
         ],
         commonMistakes: [
@@ -238,10 +238,10 @@ const GRAMMAR_LESSONS = [
         title: "Prepositions — Giới từ chỉ thời gian, nơi chốn & Collocations",
         level: "B1",
         intro: "Sử dụng chuẩn IN - ON - AT và các cụm giới từ cố định (Dependent Prepositions) thường xuyên xuất hiện trong bài thi.",
-        explanation: "1) Quy tắc IN - ON - AT cho Thời gian & Địa điểm (từ rộng -> hẹp): IN + năm, tháng, mùa, buổi trong ngày, quốc gia, thành phố (in 2026, in November, in the morning, in Vietnam); ON + ngày trong tuần, ngày tháng cụ thể, bề mặt, phương tiện lớn/nền tảng số (on Monday, on November 4th, on the internet, on social media, on campus - hoặc at campus khi chỉ điểm hẹn); AT + giờ cụ thể, thời điểm lễ, địa điểm cụ thể (at 8:00 AM, at night, at noon, at FPT University, at home). 2) Cụm cố định bắt buộc nhớ: depend ON, focus ON, interested IN, good AT, responsible FOR, impact ON, participate IN, pay attention TO.",
+        explanation: "1) Quy tắc IN - ON - AT cho Thời gian & Địa điểm (từ rộng -> hẹp): IN + năm, tháng, mùa, buổi trong ngày, quốc gia, thành phố (in 2026, in November, in the morning, in Vietnam); ON + ngày trong tuần, ngày tháng cụ thể, bề mặt, phương tiện lớn/nền tảng số (on Monday, on November 4th, on the internet, on social media, on campus - hoặc at campus khi chỉ điểm hẹn); AT + giờ cụ thể, thời điểm lễ, địa điểm cụ thể (at 8:00 AM, at night, at noon, at the university, at home). 2) Cụm cố định bắt buộc nhớ: depend ON, focus ON, interested IN, good AT, responsible FOR, impact ON, participate IN, pay attention TO.",
         formula: "IN (tháng/năm/thành phố) > ON (ngày/nền tảng) > AT (giờ/địa điểm cụ thể)  •  Prep + V-ing / Noun",
         examples: [
-            { en: "Our English Level 3 course starts on November 4th, 2026 at 7:30 AM.", vi: "Ngày tháng cụ thể dùng 'on', giờ chính xác dùng 'at'." },
+            { en: "Our Intermediate English course starts on November 4th, 2026 at 7:30 AM.", vi: "Ngày tháng cụ thể dùng 'on', giờ chính xác dùng 'at'." },
             { en: "Instead of worrying about mistakes, focus on communicating your ideas.", vi: "Sau giới từ ('Instead of', 'about', 'on') động từ luôn phải chia ở dạng V-ing!" }
         ],
         commonMistakes: [
@@ -289,7 +289,7 @@ const GRAMMAR_LESSONS = [
             { en: "When students understand sentence structures, their writing becomes much clearer.", vi: "Câu phức chuẩn: Mệnh đề phụ 'When...' + dấu phẩy + mệnh đề chính." }
         ],
         commonMistakes: [
-            { wrong: "FPT University is modern, it has great labs.", correct: "FPT University is modern, and it has great labs.", why: "Lỗi Comma Splice: Hai mệnh đề hoàn chỉnh không được nối với nhau chỉ bằng một dấu phẩy mà không có liên từ!" },
+            { wrong: "the university is modern, it has great labs.", correct: "the university is modern, and it has great labs.", why: "Lỗi Comma Splice: Hai mệnh đề hoàn chỉnh không được nối với nhau chỉ bằng một dấu phẩy mà không có liên từ!" },
             { wrong: "For example, watching English videos with subtitles.", correct: "For example, students can watch English videos with subtitles.", why: "Lỗi Sentence Fragment: Cụm 'watching English videos...' chưa có chủ ngữ và động từ chia thì nên chưa phải là một câu hoàn chỉnh." }
         ],
         exercises: [
@@ -377,7 +377,7 @@ const GRAMMAR_LESSONS = [
         examples: [
             { en: "Students who review mistakes regularly progress much faster.", vi: "Mệnh đề xác định 'who review mistakes regularly' làm rõ nhóm sinh viên nào." },
             { en: "He practices English every evening, which has greatly improved his confidence.", vi: "', which' thay thế cho toàn bộ hành động phía trước và chia động từ số ít ('has')." },
-            { en: "FPT University is a place where students learn through real-world projects.", vi: "'where' chỉ nơi chốn (= at which), theo sau là mệnh đề S + V." }
+            { en: "the university is a place where students learn through real-world projects.", vi: "'where' chỉ nơi chốn (= at which), theo sau là mệnh đề S + V." }
         ],
         commonMistakes: [
             { wrong: "The book which I bought it yesterday is very useful.", correct: "The book which I bought yesterday is very useful.", why: "'Which' đã thay thế cho 'the book' rồi nên tuyệt đối không lặp lại đại từ 'it' ở sau 'bought' nữa!" },

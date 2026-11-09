@@ -105,7 +105,7 @@ function initLiveConversationSession() {
         .filter(s => s.level === targetLv);
     guidedStarterPool = starters.length ? starters : (typeof CONVERSATION_STARTERS !== "undefined" ? CONVERSATION_STARTERS : []);
     currentStarterObj = guidedStarterPool[Math.floor(Math.random() * Math.max(1, guidedStarterPool.length))] || {
-        question: "Hello! Could you introduce yourself and tell me about your major at FPT University?",
+        question: "Hello! Could you introduce yourself and tell me about your major at the university?",
         topic: "University Life",
         followUps: [
             "What do you enjoy most about studying your major?",

@@ -39,7 +39,7 @@ Bandwidth - (/ˈbænd.wɪdθ/) Băng thông. | High bandwidth is required to str
 Architecture - (/ˈɑːr.kə.tek.tʃər/) Kiến trúc hệ thống / Máy tính. | Students analyzed ARM architecture in the advanced computer systems module.
 Protocol - (/ˈproʊ.tə.kɑːl/) Giao thức mạng. | HTTPS is a secure communication protocol used across modern web applications.
 Hardware - (/ˈhɑːrd.wer/) Phần cứng máy tính. | The engineering lab provided specialized hardware for microcontroller programming.
-Internship - (/ˈɪntɜːrnʃɪp/) Kỳ thực tập. | FPT students complete a four-month software engineering internship in their third year.
+Internship - (/ˈɪntɜːrnʃɪp/) Kỳ thực tập. | university students complete a four-month software engineering internship in their third year.
 Curriculum - (/kəˈrɪk.jə.ləm/) Chương trình học. | The academic curriculum is updated annually to match tech industry demands.
 Presentation - (/ˌprez.ənˈteɪ.ʃən/) Bài thuyết trình. | Each project team gave a ten-minute presentation to the industry experts.
 Attendance - (/əˈten.dəns/) Điểm danh / Chuyên cần. | High attendance in lab sessions is mandatory for passing the module.
@@ -67,8 +67,8 @@ const DYNAMIC_EXAMPLE_TEMPLATES = [
         structure: `prepare a report + focusing on + N (Rút gọn mệnh đề quan hệ V-ing)`
     }),
     (t) => ({
-        en: `During the FPT University workshop, speakers highlighted the practical value of ${t.toLowerCase()}.`,
-        vi: `Trong buổi hội thảo tại Đại học FPT, các diễn giả đã nhấn mạnh giá trị thực tiễn của "${t}".`,
+        en: `During the the university workshop, speakers highlighted the practical value of ${t.toLowerCase()}.`,
+        vi: `Trong buổi hội thảo tại trường đại học, các diễn giả đã nhấn mạnh giá trị thực tiễn của "${t}".`,
         structure: `highlight the value/importance of + N (Nhấn mạnh tầm quan trọng)`
     })
 ];
@@ -77,7 +77,7 @@ const DYNAMIC_EXAMPLE_TEMPLATES = [
 const VOCAB_ENRICHMENT_MAP = {
     semiconductor: { pos: "noun", level: "B2", synonyms: "chip material, wafer", antonyms: "insulator", extraExamples: [
         { en: "Vietnam is rapidly developing its semiconductor industry.", vi: "Việt Nam đang phát triển nhanh chóng ngành công nghiệp bán dẫn.", structure: "be + adv + V-ing (Hiện tại tiếp diễn diễn tả xu hướng)" },
-        { en: "Many FPT graduates aspire to work in semiconductor design.", vi: "Nhiều sinh viên tốt nghiệp FPT mong muốn làm việc trong lĩnh vực thiết kế bán dẫn.", structure: "aspire to + V (Khao khát, hướng tới làm gì)" },
+        { en: "Many university graduates aspire to work in semiconductor design.", vi: "Nhiều sinh viên tốt nghiệp đại học mong muốn làm việc trong lĩnh vực thiết kế bán dẫn.", structure: "aspire to + V (Khao khát, hướng tới làm gì)" },
         { en: "A semiconductor conducts electricity better than glass but worse than copper.", vi: "Chất bán dẫn dẫn điện tốt hơn thủy tinh nhưng kém hơn đồng.", structure: "better than ... but worse than ... (Cấu trúc so sánh đối chiếu)" }
     ]},
     circuit: { pos: "noun", level: "B1", synonyms: "loop, network, wiring", antonyms: "disconnection", extraExamples: [
@@ -113,7 +113,7 @@ const VOCAB_ENRICHMENT_MAP = {
     component: { pos: "noun", level: "B1", synonyms: "part, element, module", antonyms: "whole, entirety", extraExamples: [
         { en: "Vocabulary is a key component of English proficiency.", vi: "Từ vựng là một thành phần then chốt của năng lực tiếng Anh.", structure: "be a key component of + N (Là thành phần chủ chốt của)" },
         { en: "We replaced the damaged component on the motherboard.", vi: "Chúng tôi đã thay thế linh kiện bị hỏng trên bo mạch chủ.", structure: "replace + the + V-ed/adj + N" },
-        { en: "Teamwork is an essential component of every FPT project.", vi: "Làm việc nhóm là yếu tố thiết yếu của mọi dự án tại FPT.", structure: "an essential component of + N" }
+        { en: "Teamwork is an essential component of every team project.", vi: "Làm việc nhóm là yếu tố thiết yếu của mọi dự án trong học tập.", structure: "an essential component of + N" }
     ]},
     resistance: { pos: "noun", level: "B2", synonyms: "impedance, opposition", antonyms: "conductivity, acceptance", extraExamples: [
         { en: "Electrical resistance is measured in ohms.", vi: "Điện trở được đo bằng đơn vị ôm (ohm).", structure: "be measured in + đơn vị (Bị động)" },
@@ -126,7 +126,7 @@ const VOCAB_ENRICHMENT_MAP = {
         { en: "System integration testing starts next Monday.", vi: "Kiểm thử tích hợp hệ thống sẽ bắt đầu vào thứ Hai tới.", structure: "Present Simple cho lịch trình cố định" }
     ]},
     syllabus: { pos: "noun", level: "B1", synonyms: "curriculum outline, course plan", antonyms: "improvisation", extraExamples: [
-        { en: "You can download the English Level 3 syllabus from FAP or CMS.", vi: "Bạn có thể tải đề cương môn Tiếng Anh Level 3 từ hệ thống FAP hoặc CMS.", structure: "download + N + from + nguồn" },
+        { en: "You can download the Intermediate English syllabus from the student portal.", vi: "Bạn có thể tải đề cương môn Tiếng Anh Trung cấp từ hệ thống FAP hoặc CMS.", structure: "download + N + from + nguồn" },
         { en: "The lecturer went through the syllabus on the first day of class.", vi: "Giảng viên đã phổ biến kỹ đề cương môn học vào ngày đầu tiên của lớp.", structure: "go through + N (Xem xét/phổ biến kỹ lưỡng)" },
         { en: "All exam topics are listed clearly in the course syllabus.", vi: "Tất cả chủ đề thi đều được liệt kê rõ ràng trong đề cương khóa học.", structure: "be listed + adv + in + N" }
     ]},
@@ -146,7 +146,7 @@ const VOCAB_ENRICHMENT_MAP = {
         { en: "Recording the lecture requires permission from the instructor.", vi: "Việc ghi âm bài giảng cần có sự cho phép của giảng viên.", structure: "require permission from + ai đó" }
     ]},
     campus: { pos: "noun", level: "A2", synonyms: "university grounds, college site", antonyms: "off-campus", extraExamples: [
-        { en: "FPT University Ho Chi Minh campus has lots of green trees.", vi: "Khuôn viên Đại học FPT TP.HCM có rất nhiều cây xanh.", structure: "have lots of + N" },
+        { en: "our university campus has lots of green trees.", vi: "Khuôn viên trường đại học có rất nhiều cây xanh.", structure: "have lots of + N" },
         { en: "First-year students enjoy meeting friends at the campus cafe.", vi: "Sinh viên năm nhất thích gặp gỡ bạn bè tại quán cà phê trong khuôn viên trường.", structure: "enjoy + V-ing (Thích làm gì)" },
         { en: "Shuttle buses run directly to the campus every morning.", vi: "Xe buýt đưa đón chạy thẳng tới khuôn viên trường mỗi sáng.", structure: "run directly to + địa điểm" }
     ]},
@@ -156,7 +156,7 @@ const VOCAB_ENRICHMENT_MAP = {
         { en: "We have a five-minute Q&A session after each presentation.", vi: "Chúng tôi có phần hỏi đáp 5 phút sau mỗi bài thuyết trình.", structure: "five-minute (Tính từ ghép có gạch nối không thêm 's')" }
     ]},
     attendance: { pos: "noun", level: "B1", synonyms: "presence, turnout", antonyms: "absence, truancy", extraExamples: [
-        { en: "At FPT University, at least 80% attendance is required to take the final exam.", vi: "Tại Đại học FPT, sinh viên cần điểm danh tối thiểu 80% để được dự thi cuối kỳ.", structure: "be required to + V (Được yêu cầu để làm gì)" },
+        { en: "At the university, at least 80% attendance is required to take the final exam.", vi: "Tại trường đại học, sinh viên cần điểm danh tối thiểu 80% để được dự thi cuối kỳ.", structure: "be required to + V (Được yêu cầu để làm gì)" },
         { en: "The teacher checks attendance at the beginning of every slot.", vi: "Giảng viên kiểm tra điểm danh vào đầu mỗi ca học.", structure: "check/take attendance (Điểm danh — Collocation chuẩn)" },
         { en: "Regular attendance helps you understand the lessons much better.", vi: "Đi học đều đặn giúp bạn hiểu bài tốt hơn nhiều.", structure: "help + O + (to) V" }
     ]},
@@ -166,7 +166,7 @@ const VOCAB_ENRICHMENT_MAP = {
         { en: "Listening carefully is just as important as speaking in a discussion.", vi: "Lắng nghe kỹ cũng quan trọng không kém việc nói trong một cuộc thảo luận.", structure: "as + adj + as (So sánh ngang bằng)" }
     ]},
     prerequisite: { pos: "noun", level: "B2", synonyms: "requirement, precondition", antonyms: "elective, optional item", extraExamples: [
-        { en: "Passing English Level 2 is a prerequisite for entering Level 3.", vi: "Vượt qua Tiếng Anh Level 2 là điều kiện tiên quyết để vào học Level 3.", structure: "be a prerequisite for + N/V-ing" },
+        { en: "Passing Elementary English is a prerequisite for entering B1 Intermediate.", vi: "Vượt qua Tiếng Anh Sơ cấp là điều kiện tiên quyết để vào học B1 Intermediate.", structure: "be a prerequisite for + N/V-ing" },
         { en: "Consistent daily practice is a prerequisite for fluency.", vi: "Luyện tập đều đặn hàng ngày là điều kiện tiên quyết để đạt sự trôi chảy.", structure: "prerequisite for + N" },
         { en: "Check the prerequisite courses before registering for next semester.", vi: "Hãy kiểm tra các môn tiên quyết trước khi đăng ký học kỳ tới.", structure: "before + V-ing" }
     ]},

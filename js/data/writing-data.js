@@ -229,7 +229,7 @@ const WRITING_TOPICS = [
       'Begin with an introduction about technology in modern education.',
       'Discuss at least two benefits of using technology in learning.',
       'Mention one or two challenges or disadvantages.',
-      'Include personal examples from your experience at FPT University.',
+      'Include personal examples from your experience at the university.',
       'Conclude with your overall opinion.'
     ],
     minWords: 120,
@@ -300,7 +300,7 @@ const WRITING_TOPICS = [
       'Introduction: Your dream career',
       'Body 1: Why you chose this career',
       'Body 2: Required skills and qualifications',
-      'Body 3: How you are preparing at FPT University',
+      'Body 3: How you are preparing at the university',
       'Conclusion: Future goals and vision'
     ],
     vocabulary: [

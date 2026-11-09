@@ -29,7 +29,7 @@ const path = require("path");
     }
 })();
 
-const { handleAIRequest, detectProvider } = require("./api/ai-core");
+const { handleAIRequest, detectProvider } = require("./api/ai");
 
 const PORT = parseInt(process.env.PORT || "3000", 10) || 3000;
 const ROOT_DIR = __dirname;

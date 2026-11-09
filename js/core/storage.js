@@ -891,3 +891,258 @@ function importAllBackupJSON(file, onComplete) {
     };
     reader.readAsText(file);
 }
+
+/* ==================== 9. MULTI-ACCOUNT & GROUP STUDY SYSTEM ==================== */
+const ACCOUNTS_STORAGE_KEY = "qenglish_accounts_v1";
+const USER_SCOPED_KEYS = [
+    STORAGE_KEYS.DECK_V2,
+    STORAGE_KEYS.SRS,
+    STORAGE_KEYS.PROGRESS,
+    STORAGE_KEYS.DASHBOARD,
+    STORAGE_KEYS.GRAMMAR,
+    STORAGE_KEYS.LISTENING,
+    STORAGE_KEYS.SPEAKING,
+    STORAGE_KEYS.READING,
+    STORAGE_KEYS.WRITING,
+    STORAGE_KEYS.NOTEBOOK,
+    STORAGE_KEYS.SETTINGS
+];
+
+let accountsStore = null;
+
+function loadAccountsStore() {
+    const raw = localStorage.getItem(ACCOUNTS_STORAGE_KEY);
+    const parsed = safeParseJSON(raw, null);
+    if (parsed && parsed.activeAccountId && parsed.accounts && typeof parsed.accounts === "object") {
+        accountsStore = parsed;
+    } else {
+        const primaryId = "acc-primary";
+        const initialSnapshot = {};
+        USER_SCOPED_KEYS.forEach(k => {
+            const val = localStorage.getItem(k);
+            if (val !== null) initialSnapshot[k] = val;
+        });
+        accountsStore = {
+            activeAccountId: primaryId,
+            accounts: {
+                [primaryId]: {
+                    id: primaryId,
+                    name: "Học viên 1 (Chính)",
+                    username: "member1",
+                    avatar: "🚀",
+                    goal: "Chinh phục 5 kỹ năng Tiếng Anh",
+                    pin: "",
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    statsSummary: { streak: 0, wordsLearned: 0, wordsMastered: 0, totalMinutes: 0, avgScore: null },
+                    data: initialSnapshot
+                }
+            }
+        };
+        safeWriteJSON(ACCOUNTS_STORAGE_KEY, accountsStore);
+    }
+    return accountsStore;
+}
+
+function saveAccountsStore() {
+    if (!accountsStore) return;
+    safeWriteJSON(ACCOUNTS_STORAGE_KEY, accountsStore);
+}
+
+function getActiveAccount() {
+    if (!accountsStore) loadAccountsStore();
+    return accountsStore.accounts[accountsStore.activeAccountId] || Object.values(accountsStore.accounts)[0];
+}
+
+function syncCurrentAccountSnapshot() {
+    if (!accountsStore) loadAccountsStore();
+    const acc = getActiveAccount();
+    if (!acc) return;
+
+    const snap = {};
+    USER_SCOPED_KEYS.forEach(k => {
+        const val = localStorage.getItem(k);
+        if (val !== null) snap[k] = val;
+    });
+    acc.data = snap;
+    acc.updatedAt = new Date().toISOString();
+
+    try {
+        const st = computeOverallAnalytics();
+        acc.statsSummary = {
+            streak: st.streak || 0,
+            wordsLearned: st.wordsLearned || 0,
+            wordsMastered: st.wordsMastered || 0,
+            totalMinutes: st.totalMinutes || 0,
+            avgScore: st.avgScore
+        };
+    } catch (e) {}
+
+    saveAccountsStore();
+}
+
+function reloadAllActiveAccountStates() {
+    loadSettings();
+    loadDeckFromStorage();
+    loadSRSState();
+    loadProgressState();
+    loadNotebook();
+    loadCMSItems();
+}
+
+function createNewUserAccount({ name, username, avatar = "🌟", goal = "Giao tiếp & Từ vựng toàn diện", pin = "" }) {
+    const cleanName = String(name || "").trim();
+    if (!cleanName) return { ok: false, error: "Vui lòng nhập Tên hiển thị của tài khoản." };
+    const cleanUser = String(username || cleanName).toLowerCase().replace(/[^a-z0-9_]/g, "") || ("user" + Date.now().toString().slice(-4));
+
+    syncCurrentAccountSnapshot();
+
+    const exists = Object.values(accountsStore.accounts).some(a => a.username === cleanUser);
+    if (exists) {
+        return { ok: false, error: `Tên tài khoản "@${cleanUser}" đã tồn tại. Hãy chọn tên khác hoặc bấm chuyển tài khoản!` };
+    }
+
+    const newId = "acc-" + Date.now();
+    const freshDeck = DEFAULT_DECK.map(item => normalizeWordItem(item, 0));
+
+    // Clear user-scoped keys and initialize fresh default deck for the new member
+    USER_SCOPED_KEYS.forEach(k => localStorage.removeItem(k));
+    safeWriteJSON(STORAGE_KEYS.DECK_V2, freshDeck);
+    safeWriteJSON(STORAGE_KEYS.SETTINGS, { ...DEFAULT_SETTINGS, onboardingCompleted: true });
+
+    const newAccSnapshot = {};
+    USER_SCOPED_KEYS.forEach(k => {
+        const v = localStorage.getItem(k);
+        if (v !== null) newAccSnapshot[k] = v;
+    });
+
+    accountsStore.accounts[newId] = {
+        id: newId,
+        name: cleanName,
+        username: cleanUser,
+        avatar: avatar || "🌟",
+        goal: String(goal || "Giao tiếp & Từ vựng toàn diện").trim(),
+        pin: String(pin || "").trim(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        statsSummary: { streak: 0, wordsLearned: 0, wordsMastered: 0, totalMinutes: 0, avgScore: null },
+        data: newAccSnapshot
+    };
+    accountsStore.activeAccountId = newId;
+    saveAccountsStore();
+
+    reloadAllActiveAccountStates();
+    syncCurrentAccountSnapshot();
+    return { ok: true, account: accountsStore.accounts[newId] };
+}
+
+function switchToUserAccount(targetAccountId, enteredPin = null) {
+    if (!accountsStore) loadAccountsStore();
+    const target = accountsStore.accounts[targetAccountId];
+    if (!target) return { ok: false, error: "Không tìm thấy tài khoản này." };
+    if (targetAccountId === accountsStore.activeAccountId) return { ok: true, account: target };
+
+    if (target.pin && String(target.pin).trim() !== "") {
+        const pinToCheck = enteredPin !== null ? enteredPin : prompt(`🔒 Nhập mã PIN của tài khoản "${target.name}" (@${target.username}):`);
+        if (pinToCheck === null) return { ok: false, cancelled: true };
+        if (String(pinToCheck).trim() !== String(target.pin).trim()) {
+            return { ok: false, error: "Mã PIN không chính xác!" };
+        }
+    }
+
+    // 1. Save current account snapshot safely
+    syncCurrentAccountSnapshot();
+
+    // 2. Clear user-scoped keys and restore target account's keys
+    USER_SCOPED_KEYS.forEach(k => localStorage.removeItem(k));
+    const targetData = target.data || {};
+    Object.keys(targetData).forEach(k => {
+        if (targetData[k] !== null && targetData[k] !== undefined) {
+            localStorage.setItem(k, targetData[k]);
+        }
+    });
+
+    // Ensure target has a valid v2 deck if empty
+    if (!localStorage.getItem(STORAGE_KEYS.DECK_V2)) {
+        safeWriteJSON(STORAGE_KEYS.DECK_V2, DEFAULT_DECK.map(item => normalizeWordItem(item, 0)));
+    }
+
+    accountsStore.activeAccountId = targetAccountId;
+    saveAccountsStore();
+
+    reloadAllActiveAccountStates();
+    syncCurrentAccountSnapshot();
+    return { ok: true, account: target };
+}
+
+function updateActiveAccountProfile({ name, goal, avatar, pin }) {
+    const acc = getActiveAccount();
+    if (!acc) return;
+    if (name && String(name).trim()) acc.name = String(name).trim();
+    if (goal !== undefined) acc.goal = String(goal || "Chinh phục 5 kỹ năng Tiếng Anh").trim();
+    if (avatar) acc.avatar = avatar;
+    if (pin !== undefined) acc.pin = String(pin).trim();
+    syncCurrentAccountSnapshot();
+}
+
+function deleteUserAccount(accountId) {
+    if (!accountsStore) loadAccountsStore();
+    const allIds = Object.keys(accountsStore.accounts);
+    if (allIds.length <= 1) {
+        return { ok: false, error: "Hệ thống cần giữ ít nhất 1 tài khoản hoạt động." };
+    }
+    if (accountId === accountsStore.activeAccountId) {
+        return { ok: false, error: "Hãy chuyển sang tài khoản khác trước khi xóa tài khoản này." };
+    }
+    delete accountsStore.accounts[accountId];
+    saveAccountsStore();
+    return { ok: true };
+}
+
+function exportActiveAccountJSON() {
+    syncCurrentAccountSnapshot();
+    const acc = getActiveAccount();
+    const payload = {
+        format: "qenglish_account_profile_v1",
+        exportedAt: new Date().toISOString(),
+        account: acc
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `qenglish-account-${acc.username || "profile"}-${getLocalDateKey()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    if (typeof showToast === "function") showToast(`Đã tải hồ sơ tài khoản "${acc.name}"!`);
+}
+
+function importUserAccountJSON(file, onComplete) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const parsed = JSON.parse(String(e.target?.result || ""));
+            if (!parsed || parsed.format !== "qenglish_account_profile_v1" || !parsed.account) {
+                throw new Error("File không phải định dạng Hồ sơ Tài khoản QEnglish.");
+            }
+            syncCurrentAccountSnapshot();
+            const incoming = parsed.account;
+            const id = incoming.id || ("acc-" + Date.now());
+            accountsStore.accounts[id] = {
+                ...incoming,
+                id,
+                updatedAt: new Date().toISOString()
+            };
+            saveAccountsStore();
+            switchToUserAccount(id, incoming.pin || "");
+            if (typeof onComplete === "function") onComplete();
+            if (typeof showToast === "function") showToast(`Đã nhập và chuyển sang tài khoản "${incoming.name}"!`);
+        } catch (err) {
+            if (typeof showToast === "function") showToast("Lỗi nhập hồ sơ: " + err.message, "error");
+        }
+    };
+    reader.readAsText(file);
+}

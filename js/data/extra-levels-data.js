@@ -41,7 +41,7 @@ There are ten wooden tables near the window. Students often sit there to read bo
 
 [Paragraph B] In response, universities and employers have increasingly embraced micro-credentials—short, focused certifications that verify specific competencies such as cloud architecture, semiconductor testing, or business communication. Unlike general degrees, micro-credentials can be updated within months to reflect industry standards.
 
-[Paragraph C] At institutions like FPT University, academic programs often combine foundational degree coursework with industry certificates and mandatory company internships. Educators argue that this hybrid model gives undergraduates both theoretical depth and immediate workplace readiness.
+[Paragraph C] At institutions like the university, academic programs often combine foundational degree coursework with industry certificates and mandatory company internships. Educators argue that this hybrid model gives undergraduates both theoretical depth and immediate workplace readiness.
 
 [Paragraph D] Critics nevertheless warn against replacing broad university education entirely with narrow skill badges. Without foundational training in critical thinking, ethics, and academic writing, graduates may struggle to adapt when current tools become obsolete.`,
                 keyVocab: [
@@ -288,7 +288,7 @@ There are ten wooden tables near the window. Students often sit there to read bo
         SPEAKING_TOPICS.push(
             {
                 id: "s-b1-uni",
-                title: "My University — FPT Campus Life",
+                title: "My University — University Campus Life",
                 level: "B1",
                 levelSystem: "CEFR",
                 type: "monologue",
@@ -297,17 +297,17 @@ There are ten wooden tables near the window. Students often sit there to read bo
                 suggestedQuestions: [
                     "Where is your university campus located?",
                     "What facilities on campus do you use most often?",
-                    "Why did you choose FPT University?",
-                    "How do you feel about English Level 3 so far?"
+                    "Why did you choose the university?",
+                    "How do you feel about Intermediate English so far?"
                 ],
                 suggestedQuestionsVi: [
                     "Khuôn viên trường bạn nằm ở đâu?",
                     "Bạn hay sử dụng cơ sở vật chất nào nhất?",
-                    "Vì sao bạn chọn Đại học FPT?",
-                    "Bạn cảm thấy thế nào về chương trình Tiếng Anh Level 3 hiện tại?"
+                    "Vì sao bạn chọn trường đại học?",
+                    "Bạn cảm thấy thế nào về chương trình Tiếng Anh Trung cấp hiện tại?"
                 ],
                 usefulPhrases: ["Currently, I am a freshman at...", "What impresses me most about the campus is...", "My go-to place for self-study is...", "One reason I chose this university is its practical curriculum."],
-                sampleAnswer: "Currently, I am a freshman at FPT University in Ho Chi Minh City. What impresses me most about our campus is the green space and modern computer labs. My go-to place for self-study is the library because it is quiet and air-conditioned. Right now, I am focusing on completing English Level 3 so I can read technical documents and communicate confidently in my major.",
+                sampleAnswer: "Currently, I am a freshman at the university in Ho Chi Minh City. What impresses me most about our campus is the green space and modern computer labs. My go-to place for self-study is the library because it is quiet and air-conditioned. Right now, I am focusing on completing Intermediate English so I can read technical documents and communicate confidently in my major.",
                 duration: 90
             },
             {
@@ -428,6 +428,6 @@ const DAILY_QUOTES = [
     { en: "Small daily improvements over time lead to stunning results.", vi: "Mỗi ngày tiến bộ một chút theo thời gian sẽ tạo ra kết quả đáng kinh ngạc.", author: "Robin Sharma", tip: "Đừng cố học 100 từ một đêm — hãy hoàn thành đều đặn 10 từ + 1 bài nghe mỗi ngày cho tới 17/12/2026!" },
     { en: "Mistakes are proof that you are trying.", vi: "Lỗi sai chính là bằng chứng cho thấy bạn đang nỗ lực luyện tập.", author: "Proverb", tip: "Mỗi khi viết sai câu, hãy xem giải thích trong Mistake Notebook và tự viết lại câu đó 1 lần!" },
     { en: "To have another language is to possess a second soul.", vi: "Biết thêm một ngôn ngữ là sở hữu thêm một tâm hồn thứ hai.", author: "Charlemagne", tip: "Hãy đọc to (shadowing) các câu ví dụ trong Flashcard để kết nối cả tai nghe và cơ miệng!" },
-    { en: "Consistency beats intensity when building language fluency.", vi: "Sự đều đặn luôn chiến thắng sự bộc phát nhất thời khi xây dựng phản xạ ngoại ngữ.", author: "EdTech Principle", tip: "Dù ngày bận thi ở FPT, chỉ cần giữ chuỗi Streak 15 phút nghe và ôn SRS là bạn đã thắng!" },
+    { en: "Consistency beats intensity when building language fluency.", vi: "Sự đều đặn luôn chiến thắng sự bộc phát nhất thời khi xây dựng phản xạ ngoại ngữ.", author: "EdTech Principle", tip: "Dù ngày bận thi nhiều môn, chỉ cần giữ chuỗi Streak 15 phút nghe và ôn SRS là bạn đã thắng!" },
     { en: "First understand the pattern, then make the sentence your own.", vi: "Trước hết hãy hiểu công thức câu, sau đó biến câu nói thành của riêng bạn.", author: "QEnglish Method", tip: "Khi học từ mới, hãy đặt câu gắn với chính ngành học và cuộc sống tại campus HCM của bạn." }
 ];

@@ -138,21 +138,24 @@ function refreshDashboardUI() {
     setTxt("dash-speaking-done", `${stats.totalSpeaking}`);
     setTxt("dash-avg", stats.avgScore !== null ? `${stats.avgScore}%` : "Chưa có");
 
-    // 6-Week FPT Level 3 Goal Timeline (04/11/2026 -> 17/12/2026 = 43 days)
-    const startMs = new Date("2026-11-04T00:00:00").getTime();
-    const endMs = new Date("2026-12-17T23:59:59").getTime();
-    const nowMs = Date.now();
-    const totalSpanDays = 44;
-    const dayNum = Math.max(1, Math.min(totalSpanDays, Math.floor((nowMs - startMs) / 86400000) + 1));
-    const daysLeft = Math.max(0, Math.ceil((endMs - nowMs) / 86400000));
-    const timelinePct = Math.min(100, Math.max(5, Math.round((dayNum / totalSpanDays) * 100)));
+    // Personal Goal & Overall Mastery Progress
+    const activeAcc = typeof getActiveAccount === "function" ? getActiveAccount() : null;
+    const avgMasteryPct = Math.min(100, Math.max(5, Math.round(
+        (stats.skills.listening + stats.skills.speaking + stats.skills.reading + stats.skills.writing + stats.skills.vocabGrammar) / 5
+    )));
 
     const goalBar = document.getElementById("sidebar-goal-bar");
-    if (goalBar) goalBar.style.width = `${timelinePct}%`;
+    if (goalBar) goalBar.style.width = `${avgMasteryPct}%`;
     const goalText = document.getElementById("dash-goal-countdown");
     if (goalText) {
-        goalText.textContent = `Ngày ${dayNum}/${totalSpanDays} của lộ trình Level 3 (Còn ${daysLeft} ngày đến 17/12/2026)`;
+        goalText.textContent = `🎯 Mục tiêu cá nhân: ${activeAcc?.goal || "Chinh phục 5 kỹ năng Tiếng Anh"} • Mức độ hoàn thiện tổng thể: ${avgMasteryPct}%`;
     }
+    const heroGreeting = document.getElementById("dash-hero-greeting");
+    if (heroGreeting && activeAcc) {
+        heroGreeting.textContent = `Chào ${activeAcc.name}! Sẵn sàng bứt phá Tiếng Anh hôm nay?`;
+    }
+    if (typeof syncAccountBadgesUI === "function") syncAccountBadgesUI();
+    if (typeof syncCurrentAccountSnapshot === "function") syncCurrentAccountSnapshot();
 
     // B. Skill Progress Bars
     const barMap = [
@@ -548,14 +551,187 @@ function closeOnboardingModal() {
     saveSettings({ onboardingCompleted: true });
 }
 
+/* ==================== MULTI-ACCOUNT & GROUP LEADERBOARD UI ==================== */
+function syncAccountBadgesUI() {
+    if (typeof getActiveAccount !== "function") return;
+    const acc = getActiveAccount();
+    if (!acc) return;
+
+    const headerBtn = document.getElementById("header-account-btn");
+    if (headerBtn) {
+        headerBtn.innerHTML = `<span>${escHtml(acc.avatar || "🚀")}</span><span class="max-w-[110px] truncate">${escHtml(acc.name)}</span><span class="text-[10px] text-cyan-300">▾</span>`;
+    }
+    const sbName = document.getElementById("sidebar-account-name");
+    if (sbName) sbName.textContent = `${acc.avatar || "🚀"} ${acc.name}`;
+    const sbGoal = document.getElementById("sidebar-account-goal");
+    if (sbGoal) sbGoal.textContent = acc.goal || "QEnglish Personal System";
+    const dashBadge = document.getElementById("dash-user-badge");
+    if (dashBadge) dashBadge.textContent = `${acc.avatar || "🚀"} Tài khoản: ${acc.name} (@${acc.username})`;
+}
+
+function openAccountModal() {
+    syncCurrentAccountSnapshot();
+    renderAccountModalUI();
+    document.getElementById("account-modal")?.classList.remove("hidden");
+}
+
+function closeAccountModal() {
+    document.getElementById("account-modal")?.classList.add("hidden");
+}
+
+function renderAccountModalUI() {
+    const store = loadAccountsStore();
+    const active = getActiveAccount();
+    const allAccounts = Object.values(store.accounts || {});
+
+    const editName = document.getElementById("acc-edit-name");
+    if (editName) editName.value = active.name || "";
+    const editGoal = document.getElementById("acc-edit-goal");
+    if (editGoal) editGoal.value = active.goal || "";
+    const editAvatar = document.getElementById("acc-edit-avatar");
+    if (editAvatar) editAvatar.value = active.avatar || "🚀";
+    const editPin = document.getElementById("acc-edit-pin");
+    if (editPin) editPin.value = active.pin || "";
+
+    const listEl = document.getElementById("accounts-leaderboard-list");
+    if (listEl) {
+        const sorted = [...allAccounts].sort((a, b) => {
+            const sa = a.statsSummary || {};
+            const sb = b.statsSummary || {};
+            return ((sb.wordsMastered || 0) * 10 + (sb.totalMinutes || 0)) - ((sa.wordsMastered || 0) * 10 + (sa.totalMinutes || 0));
+        });
+
+        listEl.innerHTML = sorted.map((acc, idx) => {
+            const isCurrent = acc.id === store.activeAccountId;
+            const st = acc.statsSummary || {};
+            const hasPin = Boolean(acc.pin && String(acc.pin).trim());
+            return `
+                <div class="p-3.5 rounded-2xl border ${isCurrent ? "bg-violet-600/20 border-violet-400/50" : "bg-slate-950/80 border-white/10"} flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-slate-900 border border-white/10 flex items-center justify-center text-xl shrink-0">
+                            ${escHtml(acc.avatar || "🌟")}
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="font-extrabold text-white text-sm">#${idx + 1} ${escHtml(acc.name)}</span>
+                                <span class="text-slate-400">@${escHtml(acc.username)}</span>
+                                ${hasPin ? `<span class="text-amber-300" title="Có mã PIN bảo vệ">🔒</span>` : ""}
+                                ${isCurrent ? `<span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold">Đang dùng</span>` : ""}
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-0.5">${escHtml(acc.goal || "Chinh phục Tiếng Anh")}</p>
+                            <div class="flex flex-wrap gap-3 mt-1 text-[11px] font-bold">
+                                <span class="text-amber-300">🔥 ${st.streak || 0} ngày</span>
+                                <span class="text-violet-300">📖 ${st.wordsLearned || 0} từ học (${st.wordsMastered || 0} thuộc)</span>
+                                <span class="text-cyan-300">⏱️ ${st.totalMinutes || 0} phút</span>
+                                ${st.avgScore !== null && st.avgScore !== undefined ? `<span class="text-emerald-300">🎯 TB ${st.avgScore}%</span>` : ""}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        ${!isCurrent ? `
+                            <button onclick="handleSwitchAccount('${acc.id}')" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold hover:opacity-95 transition">
+                                Chuyển vào học →
+                            </button>
+                            <button onclick="handleDeleteAccount('${acc.id}')" class="p-2 rounded-xl bg-rose-500/15 text-rose-300 hover:bg-rose-500/30" title="Xóa tài khoản này">🗑️</button>
+                        ` : `
+                            <button onclick="exportActiveAccountJSON()" class="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold">
+                                📥 Tải hồ sơ
+                            </button>
+                        `}
+                    </div>
+                </div>
+            `;
+        }).join("");
+    }
+}
+
+function handleSaveActiveAccountProfile() {
+    const name = document.getElementById("acc-edit-name")?.value || "";
+    const goal = document.getElementById("acc-edit-goal")?.value || "";
+    const avatar = document.getElementById("acc-edit-avatar")?.value || "🚀";
+    const pin = document.getElementById("acc-edit-pin")?.value || "";
+    updateActiveAccountProfile({ name, goal, avatar, pin });
+    syncAccountBadgesUI();
+    refreshDashboardUI();
+    renderAccountModalUI();
+    showToast("Đã cập nhật thông tin tài khoản của bạn!");
+}
+
+function handleCreateNewAccountSubmit() {
+    const name = (document.getElementById("new-acc-name")?.value || "").trim();
+    const username = (document.getElementById("new-acc-username")?.value || "").trim();
+    const goal = (document.getElementById("new-acc-goal")?.value || "Giao tiếp & Từ vựng toàn diện").trim();
+    const avatar = document.getElementById("new-acc-avatar")?.value || "🌟";
+    const pin = (document.getElementById("new-acc-pin")?.value || "").trim();
+
+    const res = createNewUserAccount({ name, username, avatar, goal, pin });
+    if (!res.ok) {
+        showToast(res.error, "error");
+        return;
+    }
+
+    document.getElementById("new-acc-name").value = "";
+    document.getElementById("new-acc-username").value = "";
+    document.getElementById("new-acc-pin").value = "";
+
+    applyStudyFilter();
+    renderWordList();
+    syncAccountBadgesUI();
+    refreshDashboardUI();
+    renderAccountModalUI();
+    closeAccountModal();
+    showToast(`🎉 Đã tạo và chuyển sang tài khoản riêng của "${res.account.name}"!`);
+}
+
+function handleSwitchAccount(accountId) {
+    const res = switchToUserAccount(accountId);
+    if (!res.ok) {
+        if (!res.cancelled && res.error) showToast(res.error, "error");
+        return;
+    }
+    applyStudyFilter();
+    renderWordList();
+    syncAccountBadgesUI();
+    navigateTo(activeMainPage, currentVocabSubTab);
+    renderAccountModalUI();
+    closeAccountModal();
+    showToast(`👋 Chào mừng quay lại, ${res.account.name}! Dữ liệu riêng của bạn đã được nạp.`);
+}
+
+function handleDeleteAccount(accountId) {
+    if (!confirm("Bạn có chắc muốn xóa tài khoản này khỏi thiết bị?")) return;
+    const res = deleteUserAccount(accountId);
+    if (!res.ok) {
+        showToast(res.error, "error");
+        return;
+    }
+    renderAccountModalUI();
+    showToast("Đã xóa tài khoản.");
+}
+
+function handleImportAccountFile(event) {
+    const file = event?.target?.files?.[0];
+    importUserAccountJSON(file, () => {
+        applyStudyFilter();
+        renderWordList();
+        syncAccountBadgesUI();
+        refreshDashboardUI();
+        renderAccountModalUI();
+    });
+    if (event?.target) event.target.value = "";
+}
+
 /* ==================== MASTER APPLICATION BOOTSTRAP ==================== */
 window.addEventListener("DOMContentLoaded", () => {
+    loadAccountsStore();
     loadSettings();
     loadDeckFromStorage();
     loadSRSState();
     loadProgressState();
     loadNotebook();
     loadCMSItems();
+    syncAccountBadgesUI();
+    syncCurrentAccountSnapshot();
 
     // Sync saved audio & level preferences
     speechRate = appSettings.speechRate || 1.0;

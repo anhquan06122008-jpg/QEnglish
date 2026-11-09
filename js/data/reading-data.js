@@ -5,7 +5,7 @@ const READING_PASSAGES = [
     title: 'My First Week at University',
     level: 'A2',
     topic: 'University Life',
-    passage: `Last week was my first week at FPT University. I was very nervous but also excited. On Monday, I arrived at the campus early. The campus is very big and modern. There are many buildings with classrooms, a library, and a canteen.
+    passage: `Last week was my first week at the university. I was very nervous but also excited. On Monday, I arrived at the campus early. The campus is very big and modern. There are many buildings with classrooms, a library, and a canteen.
 
 I met my classmates on the first day. They are friendly and come from many different cities in Vietnam. My teacher introduced herself and explained the rules of the class. We have to attend all classes and submit homework on time.
 
@@ -121,7 +121,7 @@ One popular example is AI-powered language learning apps. These apps can analyze
 
 AI tutors are another exciting development. These virtual tutors can answer students' questions 24 hours a day, seven days a week. Unlike human tutors, they never get tired or impatient. However, many experts believe that AI tutors cannot completely replace human teachers. Human teachers provide emotional support, motivation, and real-world experience that AI cannot offer.
 
-At FPT University, students are encouraged to use AI tools to support their studies. However, teachers remind students that AI should be a tool, not a replacement for critical thinking. Students still need to think independently, analyze information, and develop their own ideas. The best approach is to combine AI tools with traditional learning methods.
+At the university, students are encouraged to use AI tools to support their studies. However, teachers remind students that AI should be a tool, not a replacement for critical thinking. Students still need to think independently, analyze information, and develop their own ideas. The best approach is to combine AI tools with traditional learning methods.
 
 The future of AI in education looks promising. As technology continues to improve, AI tools will become even more helpful. But we must remember that the goal of education is not just to memorize facts — it is to develop creative, thoughtful, and responsible individuals.`,
     questions: [
@@ -158,13 +158,13 @@ The future of AI in education looks promising. As technology continues to improv
       },
       {
         type: 'fill_blank',
-        question: 'At FPT University, AI should be a tool, not a replacement for _______ thinking.',
+        question: 'At the university, AI should be a tool, not a replacement for _______ thinking.',
         answer: 'critical',
         explanation: 'AI nên là công cụ, không thay thế cho "critical thinking" - tư duy phản biện.'
       },
       {
         type: 'true_false_notgiven',
-        question: 'FPT University bans students from using AI tools.',
+        question: 'the university bans students from using AI tools.',
         options: ['True', 'False', 'Not Given'],
         answer: 'False',
         explanation: 'Ngược lại, bài viết nói "students are encouraged to use AI tools" - sinh viên được khuyến khích sử dụng AI.'
@@ -247,10 +247,10 @@ With good preparation, you can feel more confident and increase your chances of 
       },
       {
         type: 'true_false_notgiven',
-        question: 'Most FPT University graduates find jobs within one month.',
+        question: 'Most the university graduates find jobs within one month.',
         options: ['True', 'False', 'Not Given'],
         answer: 'Not Given',
-        explanation: 'Bài viết không đề cập đến thời gian sinh viên FPT tìm được việc - thông tin không được đưa ra.'
+        explanation: 'Bài viết không đề cập đến thời gian sinh viên đại học tìm được việc - thông tin không được đưa ra.'
       },
       {
         type: 'short_answer',
@@ -279,7 +279,7 @@ With good preparation, you can feel more confident and increase your chances of 
     topic: 'Learning English',
     passage: `In today's globalized world, knowing a second language is more important than ever. For Vietnamese students, English is the most popular second language to learn. But have you ever wondered why learning a new language is so beneficial?
 
-First, learning a second language improves your career opportunities. Many international companies in Vietnam, such as Samsung, Intel, and FPT Software, require employees to communicate in English. Workers who speak English often receive higher salaries and have more chances for promotion. In the technology industry, almost all programming documentation and technical resources are written in English.
+First, learning a second language improves your career opportunities. Many international companies in Vietnam, such as Samsung, Intel, and global tech companies, require employees to communicate in English. Workers who speak English often receive higher salaries and have more chances for promotion. In the technology industry, almost all programming documentation and technical resources are written in English.
 
 Second, learning a new language makes your brain stronger. Research shows that bilingual people have better memory, improved concentration, and stronger problem-solving skills. When you learn a new language, your brain creates new neural connections, which keeps it healthy and active. Some studies even suggest that being bilingual can delay the onset of diseases like Alzheimer's.
 
@@ -287,7 +287,7 @@ Third, knowing another language allows you to connect with people from different
 
 However, learning a new language requires time and effort. Many students give up because they expect quick results. Language experts recommend studying a little every day rather than studying a lot once a week. Consistency is the key to success. Setting small, achievable goals — such as learning five new words a day — can help you stay motivated.
 
-At FPT University, English is not just a subject; it is a skill that will accompany students throughout their careers. So keep practicing, and remember that every expert was once a beginner!`,
+At the university, English is not just a subject; it is a skill that will accompany students throughout their careers. So keep practicing, and remember that every expert was once a beginner!`,
     questions: [
       {
         type: 'multiple_choice',
@@ -516,7 +516,7 @@ Despite these challenges, it is important to recognize that AI also offers treme
 
 Proponents of remote work highlight numerous advantages. Employees save time and money by eliminating their daily commute. Studies have shown that remote workers often report higher levels of job satisfaction and productivity. The flexibility to choose when and where to work allows individuals to achieve a better work-life balance. Parents, for example, can be more present for their children while still meeting their professional responsibilities.
 
-For employers, remote work can reduce operational costs significantly. Companies can downsize their office space, lower utility bills, and access a global talent pool unrestricted by geographical boundaries. This is particularly relevant for the technology sector in Vietnam, where companies like FPT Software have embraced hybrid work models to attract top talent from across the country.
+For employers, remote work can reduce operational costs significantly. Companies can downsize their office space, lower utility bills, and access a global talent pool unrestricted by geographical boundaries. This is particularly relevant for the technology sector in Vietnam, where companies like global tech companies have embraced hybrid work models to attract top talent from across the country.
 
 However, remote work is not without its drawbacks. Many employees report feelings of isolation and loneliness when working from home for extended periods. The blurring of boundaries between work and personal life can lead to overwork and burnout. Without face-to-face interaction, building team cohesion and maintaining company culture becomes considerably more challenging.
 
@@ -563,10 +563,10 @@ Looking ahead, most experts predict that the future of work will be hybrid — a
       },
       {
         type: 'true_false_notgiven',
-        question: 'FPT Software has adopted a fully remote work model.',
+        question: 'global tech companies has adopted a fully remote work model.',
         options: ['True', 'False', 'Not Given'],
         answer: 'False',
-        explanation: 'Bài viết nói FPT Software "embraced hybrid work models" - mô hình làm việc kết hợp, không phải hoàn toàn từ xa.'
+        explanation: 'Bài viết nói global tech companies "embraced hybrid work models" - mô hình làm việc kết hợp, không phải hoàn toàn từ xa.'
       },
       {
         type: 'short_answer',
@@ -698,7 +698,7 @@ Hierarchy and decision-making processes differ as well. In many Western organiza
 
 Gift-giving etiquette presents another area of cultural variation. In Vietnam, gifts are commonly exchanged during business meetings, holidays, and special occasions. However, in some Western countries, business gifts may be viewed with suspicion or even considered unethical, particularly if they are expensive. Knowing when and how to give gifts appropriately can strengthen or damage a business relationship.
 
-For FPT University students preparing for international careers, developing cultural intelligence is just as important as developing technical skills. Reading about different cultures, traveling when possible, and building friendships with international students are all valuable ways to broaden one's cultural perspective.`,
+For the university students preparing for international careers, developing cultural intelligence is just as important as developing technical skills. Reading about different cultures, traveling when possible, and building friendships with international students are all valuable ways to broaden one's cultural perspective.`,
     questions: [
       {
         type: 'multiple_choice',

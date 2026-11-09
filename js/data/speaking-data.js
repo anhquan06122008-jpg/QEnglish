@@ -5,19 +5,19 @@ const SPEAKING_TOPICS = [
     title: 'Greeting and Self-Introduction',
     level: 'A1',
     type: 'conversation',
-    prompt: 'Practice introducing yourself to a new classmate at FPT University. Share your name, where you come from, and what you study.',
-    promptVi: 'Thực hành giới thiệu bản thân với một bạn cùng lớp mới tại Đại học FPT. Chia sẻ tên, quê quán và ngành học của bạn.',
+    prompt: 'Practice introducing yourself to a new classmate at the university. Share your name, where you come from, and what you study.',
+    promptVi: 'Thực hành giới thiệu bản thân với một bạn cùng lớp mới tại trường đại học. Chia sẻ tên, quê quán và ngành học của bạn.',
     suggestedQuestions: [
       'What is your name?',
       'Where are you from?',
-      'What do you study at FPT University?',
+      'What do you study at the university?',
       'How old are you?',
       'What do you like to do in your free time?'
     ],
     suggestedQuestionsVi: [
       'Bạn tên là gì?',
       'Bạn đến từ đâu?',
-      'Bạn học ngành gì tại Đại học FPT?',
+      'Bạn học ngành gì tại trường đại học?',
       'Bạn bao nhiêu tuổi?',
       'Bạn thích làm gì trong thời gian rảnh?'
     ],
@@ -26,7 +26,7 @@ const SPEAKING_TOPICS = [
       'I\'m studying...', 'I\'m a first-year student.', 'How about you?',
       'I like to...', 'What\'s your major?'
     ],
-    sampleAnswer: 'Hi! My name is Minh. Nice to meet you! I\'m from Da Nang, and I\'m 19 years old. I\'m a first-year student at FPT University, and I\'m studying Software Engineering. In my free time, I like to play football and listen to music. What about you? What\'s your name and where are you from?',
+    sampleAnswer: 'Hi! My name is Minh. Nice to meet you! I\'m from Da Nang, and I\'m 19 years old. I\'m a first-year student at the university, and I\'m studying Software Engineering. In my free time, I like to play football and listen to music. What about you? What\'s your name and where are you from?',
     duration: 60
   },
   {
@@ -34,8 +34,8 @@ const SPEAKING_TOPICS = [
     title: 'My Daily Life',
     level: 'A1',
     type: 'monologue',
-    prompt: 'Talk about your typical day as a student at FPT University. Describe what you do from morning to evening.',
-    promptVi: 'Nói về một ngày bình thường của bạn với tư cách sinh viên Đại học FPT. Mô tả những gì bạn làm từ sáng đến tối.',
+    prompt: 'Talk about your typical day as a student at the university. Describe what you do from morning to evening.',
+    promptVi: 'Nói về một ngày bình thường của bạn với tư cách sinh viên trường đại học. Mô tả những gì bạn làm từ sáng đến tối.',
     suggestedQuestions: [
       'What time do you usually wake up?',
       'How do you get to university?',
@@ -55,7 +55,7 @@ const SPEAKING_TOPICS = [
       'After class, I...', 'In the evening, I...', 'I go to bed at...',
       'I take the bus to...', 'I have lunch at the canteen.'
     ],
-    sampleAnswer: 'I usually wake up at 6:30 in the morning. First, I take a shower and have breakfast. Then I go to FPT University by bus. My classes start at 8 o\'clock. I study until 11:30 and then have lunch at the canteen. In the afternoon, I have more classes or study at the library. After class, I go home and do my homework. In the evening, I sometimes play games or watch YouTube. I usually go to bed at 11 o\'clock.',
+    sampleAnswer: 'I usually wake up at 6:30 in the morning. First, I take a shower and have breakfast. Then I go to the university by bus. My classes start at 8 o\'clock. I study until 11:30 and then have lunch at the canteen. In the afternoon, I have more classes or study at the library. After class, I go home and do my homework. In the evening, I sometimes play games or watch YouTube. I usually go to bed at 11 o\'clock.',
     duration: 60
   },
   {
@@ -116,7 +116,7 @@ const SPEAKING_TOPICS = [
       'What I love most about my hometown is...',
       'There are many... in my hometown.', 'You should visit...'
     ],
-    sampleAnswer: 'My hometown is Hue, and it is located in central Vietnam. It is famous for its beautiful ancient buildings and delicious food, like bun bo Hue. The weather is hot in summer and rainy in winter. People there are very friendly and kind. There are many temples and pagodas to visit. What I love most about my hometown is the Perfume River — it is very peaceful, especially in the evening. I hope to go back and live there someday after I finish my studies at FPT.',
+    sampleAnswer: 'My hometown is Hue, and it is located in central Vietnam. It is famous for its beautiful ancient buildings and delicious food, like bun bo Hue. The weather is hot in summer and rainy in winter. People there are very friendly and kind. There are many temples and pagodas to visit. What I love most about my hometown is the Perfume River — it is very peaceful, especially in the evening. I hope to go back and live there someday after I finish my studies at university.',
     duration: 90
   },
   {
@@ -145,7 +145,7 @@ const SPEAKING_TOPICS = [
       'I\'m planning to...', 'Let\'s go to...', 'I\'d love to!',
       'Sorry, I\'m busy on...', 'What time works for you?'
     ],
-    sampleAnswer: 'This weekend, I\'m planning to go to the new shopping mall near FPT University. I heard there are some good restaurants there. On Saturday morning, I need to finish my programming homework, but in the afternoon I\'m free. How about we go together? We could have lunch and then watch a movie. On Sunday, I want to rest and maybe play some games online. What are your plans? Do you want to join me on Saturday?',
+    sampleAnswer: 'This weekend, I\'m planning to go to the new shopping mall near the university. I heard there are some good restaurants there. On Saturday morning, I need to finish my programming homework, but in the afternoon I\'m free. How about we go together? We could have lunch and then watch a movie. On Sunday, I want to rest and maybe play some games online. What are your plans? Do you want to join me on Saturday?',
     duration: 90
   },
   {
@@ -181,11 +181,11 @@ const SPEAKING_TOPICS = [
   // ============ B1 LEVEL ============
   {
     id: 's-b1-01',
-    title: 'University Life at FPT',
+    title: 'University Life at university',
     level: 'B1',
     type: 'monologue',
-    prompt: 'Talk about your experience as a student at FPT University. Discuss the courses, campus life, challenges, and what you enjoy most.',
-    promptVi: 'Nói về trải nghiệm của bạn với tư cách sinh viên tại Đại học FPT. Thảo luận về các khóa học, đời sống sinh viên, thách thức và điều bạn thích nhất.',
+    prompt: 'Talk about your experience as a student at the university. Discuss the courses, campus life, challenges, and what you enjoy most.',
+    promptVi: 'Nói về trải nghiệm của bạn với tư cách sinh viên tại trường đại học. Thảo luận về các khóa học, đời sống sinh viên, thách thức và điều bạn thích nhất.',
     suggestedQuestions: [
       'What do you study and why did you choose this major?',
       'What is your favorite course so far?',
@@ -201,12 +201,12 @@ const SPEAKING_TOPICS = [
       'Bạn sẽ đưa ra lời khuyên gì cho sinh viên mới?'
     ],
     usefulPhrases: [
-      'I\'m currently studying...', 'What I enjoy most about FPT is...',
+      'I\'m currently studying...', 'What I enjoy most about my university is...',
       'One of the biggest challenges is...', 'I manage my time by...',
       'I would recommend that new students...', 'In my experience...',
       'The most valuable thing I\'ve learned is...'
     ],
-    sampleAnswer: 'I\'m currently a second-year student at FPT University, studying Software Engineering. I chose this major because I\'ve always been interested in technology and programming. My favorite course so far has been Web Development because we get to build real projects. The campus life at FPT is very active — there are many clubs and events. One of the biggest challenges for me is managing my time, especially during exam season when I have multiple projects due at the same time. I manage this by making a weekly schedule and prioritizing my tasks. What I enjoy most about FPT is the practical approach to learning. We don\'t just study theory; we actually build things. My advice for new students would be to join a club, make friends, and don\'t be afraid to ask questions in class.',
+    sampleAnswer: 'I\'m currently a second-year student at the university, studying Software Engineering. I chose this major because I\'ve always been interested in technology and programming. My favorite course so far has been Web Development because we get to build real projects. The campus life at university is very active — there are many clubs and events. One of the biggest challenges for me is managing my time, especially during exam season when I have multiple projects due at the same time. I manage this by making a weekly schedule and prioritizing my tasks. What I enjoy most about my university is the practical approach to learning. We don\'t just study theory; we actually build things. My advice for new students would be to join a club, make friends, and don\'t be afraid to ask questions in class.',
     duration: 120
   },
   {
@@ -236,7 +236,7 @@ const SPEAKING_TOPICS = [
       'It\'s hard to imagine life without...', 'The main advantage/disadvantage is...',
       'Looking ahead, I think...'
     ],
-    sampleAnswer: 'Technology has significantly changed almost every aspect of our lives. In terms of education, I remember during COVID-19, all our classes at FPT moved online, and we used Zoom and Google Classroom every day. It was challenging at first, but it showed us that learning doesn\'t have to happen in a physical classroom. Personally, I think smartphones are both helpful and distracting. They help me access information quickly and communicate with my classmates, but I often catch myself scrolling through social media when I should be studying. The technology I couldn\'t live without is probably my laptop because I need it for coding and all my university work. Looking ahead, I believe AI will change how we learn and work. As an IT student, I find this both exciting and a little concerning because it means we need to keep updating our skills constantly.',
+    sampleAnswer: 'Technology has significantly changed almost every aspect of our lives. In terms of education, I remember during COVID-19, all our classes at university moved online, and we used Zoom and Google Classroom every day. It was challenging at first, but it showed us that learning doesn\'t have to happen in a physical classroom. Personally, I think smartphones are both helpful and distracting. They help me access information quickly and communicate with my classmates, but I often catch myself scrolling through social media when I should be studying. The technology I couldn\'t live without is probably my laptop because I need it for coding and all my university work. Looking ahead, I believe AI will change how we learn and work. As an IT student, I find this both exciting and a little concerning because it means we need to keep updating our skills constantly.',
     duration: 120
   },
   {
@@ -298,7 +298,7 @@ const SPEAKING_TOPICS = [
       'The demand for... is increasing.', 'This raises the question of...',
       'To remain competitive, developers need to...', 'Taking everything into account...'
     ],
-    sampleAnswer: 'The IT industry is rapidly evolving, and I think the most significant change we\'re seeing is the integration of AI into software development. Tools like GitHub Copilot and ChatGPT are already helping developers write code faster, which means the role of a software developer is shifting. Rather than just writing code, developers will need to be skilled at designing systems, understanding business requirements, and working effectively with AI tools. In my view, the most important skills for future developers are problem-solving, system design, and adaptability. Soft skills like communication and teamwork are becoming equally important because most projects involve collaboration across teams and even countries. Regarding remote work, the pandemic proved that many IT jobs can be done remotely, and I think hybrid work models will become the standard. As an FPT student, I\'m particularly excited about cloud computing and AI/ML because I believe these technologies will shape the next decade of software development.',
+    sampleAnswer: 'The IT industry is rapidly evolving, and I think the most significant change we\'re seeing is the integration of AI into software development. Tools like GitHub Copilot and ChatGPT are already helping developers write code faster, which means the role of a software developer is shifting. Rather than just writing code, developers will need to be skilled at designing systems, understanding business requirements, and working effectively with AI tools. In my view, the most important skills for future developers are problem-solving, system design, and adaptability. Soft skills like communication and teamwork are becoming equally important because most projects involve collaboration across teams and even countries. Regarding remote work, the pandemic proved that many IT jobs can be done remotely, and I think hybrid work models will become the standard. As an IT student, I\'m particularly excited about cloud computing and AI/ML because I believe these technologies will shape the next decade of software development.',
     duration: 150
   },
   {
@@ -329,7 +329,7 @@ const SPEAKING_TOPICS = [
       'Both individual and collective action are needed.',
       'Sustainability should be at the heart of...'
     ],
-    sampleAnswer: 'Environmental issues are among the most pressing challenges of our generation, and I believe young people, especially university students, have a crucial role to play. The problem that concerns me most is plastic pollution, particularly in Vietnam where single-use plastics are still very common. At FPT University, students can start with simple actions like using reusable water bottles and bags, reducing food waste, and choosing public transport or cycling. However, individual actions alone are not enough. We need collective efforts such as organizing campus clean-up events, creating awareness campaigns on social media, and even developing technology solutions. As IT students, we\'re in a unique position because we can build apps and platforms that help people track their carbon footprint or connect recycling services. I strongly believe that environmental education should be integrated into university curricula because understanding the science behind climate change is essential for making informed decisions.',
+    sampleAnswer: 'Environmental issues are among the most pressing challenges of our generation, and I believe young people, especially university students, have a crucial role to play. The problem that concerns me most is plastic pollution, particularly in Vietnam where single-use plastics are still very common. At the university, students can start with simple actions like using reusable water bottles and bags, reducing food waste, and choosing public transport or cycling. However, individual actions alone are not enough. We need collective efforts such as organizing campus clean-up events, creating awareness campaigns on social media, and even developing technology solutions. As IT students, we\'re in a unique position because we can build apps and platforms that help people track their carbon footprint or connect recycling services. I strongly believe that environmental education should be integrated into university curricula because understanding the science behind climate change is essential for making informed decisions.',
     duration: 150
   },
   {
@@ -424,7 +424,7 @@ const SPEAKING_TOPICS = [
       'This represents a departure from...', 'It would be reductive to suggest that...',
       'A more sophisticated analysis reveals...', 'The interplay between... and... is complex.'
     ],
-    sampleAnswer: 'Globalization has had a profound impact on Vietnamese culture, manifesting in ways that are both visible and subtle. The most obvious changes can be observed in urban areas like Ho Chi Minh City and Hanoi, where international fast-food chains, Western fashion brands, and K-pop culture have become ubiquitous. Young Vietnamese people, including students at universities like FPT, consume global media daily through platforms such as Netflix, YouTube, and TikTok, which inevitably shapes their worldview and cultural preferences. However, it would be reductive to suggest that globalization is simply erasing Vietnamese identity. A more sophisticated analysis reveals what scholars call "glocalization" — the adaptation of global trends to local contexts. For example, Vietnamese coffee culture has not been displaced by Starbucks; rather, establishments like Highlands Coffee have blended international café aesthetics with distinctly Vietnamese flavors and traditions. Similarly, while young people embrace global fashion trends, traditional áo dài remains a proud symbol of cultural identity worn at important occasions. What is particularly noteworthy about Vietnam\'s experience is the resilience of family-centered values and community bonds, which continue to anchor cultural identity even as younger generations adopt more individualistic lifestyles. The interplay between the global and the local is complex, and Vietnam\'s ability to selectively adopt and adapt foreign influences while maintaining its cultural core suggests that globalization need not be a zero-sum game for cultural identity.',
+    sampleAnswer: 'Globalization has had a profound impact on Vietnamese culture, manifesting in ways that are both visible and subtle. The most obvious changes can be observed in urban areas like Ho Chi Minh City and Hanoi, where international fast-food chains, Western fashion brands, and K-pop culture have become ubiquitous. Young Vietnamese people, including students at modern universities, consume global media daily through platforms such as Netflix, YouTube, and TikTok, which inevitably shapes their worldview and cultural preferences. However, it would be reductive to suggest that globalization is simply erasing Vietnamese identity. A more sophisticated analysis reveals what scholars call "glocalization" — the adaptation of global trends to local contexts. For example, Vietnamese coffee culture has not been displaced by Starbucks; rather, establishments like Highlands Coffee have blended international café aesthetics with distinctly Vietnamese flavors and traditions. Similarly, while young people embrace global fashion trends, traditional áo dài remains a proud symbol of cultural identity worn at important occasions. What is particularly noteworthy about Vietnam\'s experience is the resilience of family-centered values and community bonds, which continue to anchor cultural identity even as younger generations adopt more individualistic lifestyles. The interplay between the global and the local is complex, and Vietnam\'s ability to selectively adopt and adapt foreign influences while maintaining its cultural core suggests that globalization need not be a zero-sum game for cultural identity.',
     duration: 180
   }
 ];
@@ -632,7 +632,7 @@ const CONVERSATION_STARTERS = [
     followUps: [
       'What alternatives to a university degree exist?',
       'Do employers value experience or qualifications more?',
-      'Has studying at FPT changed your perspective on this?'
+      'Has studying at university changed your perspective on this?'
     ]
   },
   {
