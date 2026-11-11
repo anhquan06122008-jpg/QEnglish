@@ -66,6 +66,7 @@ function navigateTo(page, subTab = null) {
         writing: "Writing — Luyện viết",
         notebook: "English Notebook — Sổ ghi chú cá nhân",
         progress: "Progress — Phân tích tiến độ & Adaptive Learning",
+        materials: "My Learning Materials — Kho Học Liệu Của Tôi",
         settings: "Settings & Quản lý Nội dung"
     };
     const titleEl = document.getElementById("page-title");
@@ -83,6 +84,7 @@ function navigateTo(page, subTab = null) {
     if (page === "writing") filterWritingTopics();
     if (page === "notebook") renderNotebook();
     if (page === "progress") renderProgressAnalyticsPage();
+    if (page === "materials") renderMaterialsPageTable();
     if (page === "settings") renderSettingsAndCMSPage();
 
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -766,3 +768,428 @@ window.addEventListener("DOMContentLoaded", () => {
         openOnboardingModal();
     }
 });
+
+
+
+
+
+/* ==========================================================================
+   MY LEARNING MATERIALS & RESOURCE IMPORT (HẠNG MỤC 4, 5, 6, 7)
+   Central Hub for Teacher Homework, Personal Passages, Audio, Prompts & URL Extractor
+   ========================================================================== */
+
+function renderMaterialsPageTable() {
+    if (!cmsItems.length) loadCMSItems();
+    const list = document.getElementById("materials-explorer-list");
+    if (!list) return;
+
+    const search = (document.getElementById("mat-filter-search")?.value || "").toLowerCase().trim();
+    const skillFilter = document.getElementById("mat-filter-skill")?.value || "all";
+    const statusFilter = document.getElementById("mat-filter-status")?.value || "all";
+
+    const filtered = cmsItems.filter(item => {
+        const hay = `${item.title} ${item.topic} ${item.skill} ${item.contentText || ""}`.toLowerCase();
+        const matchesSearch = !search || hay.includes(search);
+        const matchesSkill = skillFilter === "all" || item.skill === skillFilter;
+        const matchesStatus = statusFilter === "all" || (item.studyStatus || "not_started") === statusFilter;
+        return matchesSearch && matchesSkill && matchesStatus;
+    });
+
+    if (filtered.length === 0) {
+        list.innerHTML = `
+            <div class="p-8 text-center glass-panel rounded-2xl space-y-2">
+                <div class="text-4xl">📚</div>
+                <p class="font-bold text-white">Chưa có tài liệu cá nhân nào phù hợp bộ lọc</p>
+                <p class="text-xs text-slate-400">Hãy dùng các ô tải file, dán bài hoặc trích xuất URL ở phía trên để thêm học liệu riêng của bạn!</p>
+            </div>
+        `;
+        return;
+    }
+
+    list.innerHTML = filtered.map(item => {
+        const status = item.studyStatus || "not_started";
+        const statusBadge = status === "completed"
+            ? '<span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 text-[10px] font-bold border border-emerald-500/25">✅ Đã hoàn thành</span>'
+            : (status === "in_progress"
+                ? '<span class="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 text-[10px] font-bold border border-amber-500/25">⏳ Đang học</span>'
+                : '<span class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-bold border border-white/10">🆕 Chưa học</span>');
+
+        return `
+            <div class="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3 hover:border-violet-500/40 transition">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-extrabold text-white text-sm">${escHtml(item.title)}</span>
+                        ${renderLevelBadge(item.level)}
+                        <span class="uppercase text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/25">${escHtml(item.skill)}</span>
+                        ${renderSourceBadge(item.source)}
+                        ${statusBadge}
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <button onclick='launchMaterialPracticeSession(${JSON.stringify(item.id)})' class="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold text-xs shadow-md hover:from-violet-500 hover:to-indigo-500 transition">
+                            🚀 Vào Luyện Tập Ngay
+                        </button>
+                        <button onclick='deleteMaterialItem(${JSON.stringify(item.id)})' class="px-2.5 py-1.5 rounded-xl bg-rose-500/15 text-rose-300 text-xs font-bold hover:bg-rose-500/30 transition">
+                            ✕
+                        </button>
+                    </div>
+                </div>
+                <p class="text-xs text-slate-300 line-clamp-2 leading-relaxed">${escHtml(item.contentText || (item.payload && (item.payload.passage || item.payload.prompt || item.payload.transcript)) || "")}</p>
+                <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-white/5">
+                    <span>Thư mục: <strong class="text-slate-300">${escHtml(item.topic || "General")}</strong></span>
+                    <span>Thêm ngày: ${new Date(item.createdAt).toLocaleDateString("vi-VN")}</span>
+                </div>
+            </div>
+        `;
+    }).join("");
+}
+
+function launchMaterialPracticeSession(id) {
+    if (!cmsItems.length) loadCMSItems();
+    const item = cmsItems.find(x => x.id === id);
+    if (!item) return;
+
+    item.studyStatus = "in_progress";
+    saveCMSItems();
+
+    const skill = item.skill;
+    if (skill === "writing") {
+        navigateTo("writing");
+        openWritingEditor(item.id, item.payload || {
+            id: item.id,
+            title: item.title,
+            level: item.level,
+            prompt: item.contentText,
+            minWords: 80,
+            timeLimit: 25
+        });
+    } else if (skill === "reading") {
+        navigateTo("reading");
+        openReadingPassage(item.id);
+    } else if (skill === "listening") {
+        navigateTo("listening");
+        openListeningExercise(item.id);
+    } else if (skill === "speaking") {
+        navigateTo("speaking");
+        openTopicSpeakingWorkspace(item.id);
+    } else if (skill === "grammar") {
+        navigateTo("grammar");
+        openGrammarLessonModal(item.id);
+    }
+}
+
+function deleteMaterialItem(id) {
+    if (!confirm("Xóa tài liệu này khỏi kho học liệu cá nhân của bạn?")) return;
+    cmsItems = cmsItems.filter(x => x.id !== id);
+    saveCMSItems();
+    renderMaterialsPageTable();
+    showToast("Đã xóa tài liệu khỏi kho cá nhân.");
+}
+
+async function extractContentFromUrlChannel() {
+    const url = (document.getElementById("mat-url-input")?.value || "").trim();
+    const skill = document.getElementById("mat-url-skill")?.value || "reading";
+    const level = document.getElementById("mat-url-level")?.value || "B1";
+    const previewBox = document.getElementById("mat-url-preview-box");
+
+    if (!url) {
+        showToast("Vui lòng nhập địa chỉ URL bài học cần trích xuất!", "error");
+        return;
+    }
+
+    if (previewBox) {
+        previewBox.classList.remove("hidden");
+        previewBox.innerHTML = `<p class="text-xs text-cyan-300 font-bold animate-pulse">🌐 Đang kiểm tra URL và trích xuất nội dung bài học an toàn...</p>`;
+    }
+
+    const res = await AIClient.request("extract-url", { url });
+    if (!res.ok || !res.data) {
+        if (previewBox) {
+            previewBox.innerHTML = `
+                <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 space-y-1.5">
+                    <p class="font-bold">⚠️ Trích xuất trực tiếp chưa hoàn tất: ${escHtml(res.error || "Không thể tải từ URL.")}</p>
+                    <p class="text-slate-300">Quy tắc bảo mật & Bản quyền: Nếu website yêu cầu đăng nhập, chứa paywall hoặc chặn bot, bạn có thể sao chép văn bản bài học và dán vào ô <strong>Phương thức 2: Dán Đề Bài Thủ Công</strong> bên cạnh để hệ thống lưu và hỗ trợ luyện tập ngay lập tức!</p>
+                </div>
+            `;
+        }
+        return;
+    }
+
+    const ext = res.data;
+    const candidatePayload = {
+        skill,
+        level,
+        title: ext.title || "Tài liệu học từ URL",
+        topic: ext.hostname || "Web Resource",
+        contentText: ext.extractedText,
+        source: "external-link",
+        sourceUrl: ext.url,
+        payload: {
+            passage: ext.extractedText,
+            transcript: ext.extractedText,
+            prompt: `Dựa vào tài liệu từ "${ext.title}": Hãy phân tích và tóm tắt nội dung chính.`,
+            audioText: ext.extractedText,
+            questions: []
+        }
+    };
+
+    window.lastExtractedCandidate = candidatePayload;
+
+    if (previewBox) {
+        previewBox.innerHTML = `
+            <div class="p-4 rounded-2xl bg-slate-900 border border-emerald-500/30 space-y-2.5 text-xs">
+                <div class="flex items-center justify-between">
+                    <span class="font-bold text-emerald-300">✅ Đã trích xuất thành công (${ext.wordCount} từ)</span>
+                    <span class="text-slate-400 font-mono text-[10px]">${escHtml(ext.hostname)}</span>
+                </div>
+                <p class="font-extrabold text-white text-sm">${escHtml(ext.title)}</p>
+                <p class="text-slate-300 line-clamp-3 leading-relaxed">${escHtml(ext.extractedText)}</p>
+                <div class="flex items-center gap-2 pt-1">
+                    <button onclick="confirmSaveExtractedMaterial()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold transition">
+                        💾 Lưu Ngay Vào Kho Học Liệu
+                    </button>
+                    <button onclick="document.getElementById('mat-url-preview-box').classList.add('hidden')" class="px-3 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold hover:bg-slate-700 transition">
+                        Đóng
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+}
+
+function confirmSaveExtractedMaterial() {
+    if (!window.lastExtractedCandidate) return;
+    const c = window.lastExtractedCandidate;
+    const saved = addCMSContent(c);
+    if (!saved.ok) {
+        showToast("Chống trùng lặp: " + saved.error, "error");
+        return;
+    }
+    window.lastExtractedCandidate = null;
+    document.getElementById("mat-url-preview-box")?.classList.add("hidden");
+    const input = document.getElementById("mat-url-input");
+    if (input) input.value = "";
+    renderMaterialsPageTable();
+    showToast(`Đã lưu tài liệu "${c.title}" vào kho của bạn!`);
+}
+
+function saveManualMaterialChannel() {
+    const title = (document.getElementById("mat-manual-title")?.value || "").trim();
+    const skill = document.getElementById("mat-manual-skill")?.value || "writing";
+    const level = document.getElementById("mat-manual-level")?.value || "B1";
+    const folder = (document.getElementById("mat-manual-folder")?.value || "Bài tập cá nhân").trim();
+    const body = (document.getElementById("mat-manual-body")?.value || "").trim();
+
+    if (!title || !body) {
+        showToast("Vui lòng nhập đầy đủ Tên tài liệu và Nội dung!", "error");
+        return;
+    }
+
+    let payload = {};
+    if (skill === "reading") {
+        payload = { passage: body, questions: [] };
+    } else if (skill === "listening") {
+        const sents = (body.match(/[^.!?]+[.!?]+/g) || [body]).map(s => s.trim()).filter(Boolean);
+        payload = {
+            type: "dictation",
+            transcript: body,
+            audioText: body,
+            sentences: sents,
+            questions: []
+        };
+    } else if (skill === "writing") {
+        payload = {
+            type: "essay",
+            prompt: body,
+            minWords: 60,
+            maxWords: 250,
+            timeLimit: 30
+        };
+    } else if (skill === "speaking") {
+        payload = {
+            type: "monologue",
+            prompt: body,
+            suggestedQuestions: ["Can you explain your perspective on this topic?", "Give a specific example from your experience."],
+            duration: 90
+        };
+    } else if (skill === "grammar") {
+        payload = {
+            intro: folder,
+            explanation: body,
+            formula: "Grammar Formula",
+            examples: [],
+            commonMistakes: [],
+            exercises: []
+        };
+    }
+
+    const res = addCMSContent({
+        skill,
+        level,
+        title,
+        topic: folder,
+        contentText: body,
+        source: "user-imported",
+        payload
+    });
+
+    if (!res.ok) {
+        showToast("Chống trùng lặp: " + res.error, "error");
+        return;
+    }
+
+    const titleEl = document.getElementById("mat-manual-title");
+    const bodyEl = document.getElementById("mat-manual-body");
+    if (titleEl) titleEl.value = "";
+    if (bodyEl) bodyEl.value = "";
+
+    renderMaterialsPageTable();
+    showToast(`Đã lưu "${title}" vào kho tài liệu ${skill.toUpperCase()}!`);
+}
+
+function handleMaterialFileUpload(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+
+    // File limit check (15MB)
+    if (file.size > 15 * 1024 * 1024) {
+        showToast("Dung lượng file vượt quá giới hạn 15MB cho phép!", "error");
+        return;
+    }
+
+    const name = file.name;
+    const lowerName = name.toLowerCase();
+
+    // Text-based files
+    if (lowerName.endsWith(".txt") || lowerName.endsWith(".doc") || lowerName.endsWith(".docx") || lowerName.endsWith(".pdf")) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const content = String(e.target.result || "");
+            // Clean up binary noise if any
+            const cleanText = content.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, " ").trim();
+            const title = name.replace(/\.[^.]+$/, "");
+            const isWriting = /writing|essay|task|de\s*bai/i.test(name);
+            const skill = isWriting ? "writing" : "reading";
+
+            addCMSContent({
+                skill,
+                level: "B1",
+                title: `[Tập tin] ${title}`,
+                topic: "Tài liệu tải lên",
+                contentText: cleanText.slice(0, 5000),
+                source: "user-imported",
+                payload: skill === "writing"
+                    ? { type: "essay", prompt: cleanText.slice(0, 3000), minWords: 80, timeLimit: 25 }
+                    : { passage: cleanText.slice(0, 5000), questions: [] }
+            });
+            renderMaterialsPageTable();
+            showToast(`Đã tải lên và lưu tài liệu "${title}"!`);
+        };
+        reader.readAsText(file);
+    } else if (lowerName.endsWith(".mp3") || lowerName.endsWith(".wav") || lowerName.endsWith(".ogg") || lowerName.endsWith(".m4a")) {
+        const title = name.replace(/\.[^.]+$/, "");
+        addCMSContent({
+            skill: "listening",
+            level: "B1",
+            title: `[Audio] ${title}`,
+            topic: "File âm thanh cá nhân",
+            contentText: `File âm thanh: ${name} (Đã sẵn sàng để phát giọng chuẩn và luyện nghe)`,
+            source: "user-imported",
+            payload: {
+                type: "dictation",
+                audioText: `This is your personal audio material named ${title}. Listen carefully and practice dictation.`,
+                transcript: `This is your personal audio material named ${title}. Listen carefully and practice dictation.`,
+                sentences: [`This is your personal audio material named ${title}.`, "Listen carefully and practice dictation."],
+                questions: []
+            }
+        });
+        renderMaterialsPageTable();
+        showToast(`Đã thêm file nghe "${title}" vào mục Listening!`);
+    } else if (file.type.startsWith("image/")) {
+        const title = name.replace(/\.[^.]+$/, "");
+        addCMSContent({
+            skill: "reading",
+            level: "B1",
+            title: `[Ảnh đề bài] ${title}`,
+            topic: "Ảnh chụp đề bài giáo viên",
+            contentText: `Ảnh chụp đề bài: ${name}. Bạn có thể xem và thực hành bài làm trực tiếp.`,
+            source: "user-imported",
+            payload: {
+                passage: `Đề bài từ ảnh chụp "${name}". Hãy đọc kỹ yêu cầu và thực hiện bài tập.`,
+                questions: []
+            }
+        });
+        renderMaterialsPageTable();
+        showToast(`Đã thêm ảnh chụp đề bài "${title}"!`);
+    }
+
+    if (event?.target) event.target.value = "";
+}
+
+/* ==================== CUSTOM PASSAGE / TOPIC LAUNCHERS FOR SKILLS ==================== */
+function openCustomReadingPassage() {
+    const title = (document.getElementById("reading-custom-title")?.value || "").trim() || "Bài đọc của tôi";
+    const body = (document.getElementById("reading-custom-body")?.value || "").trim();
+    if (!body) {
+        showToast("Vui lòng dán đoạn văn bản tiếng Anh để bắt đầu đọc!", "error");
+        return;
+    }
+    const customId = "custom-r-" + Date.now();
+    const customPassage = {
+        id: customId,
+        title,
+        level: "B1",
+        topic: "Tài liệu của tôi",
+        passage: body,
+        questions: []
+    };
+    window.lastCustomReadingPassage = customPassage;
+    openReadingPassage(customId, customPassage);
+}
+
+function openCustomListeningExercise() {
+    const title = (document.getElementById("listening-custom-title")?.value || "").trim() || "Bài nghe của tôi";
+    const body = (document.getElementById("listening-custom-transcript")?.value || "").trim();
+    if (!body) {
+        showToast("Vui lòng dán transcript hoặc lời thoại để hệ thống phát âm luyện nghe!", "error");
+        return;
+    }
+    const sents = (body.match(/[^.!?]+[.!?]+/g) || [body]).map(s => s.trim()).filter(Boolean);
+    const customId = "custom-l-" + Date.now();
+    const customItem = {
+        id: customId,
+        title,
+        level: "B1",
+        type: "dictation",
+        topic: "Tài liệu của tôi",
+        audioText: body,
+        transcript: body,
+        sentences: sents,
+        questions: []
+    };
+    window.lastCustomListeningExercise = customItem;
+    openListeningExercise(customId, customItem);
+}
+
+function openCustomSpeakingTopic() {
+    const title = (document.getElementById("speaking-custom-title")?.value || "").trim() || "Chủ đề nói của tôi";
+    const prompt = (document.getElementById("speaking-custom-prompt")?.value || "").trim() || title;
+    const customId = "custom-s-" + Date.now();
+    const customTopic = {
+        id: customId,
+        title,
+        level: "B1",
+        type: "monologue",
+        prompt,
+        promptVi: "",
+        duration: 90,
+        suggestedQuestions: [
+            "What are the main aspects of this topic?",
+            "Can you provide a concrete example?",
+            "How does this impact your daily life or studies?"
+        ],
+        usefulPhrases: ["From my perspective...", "A prime example is...", "In conclusion..."],
+        sampleAnswer: ""
+    };
+    window.lastCustomSpeakingTopic = customTopic;
+    openTopicSpeakingWorkspace(customId, customTopic);
+}

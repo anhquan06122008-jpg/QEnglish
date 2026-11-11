@@ -247,7 +247,134 @@ Return JSON:
     throw err;
 }
 
+async function extractFromPublicUrl(targetUrl) {
+    let parsed;
+    try {
+        parsed = new URL(targetUrl);
+    } catch {
+        const err = new Error("Địa chỉ URL không hợp lệ.");
+        err.statusCode = 400;
+        throw err;
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        const err = new Error("Chỉ hỗ trợ giao thức HTTP hoặc HTTPS.");
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const hostname = parsed.hostname.toLowerCase();
+    // Block loopback and local private networks (SSRF defense)
+    if (
+        hostname === "localhost" ||
+        hostname === "127.0.0.1" ||
+        hostname === "0.0.0.0" ||
+        hostname.startsWith("192.168.") ||
+        hostname.startsWith("10.") ||
+        hostname.endsWith(".local") ||
+        hostname.endsWith(".internal")
+    ) {
+        const err = new Error("Không được phép truy cập địa chỉ mạng nội bộ (SSRF Protection).");
+        err.statusCode = 403;
+        throw err;
+    }
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    try {
+        const resp = await fetch(parsed.toString(), {
+            method: "GET",
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) QEnglish-LearningBot/2.0",
+                "Accept": "text/html,text/plain,application/xhtml+xml;q=0.9"
+            },
+            signal: ctrl.signal
+        });
+        clearTimeout(timer);
+        if (!resp.ok) {
+            const err = new Error(`Máy chủ nguồn phản hồi mã lỗi HTTP ${resp.status}. Không thể trích xuất nội dung.`);
+            err.statusCode = resp.status >= 500 ? 502 : 400;
+            throw err;
+        }
+
+        const rawHtml = await resp.text();
+        // Basic HTML cleanup: remove script, style, comments, nav, footer
+        let clean = rawHtml
+            .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, " ")
+            .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, " ")
+            .replace(/<nav\b[^<]*(?:(?!<\/nav>)<[^<]*)*<\/nav>/gi, " ")
+            .replace(/<footer\b[^<]*(?:(?!<\/footer>)<[^<]*)*<\/footer>/gi, " ")
+            .replace(/<!--[\s\S]*?-->/g, " ")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/&nbsp;/g, " ")
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&quot;/g, '"')
+            .replace(/\s+/g, " ")
+            .trim();
+
+        // Extract title if present in rawHtml
+        const titleMatch = rawHtml.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        const pageTitle = titleMatch ? titleMatch[1].replace(/\s+/g, " ").trim() : parsed.hostname;
+
+        // Truncate to safe length for LLM processing
+        const snippet = clean.slice(0, 3500);
+        if (snippet.length < 50) {
+            const err = new Error("Trang web không chứa văn bản tiếng Anh đọc được hoặc bị chặn bởi JavaScript render.");
+            err.statusCode = 422;
+            throw err;
+        }
+
+        return {
+            title: pageTitle,
+            url: parsed.toString(),
+            hostname,
+            extractedText: snippet,
+            wordCount: snippet.split(/\s+/).filter(Boolean).length
+        };
+    } catch (err) {
+        clearTimeout(timer);
+        if (err.statusCode) throw err;
+        const e = new Error(err.name === "AbortError" ? "Hết thời gian chờ phản hồi từ website (12s)." : (err.message || "Không thể kết nối tới website nguồn."));
+        e.statusCode = 504;
+        throw e;
+    }
+}
+
 async function handleAIRequest({ method, task, body, clientIp }) {
+    if (method === "GET" && task === "status") {
+        return { statusCode: 200, json: { ok: true, ...detectProvider() } };
+    }
+    if (method !== "POST") {
+        return { statusCode: 405, json: { ok: false, error: "Method Not Allowed" } };
+    }
+    if (!checkRateLimit(clientIp)) {
+        return {
+            statusCode: 429,
+            json: { ok: false, error: "Bạn đang gửi yêu cầu quá nhanh (Rate Limit). Vui lòng đợi 1 phút rồi thử lại." }
+        };
+    }
+
+    // Special task: extract-url (Fetch & extract text safely)
+    if (task === "extract-url") {
+        try {
+            const targetUrl = String(body.url || "").trim();
+            if (!targetUrl) {
+                return { statusCode: 400, json: { ok: false, error: "Vui lòng cung cấp URL bài học cần trích xuất." } };
+            }
+            const extracted = await extractFromPublicUrl(targetUrl);
+            return {
+                statusCode: 200,
+                json: { ok: true, provider: "QEnglish-UrlScraper", result: extracted }
+            };
+        } catch (err) {
+            return {
+                statusCode: err.statusCode || 500,
+                json: { ok: false, error: err.message || "Lỗi trích xuất URL." }
+            };
+        }
+    }
+
     if (method === "GET" && task === "status") {
         return { statusCode: 200, json: { ok: true, ...detectProvider() } };
     }

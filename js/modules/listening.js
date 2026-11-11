@@ -241,7 +241,11 @@ function listeningStopAudio() {
     if (stEl) stEl.textContent = "⏹ Đã dừng phát.";
 }
 
-function openListeningExercise(id) {
+function openListeningExercise(id, customItem = null) {
+    const allItems = getAllContentForSkill("listening");
+    if (customItem) window.lastCustomListeningExercise = customItem;
+    const ex = customItem || allItems.find(x => x.id === id) ||
+        (id.startsWith("custom-l-") ? window.lastCustomListeningExercise : null);
     const allItems = getAllContentForSkill("listening");
     const ex = allItems.find(x => x.id === id);
     if (!ex) return;

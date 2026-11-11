@@ -428,5 +428,261 @@ const GRAMMAR_LESSONS = [
             { type: "multiple_choice", question: "Educators recommend that each learner _______ an active mistake notebook.", options: ["keeps", "keep", "kept", "keeping"], answer: "keep", explanationVi: "Cấu trúc Subjunctive trang trọng sau 'recommend that + S': động từ giữ nguyên mẫu không chia ('keep') bất kể chủ ngữ số ít." },
             { type: "multiple_choice", question: "_______ all required modules, she became eligible for the industry internship.", options: ["Completed", "Having completed", "Being completed", "To completed"], answer: "Having completed", explanationVi: "Chủ ngữ 'she' chủ động hoàn tất các môn học trước khi đủ điều kiện thực tập -> dùng phân từ hoàn thành chủ động 'Having completed'." }
         ]
+    },
+    {
+        "id": "g-20",
+        "topic": "Verbs",
+        "title": "Gerunds & Infinitives — Danh động từ (V-ing) và Động từ nguyên mẫu (to-V / V-bare)",
+        "level": "B1",
+        "intro": "Phân biệt khi nào đi sau một động từ là V-ing, To-V hoặc V-bare, cùng các động từ đổi nghĩa khi đổi dạng.",
+        "explanation": "1) V-ing (Gerunds): Đi sau giới từ (interested in learning), làm chủ ngữ (Learning English opens doors), hoặc sau các động từ: enjoy, avoid, practice, mind, suggest, admit, consider, postpone. 2) To-V (Infinitives): Đi sau các động từ diễn tả ý định, kỳ vọng, quyết định: want, decide, hope, plan, promise, offer, agree, afford, refuse, would like. 3) V-bare (Infinitive không 'to'): Sau động từ khuyết thiếu (can, should, must) và cấu trúc let/make/have someone do something. 4) Nhóm đổi nghĩa then chốt: remember/forget to-V (nhớ phải làm bổn phận) vs V-ing (nhớ đã làm trong quá khứ); stop to-V (dừng lại ĐỂ làm việc khác) vs stop V-ing (từ bỏ, dừng hẳn hành động đang làm); try to-V (cố gắng nỗ lực) vs try V-ing (thử nghiệm phương pháp mới).",
+        "formula": "Verb + V-ing  •  Verb + to-V  •  make/let + O + V-bare",
+        "examples": [
+                {
+                        "en": "I decided to practice speaking English every morning to improve my fluency.",
+                        "vi": "Sau 'decide' bắt buộc dùng to-V ('to practice'); sau 'practice' bắt buộc dùng V-ing ('speaking')."
+                },
+                {
+                        "en": "She stopped drinking coffee late at night because it ruined her sleep.",
+                        "vi": "Cô ấy đã dừng hẳn việc uống cà phê ban đêm ('stop + V-ing')."
+                },
+                {
+                        "en": "On the way to campus, he stopped to buy a bottle of water.",
+                        "vi": "Trên đường đến trường, anh ấy dừng lại ĐỂ mua một chai nước ('stop + to-V')."
+                }
+        ],
+        "commonMistakes": [
+                {
+                        "wrong": "I am looking forward to see you again.",
+                        "correct": "I am looking forward to seeing you again.",
+                        "why": "'Look forward to' có 'to' là một GIỚI TỪ (Preposition), do đó động từ đi sau bắt buộc phải ở dạng V-ing ('seeing')."
+                },
+                {
+                        "wrong": "The professor made us to write a 10-page essay.",
+                        "correct": "The professor made us write a 10-page essay.",
+                        "why": "Cấu trúc 'make + someone + do something' dùng V-bare, không dùng 'to write'."
+                }
+        ],
+        "exercises": [
+                {
+                        "type": "multiple_choice",
+                        "question": "He avoided _______ the difficult question posed by the examiner.",
+                        "options": [
+                                "to answer",
+                                "answering",
+                                "answer",
+                                "answered"
+                        ],
+                        "answer": "answering",
+                        "explanationVi": "Động từ 'avoid' (tránh né) bắt buộc đi kèm Danh động từ V-ing -> 'answering'."
+                },
+                {
+                        "type": "multiple_choice",
+                        "question": "Don't forget _______ the assignment on Canvas before 23:59 tonight!",
+                        "options": [
+                                "submit",
+                                "submitting",
+                                "to submit",
+                                "submitted"
+                        ],
+                        "answer": "to submit",
+                        "explanationVi": "'Forget to do sth' nghĩa là quên phải thực hiện một bổn phận/nhiệm vụ trong tương lai -> 'to submit'."
+                },
+                {
+                        "type": "fill_blank",
+                        "question": "My mentor encouraged me _______ (apply) for the prestigious tech scholarship.",
+                        "answer": "to apply",
+                        "explanationVi": "Cấu trúc 'encourage someone to-V' (khuyến khích ai làm gì) -> 'to apply'."
+                }
+        ]
+    },
+    {
+        "id": "g-21",
+        "topic": "Verbs",
+        "title": "Phrasal Verbs — Cụm động từ thiết yếu trong giao tiếp & học thuật",
+        "level": "B2",
+        "intro": "Cụm động từ kết hợp giữa Động từ + Giới từ / Trạng từ tạo ra nghĩa hoàn toàn mới khác với từ gốc.",
+        "explanation": "Phrasal verbs là linh hồn của tiếng Anh tự nhiên. Được chia làm 2 loại chính: 1) Tách được (Separable): Khi tân ngữ là đại từ (it, them), đại từ BẮT BUỘC nằm ở giữa (Turn it on, fill it out, figure it out). 2) Không tách được (Inseparable): Tân ngữ luôn đứng sau giới từ (look after someone, run into a friend, come up with an idea). Trong văn phong học thuật, người viết thường chuộng từ vựng đơn tương đương trang trọng hơn (VD: look into -> investigate; bring about -> cause; put off -> postpone; figure out -> determine/solve), nhưng trong bài thi Speaking và giao tiếp thực tế, phrasal verbs lại giúp bạn đạt điểm Idiomatic Language rất cao!",
+        "formula": "Verb + Preposition/Particle (+ Object)  •  Verb + Pronoun (it/them) + Particle",
+        "examples": [
+                {
+                        "en": "Our research team came up with an innovative solution to reduce system latency.",
+                        "vi": "'Come up with' nghĩa là nảy ra / đề xuất được một ý tưởng, giải pháp mới."
+                },
+                {
+                        "en": "You should look up unfamiliar academic terminology in a reputable learner's dictionary.",
+                        "vi": "'Look up' nghĩa là tra cứu thông tin (trong từ điển, sách vở, internet)."
+                }
+        ],
+        "commonMistakes": [
+                {
+                        "wrong": "Please turn on it immediately.",
+                        "correct": "Please turn it on immediately.",
+                        "why": "Với phrasal verb tách được, khi tân ngữ là đại từ 'it' hoặc 'them', ta BẮT BUỘC phải đặt đại từ ở GIỮA ('turn it on')."
+                },
+                {
+                        "wrong": "He carried on to talk even after the bell rang.",
+                        "correct": "He carried on talking even after the bell rang.",
+                        "why": "'Carry on' có 'on' là giới từ, nên động từ theo sau phải ở dạng V-ing ('talking')."
+                }
+        ],
+        "exercises": [
+                {
+                        "type": "multiple_choice",
+                        "question": "Because of the heavy storm, the committee decided to _______ the outdoor campus festival.",
+                        "options": [
+                                "call off",
+                                "call in",
+                                "call up",
+                                "call for"
+                        ],
+                        "answer": "call off",
+                        "explanationVi": "'Call off' là cụm động từ mang nghĩa hủy bỏ (cancel) một sự kiện đã lên lịch."
+                },
+                {
+                        "type": "fill_blank",
+                        "question": "It took our engineering team several days to _______ (figure) out the root cause of the server crash.",
+                        "answer": "figure",
+                        "explanationVi": "'Figure out' có nghĩa là tìm ra / hiểu được nguyên nhân hoặc lời giải cho một vấn đề."
+                },
+                {
+                        "type": "multiple_choice",
+                        "question": "I accidentally _______ my former high school English teacher at the airport.",
+                        "options": [
+                                "ran into",
+                                "ran over",
+                                "ran out of",
+                                "ran through"
+                        ],
+                        "answer": "ran into",
+                        "explanationVi": "'Run into someone' (hoặc 'bump into someone') nghĩa là tình cờ gặp lại ai đó mà không hẹn trước."
+                }
+        ]
+    },
+    {
+        "id": "g-22",
+        "topic": "Vocabulary",
+        "title": "Collocations — Cụm từ cố định tự nhiên trong văn phong Anh ngữ",
+        "level": "B2",
+        "intro": "Sự kết hợp tự nhiên giữa các từ mà người bản xứ mặc định dùng chung, giúp bài viết và bài nói thoát khỏi cảm giác 'dịch word-by-word'.",
+        "explanation": "Collocation là thói quen kết hợp từ ngữ. Nếu dùng sai, câu vẫn có thể hiểu được nhưng nghe rất gượng gạo hoặc kỳ quặc đối với người bản xứ. Các dạng collocation phổ biến: 1) Verb + Noun: make a decision (KHÔNG dùng 'do a decision'), do research (KHÔNG dùng 'make research'), take an exam (KHÔNG dùng 'make an exam'), give a presentation, conduct an experiment. 2) Adjective + Noun: heavy rain (KHÔNG dùng 'strong rain'), strong wind (KHÔNG dùng 'heavy wind'), valid reason, high priority. 3) Adverb + Adjective: bitterly disappointed (thất vọng cay đắng), highly recommended (được khuyên dùng nhiệt tình), deeply concerned (vô cùng lo ngại). Khi học một từ mới, hãy luôn ghi nhớ cả cụm đi kèm của nó!",
+        "formula": "Verb + Noun  •  Adj + Noun  •  Adv + Adj  •  Noun + Noun",
+        "examples": [
+                {
+                        "en": "University students must do extensive research before writing their graduation thesis.",
+                        "vi": "Dùng đúng collocation 'do research' (nghiên cứu), tuyệt đối không dùng 'make research'."
+                },
+                {
+                        "en": "The keynote speaker gave a very persuasive presentation on artificial intelligence.",
+                        "vi": "Collocation 'give a presentation' (thuyết trình) và 'persuasive presentation' (bài thuyết trình thuyết phục)."
+                }
+        ],
+        "commonMistakes": [
+                {
+                        "wrong": "I did a big mistake in my calculus final exam.",
+                        "correct": "I made a big mistake in my calculus final exam.",
+                        "why": "'Mistake' luôn kết hợp với động từ 'make' ('make a mistake'), không kết hợp với 'do'."
+                },
+                {
+                        "wrong": "We got stuck on the highway due to strong traffic.",
+                        "correct": "We got stuck on the highway due to heavy traffic.",
+                        "why": "Để diễn tả tình trạng tắc đường, mật độ xe đông đúc, tiếng Anh chuẩn dùng 'heavy traffic', không dùng 'strong traffic'."
+                }
+        ],
+        "exercises": [
+                {
+                        "type": "multiple_choice",
+                        "question": "Before launching a new tech product, companies must _______ a comprehensive market survey.",
+                        "options": [
+                                "conduct",
+                                "create",
+                                "make",
+                                "produce"
+                        ],
+                        "answer": "conduct",
+                        "explanationVi": "Collocation học thuật chuẩn: 'conduct a survey / conduct an experiment' (tiến hành một cuộc khảo sát / thí nghiệm)."
+                },
+                {
+                        "type": "fill_blank",
+                        "question": "The software engineer _______ (made) a significant contribution to the open-source community.",
+                        "answer": "made",
+                        "explanationVi": "Collocation chuẩn: 'make a contribution to sth' (đóng góp đáng kể vào cái gì)."
+                },
+                {
+                        "type": "multiple_choice",
+                        "question": "I am _______ convinced that renewable energy is vital for our planet's future.",
+                        "options": [
+                                "firmly",
+                                "strongly",
+                                "hardly",
+                                "heavily"
+                        ],
+                        "answer": "firmly",
+                        "explanationVi": "Collocation chuẩn kết hợp với tính từ convinced (bị thuyết phục / tin chắc): 'firmly convinced' hoặc 'totally convinced'."
+                }
+        ]
+    },
+    {
+        "id": "g-23",
+        "topic": "Sentence Structures",
+        "title": "Question Forms & Embedded Questions — Các dạng câu hỏi & Câu hỏi gián tiếp",
+        "level": "A2",
+        "intro": "Làm chủ cấu trúc câu hỏi trực tiếp (Yes/No, Wh-), câu hỏi đuôi (Tag questions) và câu hỏi gián tiếp lịch sự (Embedded questions).",
+        "explanation": "1) Direct Questions: Trợ động từ (Auxiliary) đứng trước Chủ ngữ: 'Do you study IT?' • 'Where does she work?'. 2) Tag Questions (Câu hỏi đuôi): Vế trước khẳng định -> đuôi phủ định (You are a student, aren't you?); vế trước phủ định -> đuôi khẳng định (She doesn't like spicy food, does she?). Lưu ý đặc biệt: 'I am right, aren't I?' và 'Let's go, shall we?'. 3) Embedded Questions (Câu hỏi gián tiếp): Dùng khi muốn hỏi một cách lịch sự, trang trọng (Could you tell me...? • Do you know...? • I wonder...). QUY TẮC VÀNG: Trong câu hỏi gián tiếp, trật tự từ TRỞ LẠI DẠNG KHẲNG ĐỊNH (S + V), KHÔNG ĐẢO TRỢ ĐỘNG TỪ DO/DOES/DID RA TRƯỚC CHỦ NGỮ!",
+        "formula": "Wh- + Aux + Subject + Verb?  •  Polite phrase + Wh-word/If + Subject + Verb",
+        "examples": [
+                {
+                        "en": "Could you please tell me where the library is?",
+                        "vi": "Câu hỏi gián tiếp lịch sự: 'where the library is' (S + is), KHÔNG đảo thành 'where is the library'."
+                },
+                {
+                        "en": "I wonder if the professor has graded our midterm project.",
+                        "vi": "Câu hỏi gián tiếp dạng Yes/No dùng liên từ 'if' hoặc 'whether' + S + V."
+                }
+        ],
+        "commonMistakes": [
+                {
+                        "wrong": "Do you know what time does the lecture start?",
+                        "correct": "Do you know what time the lecture starts?",
+                        "why": "Trong câu hỏi gián tiếp sau 'Do you know', bỏ trợ động từ 'does' và chia động từ 'starts' theo chủ ngữ ngôi 3 số ít."
+                },
+                {
+                        "wrong": "Everyone passed the exam, didn't he?",
+                        "correct": "Everyone passed the exam, didn't they?",
+                        "why": "Với các đại từ bất định chỉ người như everyone, everybody, someone, đại từ thay thế trong câu hỏi đuôi bắt buộc là 'they' -> 'didn't they?'"
+                }
+        ],
+        "exercises": [
+                {
+                        "type": "multiple_choice",
+                        "question": "Excuse me, could you let me know how much _______?",
+                        "options": [
+                                "does this textbook cost",
+                                "this textbook costs",
+                                "costs this textbook",
+                                "is this textbook cost"
+                        ],
+                        "answer": "this textbook costs",
+                        "explanationVi": "Sau 'could you let me know', mệnh đề là câu hỏi gián tiếp nên giữ trật tự S + V ('this textbook costs'), không dùng trợ động từ 'does'."
+                },
+                {
+                        "type": "fill_blank",
+                        "question": "You haven't finished compiling the source code yet, _______ (have) you?",
+                        "answer": "have",
+                        "explanationVi": "Vế trước dùng thì Hiện tại hoàn thành phủ định ('haven't finished') -> câu hỏi đuôi khẳng định dùng 'have you?'."
+                },
+                {
+                        "type": "multiple_choice",
+                        "question": "Neither of the proposals was approved by the board, _______?",
+                        "options": [
+                                "was it",
+                                "were they",
+                                "wasn't it",
+                                "didn't they"
+                        ],
+                        "answer": "was it",
+                        "explanationVi": "'Neither of + N' mang nghĩa phủ định (không phương án nào) và số ít ('was') -> câu hỏi đuôi dùng khẳng định 'was it?'."
+                }
+        ]
     }
 ];

@@ -283,6 +283,7 @@ function renderWordList() {
     const dayStr = document.getElementById("list-day-input")?.value || "";
     const lvFilter = document.getElementById("list-level-select")?.value || "all";
     const srsFilter = document.getElementById("list-srs-select")?.value || "all";
+    const posFilter = document.getElementById("list-pos-select")?.value || "all";
     const daySet = parseDaysInput(dayStr);
 
     const filtered = deck.filter(item => {
@@ -294,7 +295,9 @@ function renderWordList() {
         const matchesStar = !currentStarFilter || Boolean(item.starred);
         const srsStatus = classifyWordSRS(item.id);
         const matchesSRS = srsFilter === "all" || srsStatus === srsFilter;
-        return matchesSearch && matchesDay && matchesCat && matchesLv && matchesStar && matchesSRS;
+        const itemPos = String(item.pos || "").toLowerCase();
+        const matchesPOS = posFilter === "all" || itemPos.includes(posFilter) || (posFilter === "adj" && itemPos.includes("adjective"));
+        return matchesSearch && matchesDay && matchesCat && matchesLv && matchesStar && matchesSRS && matchesPOS;
     });
 
     const summaryEl = document.getElementById("wordlist-filter-summary");

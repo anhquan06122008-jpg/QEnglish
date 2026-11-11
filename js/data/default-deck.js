@@ -25,7 +25,37 @@ const DEFAULT_DECK = [
     { id: 17, day: 1, term: "Attendance", ipa: "/əˈten.dəns/ (n)", def: "Sự điểm danh / Chuyên cần.", example: "Class attendance accounts for ten percent of the overall mark.", category: "Campus", starred: false },
     { id: 18, day: 1, term: "Discussion", ipa: "/dɪˈskʌʃ.ən/ (n)", def: "Cuộc thảo luận nhóm.", example: "Active group discussion enhances critical understanding of topics.", category: "Campus", starred: false },
     { id: 19, day: 1, term: "Prerequisite", ipa: "/ˌpriːˈrek.wɪ.zɪt/ (n)", def: "Môn học tiên quyết.", example: "Basic algebra is a prerequisite for advanced circuit analysis.", category: "Campus", starred: false },
-    { id: 20, day: 1, term: "Feedback", ipa: "/ˈfiːd.bæk/ (n)", def: "Phản hồi / Nhận xét.", example: "Constructive feedback from lecturers helps improve writing skills.", category: "Campus", starred: false }
+    { id: 20, day: 1, term: "Feedback", ipa: "/ˈfiːd.bæk/ (n)", def: "Phản hồi / Nhận xét.", example: "Constructive feedback from lecturers helps improve writing skills.", category: "Campus", starred: false },
+    {"id": 21, "term": "University", "ipa": "/ˌjuː.nɪˈvɜː.sə.ti/ (n)", "def": "Trường đại học.", "example": "FPT University TP.HCM provides modern facilities for students.", "category": "Education", "pos": "noun", "level": "A1", "starred": false, "day": 1},
+    {"id": 22, "term": "Library", "ipa": "/ˈlaɪ.brər.i/ (n)", "def": "Thư viện.", "example": "Students often borrow textbooks from the campus library.", "category": "Education", "pos": "noun", "level": "A1", "starred": false, "day": 1},
+    {"id": 23, "term": "Schedule", "ipa": "/ˈskedʒ.uːl/ (n)", "def": "Lịch trình, thời khóa biểu.", "example": "Check your class schedule on the student portal every Sunday.", "category": "Daily Life", "pos": "noun", "level": "A1", "starred": false, "day": 1},
+    {"id": 24, "term": "Classmate", "ipa": "/ˈklɑːs.meɪt/ (n)", "def": "Bạn cùng lớp.", "example": "My classmates are friendly and always help me with coursework.", "category": "Education", "pos": "noun", "level": "A1", "starred": false, "day": 1},
+    {"id": 25, "term": "Cafeteria", "ipa": "/ˌkæf.əˈtɪə.ri.ə/ (n)", "def": "Quán ăn tự phục vụ, căng tin.", "example": "We usually have lunch at the university cafeteria.", "category": "Food and Drinks", "pos": "noun", "level": "A1", "starred": false, "day": 1},
+    {"id": 26, "term": "Healthy", "ipa": "/ˈhel.θi/ (adj)", "def": "Lành mạnh, tốt cho sức khỏe.", "example": "Eating fresh vegetables keeps your body healthy during exam periods.", "category": "Health", "pos": "adj", "level": "A1", "starred": false, "day": 2},
+    {"id": 27, "term": "Commute", "ipa": "/kəˈmjuːt/ (v)", "def": "Đi lại hàng ngày giữa nhà và nơi học/làm.", "example": "Many undergraduates commute to campus by public bus.", "category": "Transportation", "pos": "verb", "level": "A2", "starred": false, "day": 2},
+    {"id": 28, "term": "Budget", "ipa": "/ˈbʌdʒ.ɪt/ (n)", "def": "Ngân sách, khoản tiền dự trù.", "example": "Living away from home teaches students how to manage a monthly budget.", "category": "Business and Economics", "pos": "noun", "level": "A2", "starred": false, "day": 2},
+    {"id": 29, "term": "Routine", "ipa": "/ruːˈtiːn/ (n)", "def": "Thói quen hàng ngày, nề nếp thường nhật.", "example": "A consistent morning routine boosts concentration throughout the day.", "category": "Daily Life", "pos": "noun", "level": "A2", "starred": false, "day": 2},
+    {"id": 30, "term": "Convenient", "ipa": "/kənˈviː.ni.ənt/ (adj)", "def": "Thuận tiện, tiện lợi.", "example": "Online library access is extremely convenient for busy students.", "category": "Technology", "pos": "adj", "level": "A2", "starred": false, "day": 2},
+    {"id": 31, "term": "Methodology", "ipa": "/ˌmeθ.əˈdɒl.ə.dʒi/ (n)", "def": "Phương pháp luận nghiên cứu.", "example": "The research methodology must be clearly explained in the academic paper.", "category": "Academic English", "pos": "noun", "level": "B2", "starred": false, "day": 3},
+    {"id": 32, "term": "Curriculum", "ipa": "/kəˈrɪk.jə.ləm/ (n)", "def": "Chương trình giảng dạy chính khóa.", "example": "The software engineering curriculum integrates modern artificial intelligence.", "category": "Education", "pos": "noun", "level": "B2", "starred": false, "day": 3},
+    {"id": 33, "term": "Sustainable", "ipa": "/səˈsteɪ.nə.bəl/ (adj)", "def": "Bền vững, bảo vệ môi trường lâu dài.", "example": "Renewable energy provides a sustainable alternative to fossil fuels.", "category": "Environment", "pos": "adj", "level": "B2", "starred": false, "day": 3},
+    {"id": 34, "term": "Collaborate", "ipa": "/kəˈlæb.ə.reɪt/ (v)", "def": "Hợp tác, cộng tác làm việc.", "example": "Engineers and designers must collaborate closely to build intuitive software.", "category": "Work and Career", "pos": "verb", "level": "B2", "starred": false, "day": 3},
+    {"id": 35, "term": "Optimize", "ipa": "/ˈɒp.tɪ.maɪz/ (v)", "def": "Tối ưu hóa, tinh chỉnh đạt hiệu suất cao nhất.", "example": "Developers write clean code to optimize system performance.", "category": "Technology", "pos": "verb", "level": "B2", "starred": false, "day": 3},
+    {"id": 36, "term": "Resilience", "ipa": "/rɪˈzɪl.jəns/ (n)", "def": "Khả năng kiên cường phục hồi sau nghịch cảnh.", "example": "Academic resilience helps students overcome difficult exam results.", "category": "Emotions", "pos": "noun", "level": "B2", "starred": false, "day": 4},
+    {"id": 37, "term": "Algorithm", "ipa": "/ˈæl.ɡə.rɪ.ðəm/ (n)", "def": "Thuật toán, quy trình xử lý dữ liệu.", "example": "Search engines use a sophisticated algorithm to rank web pages.", "category": "Science", "pos": "noun", "level": "B2", "starred": false, "day": 4},
+    {"id": 38, "term": "Analyze", "ipa": "/ˈæn.əl.aɪz/ (v)", "def": "Phân tích số liệu hoặc tài liệu.", "example": "Data analysts carefully analyze consumer trends before product launches.", "category": "Science", "pos": "verb", "level": "B1", "starred": false, "day": 4},
+    {"id": 39, "term": "Diversity", "ipa": "/daɪˈvɜː.sə.ti/ (n)", "def": "Sự đa dạng về văn hóa, sinh thái hoặc quan điểm.", "example": "Cultural diversity enriches campus life and broadens horizons.", "category": "Culture", "pos": "noun", "level": "B2", "starred": false, "day": 4},
+    {"id": 40, "term": "Perspective", "ipa": "/pəˈspek.tɪv/ (n)", "def": "Góc nhìn, quan điểm nhận thức.", "example": "Studying abroad provides a fresh perspective on international affairs.", "category": "Society", "pos": "noun", "level": "B2", "starred": false, "day": 4},
+    {"id": 41, "term": "Paradigm", "ipa": "/ˈpær.ə.daɪm/ (n)", "def": "Mô hình chuẩn, hệ tư tưởng khuôn mẫu.", "example": "Quantum computing represents a paradigm shift in data processing.", "category": "Academic English", "pos": "noun", "level": "C1", "starred": false, "day": 5},
+    {"id": 42, "term": "Ubiquitous", "ipa": "/juːˈbɪk.wɪ.təs/ (adj)", "def": "Có mặt ở khắp mọi nơi, phổ biến rộng rãi.", "example": "Smartphones have become ubiquitous across modern urban society.", "category": "Technology", "pos": "adj", "level": "C1", "starred": false, "day": 5},
+    {"id": 43, "term": "Comprehensive", "ipa": "/ˌkɒm.prɪˈhen.sɪv/ (adj)", "def": "Toàn diện, bao quát mọi khía cạnh.", "example": "The course provides a comprehensive overview of cybersecurity fundamentals.", "category": "Academic English", "pos": "adj", "level": "C1", "starred": false, "day": 5},
+    {"id": 44, "term": "Substantiate", "ipa": "/səbˈstæn.ʃi.eɪt/ (v)", "def": "Chứng minh, đưa ra bằng chứng xác thực.", "example": "Academic researchers must substantiate their claims with empirical evidence.", "category": "Academic English", "pos": "verb", "level": "C1", "starred": false, "day": 5},
+    {"id": 45, "term": "Equivocal", "ipa": "/ɪˈkwɪv.ə.kəl/ (adj)", "def": "Mập mờ, nước đôi, khó giải nghĩa chính xác.", "example": "The politician gave an equivocal response to avoid controversy.", "category": "Politics", "pos": "adj", "level": "C2", "starred": false, "day": 6},
+    {"id": 46, "term": "Juxtaposition", "ipa": "/ˌdʒʌk.stə.pəˈzɪʃ.ən/ (n)", "def": "Sự đặt cạnh nhau để làm nổi bật nét tương phản.", "example": "The documentary highlights the juxtaposition of extreme wealth and poverty.", "category": "Media", "pos": "noun", "level": "C2", "starred": false, "day": 6},
+    {"id": 47, "term": "Ephemeral", "ipa": "/ɪˈfem.ər.əl/ (adj)", "def": "Phù du, chóng tàn, chỉ tồn tại trong thời gian ngắn.", "example": "Social media fame is often ephemeral compared to lasting creative achievements.", "category": "Media", "pos": "adj", "level": "C2", "starred": false, "day": 6},
+    {"id": 48, "term": "Exemplify", "ipa": "/ɪɡˈzem.plɪ.faɪ/ (v)", "def": "Là ví dụ điển hình cho, minh họa rõ nét.", "example": "Her outstanding graduation project exemplifies the university's academic excellence.", "category": "Academic English", "pos": "verb", "level": "C1", "starred": false, "day": 6},
+    {"id": 49, "term": "Disseminate", "ipa": "/dɪˈsem.ɪ.neɪt/ (v)", "def": "Phổ biến, truyền bá tri thức rộng rãi.", "example": "Scholars use open-access journals to disseminate research findings worldwide.", "category": "Academic English", "pos": "verb", "level": "C1", "starred": false, "day": 6},
+    {"id": 50, "term": "Pragmatic", "ipa": "/præɡˈmæt.ɪk/ (adj)", "def": "Thực dụng, thực tế, đề cao tính ứng dụng.", "example": "Engineers favor pragmatic solutions that can be implemented within budget.", "category": "Work and Career", "pos": "adj", "level": "C1", "starred": false, "day": 6}
 ];
 
 const SAMPLE_IMPORT_TEXT = `Hypothesis - (/haɪˈpɑː.θə.sɪs/) Giả thuyết nghiên cứu. | The research team formulated a clear hypothesis before starting the lab experiment.
@@ -174,7 +204,397 @@ const VOCAB_ENRICHMENT_MAP = {
         { en: "Note: 'Feedback' is an uncountable noun, so never say 'feedbacks'.", vi: "Lưu ý: 'Feedback' là danh từ không đếm được, nên không bao giờ thêm 's' thành 'feedbacks'.", structure: "Uncountable noun (Danh từ không đếm được)" },
         { en: "My teacher gave me helpful feedback on my paragraph structure.", vi: "Giáo viên đã đưa cho tôi những nhận xét hữu ích về cấu trúc đoạn văn.", structure: "give somebody feedback on + N" },
         { en: "I use AI and teacher feedback to fix my recurring mistakes.", vi: "Tôi sử dụng nhận xét từ AI và giáo viên để sửa các lỗi lặp lại của mình.", structure: "use + N + to V" }
-    ]}
+    ]},
+    "university": {
+        "pos": "noun",
+        "level": "A1",
+        "synonyms": "college, academy, campus",
+        "antonyms": "",
+        "extraExamples": [
+                {
+                        "en": "She was accepted into a prestigious international university.",
+                        "vi": "Cô ấy đã được nhận vào một trường đại học quốc tế danh giá.",
+                        "structure": "be accepted into (Được nhận vào trường)"
+                }
+        ]
+    },
+    "library": {
+        "pos": "noun",
+        "level": "A1",
+        "synonyms": "resource center, archive",
+        "antonyms": "",
+        "extraExamples": [
+                {
+                        "en": "Silence must be observed in the reading area of the library.",
+                        "vi": "Phải giữ trật tự tại khu vực đọc sách của thư viện.",
+                        "structure": "passive voice (Bị động diễn tả quy định)"
+                }
+        ]
+    },
+    "schedule": {
+        "pos": "noun",
+        "level": "A1",
+        "synonyms": "timetable, agenda, calendar",
+        "antonyms": "",
+        "extraExamples": [
+                {
+                        "en": "Due to a scheduling conflict, the workshop was postponed.",
+                        "vi": "Do trùng lịch trình, buổi hội thảo đã bị hoãn.",
+                        "structure": "due to + N (Bởi vì lý do gì)"
+                }
+        ]
+    },
+    "classmate": {
+        "pos": "noun",
+        "level": "A1",
+        "synonyms": "peer, fellow student",
+        "antonyms": "",
+        "extraExamples": [
+                {
+                        "en": "I formed a study group with three of my classmates.",
+                        "vi": "Tôi đã thành lập một nhóm học tập với ba người bạn cùng lớp.",
+                        "structure": "form a group with (Thành lập nhóm với ai)"
+                }
+        ]
+    },
+    "cafeteria": {
+        "pos": "noun",
+        "level": "A1",
+        "synonyms": "canteen, dining hall",
+        "antonyms": "",
+        "extraExamples": [
+                {
+                        "en": "The university cafeteria offers affordable meal options for students.",
+                        "vi": "Căng tin trường đại học phục vụ nhiều bữa ăn giá cả phải chăng cho sinh viên.",
+                        "structure": "offer + adj + N (Cung cấp cái gì)"
+                }
+        ]
+    },
+    "healthy": {
+        "pos": "adj",
+        "level": "A1",
+        "synonyms": "wholesome, nutritious, fit",
+        "antonyms": "unhealthy, sick",
+        "extraExamples": [
+                {
+                        "en": "Maintaining a healthy lifestyle requires regular exercise and sufficient sleep.",
+                        "vi": "Duy trì lối sống lành mạnh đòi hỏi tập thể dục đều đặn và ngủ đủ giấc.",
+                        "structure": "require + N (Đòi hỏi điều gì)"
+                }
+        ]
+    },
+    "commute": {
+        "pos": "verb",
+        "level": "A2",
+        "synonyms": "travel, shuttle",
+        "antonyms": "",
+        "extraExamples": [
+                {
+                        "en": "He commutes forty minutes each day by motorcycle.",
+                        "vi": "Anh ấy di chuyển bốn mươi phút mỗi ngày bằng xe máy.",
+                        "structure": "commute + time + by vehicle (Đi lại bao lâu bằng phương tiện gì)"
+                }
+        ]
+    },
+    "budget": {
+        "pos": "noun",
+        "level": "A2",
+        "synonyms": "financial plan, allowance",
+        "antonyms": "",
+        "extraExamples": [
+                {
+                        "en": "Students should plan a weekly budget to avoid overspending.",
+                        "vi": "Sinh viên nên lập ngân sách hàng tuần để tránh chi tiêu quá tay.",
+                        "structure": "avoid + V-ing (Tránh làm việc gì)"
+                }
+        ]
+    },
+    "routine": {
+        "pos": "noun",
+        "level": "A2",
+        "synonyms": "habit, practice, regimen",
+        "antonyms": "irregularity",
+        "extraExamples": [
+                {
+                        "en": "Establishing a study routine improves academic discipline.",
+                        "vi": "Xây dựng thói quen học tập giúp nâng cao tính kỷ luật học thuật.",
+                        "structure": "V-ing as subject (Danh động từ làm chủ ngữ)"
+                }
+        ]
+    },
+    "convenient": {
+        "pos": "adj",
+        "level": "A2",
+        "synonyms": "handy, accessible, practical",
+        "antonyms": "inconvenient",
+        "extraExamples": [
+                {
+                        "en": "The mobile app makes checking grades quick and convenient.",
+                        "vi": "Ứng dụng di động giúp việc xem điểm nhanh chóng và thuận tiện.",
+                        "structure": "make + O + adj (Làm cho cái gì trở nên thế nào)"
+                }
+        ]
+    },
+    "methodology": {
+        "pos": "noun",
+        "level": "B2",
+        "synonyms": "approach, procedure, framework",
+        "antonyms": "",
+        "extraExamples": [
+                {
+                        "en": "The researcher adopted a qualitative methodology to interview participants.",
+                        "vi": "Nhà nghiên cứu đã áp dụng phương pháp định tính để phỏng vấn các đối tượng tham gia.",
+                        "structure": "adopt a methodology (Áp dụng một phương pháp luận)"
+                }
+        ]
+    },
+    "curriculum": {
+        "pos": "noun",
+        "level": "B2",
+        "synonyms": "syllabus, course of study",
+        "antonyms": "",
+        "extraExamples": [
+                {
+                        "en": "Continuous curriculum updates ensure graduates meet industry requirements.",
+                        "vi": "Việc cập nhật chương trình học liên tục đảm bảo sinh viên tốt nghiệp đáp ứng yêu cầu ngành nghề.",
+                        "structure": "ensure + S + V (Đảm bảo điều gì)"
+                }
+        ]
+    },
+    "sustainable": {
+        "pos": "adj",
+        "level": "B2",
+        "synonyms": "renewable, eco-friendly, enduring",
+        "antonyms": "unsustainable, depleting",
+        "extraExamples": [
+                {
+                        "en": "Sustainable business practices benefit both the economy and the ecosystem.",
+                        "vi": "Các thực hành kinh doanh bền vững mang lại lợi ích cho cả nền kinh tế và hệ sinh thái.",
+                        "structure": "benefit both A and B (Có lợi cho cả A và B)"
+                }
+        ]
+    },
+    "collaborate": {
+        "pos": "verb",
+        "level": "B2",
+        "synonyms": "cooperate, partner, team up",
+        "antonyms": "compete, isolate",
+        "extraExamples": [
+                {
+                        "en": "Students collaborate in cross-functional teams to solve real-world problems.",
+                        "vi": "Sinh viên hợp tác trong các nhóm đa ngành để giải quyết các vấn đề thực tiễn.",
+                        "structure": "collaborate in teams to V (Hợp tác theo nhóm để làm gì)"
+                }
+        ]
+    },
+    "optimize": {
+        "pos": "verb",
+        "level": "B2",
+        "synonyms": "enhance, refine, streamline",
+        "antonyms": "impair, worsen",
+        "extraExamples": [
+                {
+                        "en": "We used caching strategies to optimize web page load times.",
+                        "vi": "Chúng tôi đã dùng các chiến lược bộ nhớ đệm để tối ưu hóa thời gian tải trang web.",
+                        "structure": "use + O + to V (Dùng cái gì để làm gì)"
+                }
+        ]
+    },
+    "resilience": {
+        "pos": "noun",
+        "level": "B2",
+        "synonyms": "tenacity, fortitude, endurance",
+        "antonyms": "fragility, weakness",
+        "extraExamples": [
+                {
+                        "en": "Emotional resilience allows people to recover quickly from setbacks.",
+                        "vi": "Sự kiên cường về mặt cảm xúc giúp con người nhanh chóng đứng dậy sau những thất bại.",
+                        "structure": "allow + O + to V (Cho phép ai làm gì)"
+                }
+        ]
+    },
+    "algorithm": {
+        "pos": "noun",
+        "level": "B2",
+        "synonyms": "computational formula, procedure",
+        "antonyms": "",
+        "extraExamples": [
+                {
+                        "en": "Machine learning algorithms learn patterns directly from massive datasets.",
+                        "vi": "Các thuật toán học máy tự học các quy luật trực tiếp từ các bộ dữ liệu khổng lồ.",
+                        "structure": "learn patterns from (Học các quy luật từ)"
+                }
+        ]
+    },
+    "analyze": {
+        "pos": "verb",
+        "level": "B1",
+        "synonyms": "examine, investigate, evaluate",
+        "antonyms": "synthesize, overlook",
+        "extraExamples": [
+                {
+                        "en": "The system automatically analyzes user submissions for grammatical accuracy.",
+                        "vi": "Hệ thống tự động phân tích các bài nộp của người dùng để kiểm tra độ chính xác ngữ pháp.",
+                        "structure": "analyze + O + for N (Phân tích cái gì để tìm điều gì)"
+                }
+        ]
+    },
+    "diversity": {
+        "pos": "noun",
+        "level": "B2",
+        "synonyms": "variety, multiplicity, heterogeneity",
+        "antonyms": "uniformity, monotony",
+        "extraExamples": [
+                {
+                        "en": "Diversity of thought drives innovation in high-tech organizations.",
+                        "vi": "Sự đa dạng về tư duy thúc đẩy đổi mới sáng tạo trong các tổ chức công nghệ cao.",
+                        "structure": "drive innovation (Thúc đẩy đổi mới sáng tạo)"
+                }
+        ]
+    },
+    "perspective": {
+        "pos": "noun",
+        "level": "B2",
+        "synonyms": "viewpoint, angle, stance",
+        "antonyms": "",
+        "extraExamples": [
+                {
+                        "en": "Reading international news provides a broader perspective on global trends.",
+                        "vi": "Đọc tin tức quốc tế mang lại góc nhìn rộng mở hơn về các xu hướng toàn cầu.",
+                        "structure": "provide a perspective on (Mang lại góc nhìn về)"
+                }
+        ]
+    },
+    "paradigm": {
+        "pos": "noun",
+        "level": "C1",
+        "synonyms": "archetype, benchmark, model",
+        "antonyms": "",
+        "extraExamples": [
+                {
+                        "en": "The transition to remote work caused a shift in the corporate management paradigm.",
+                        "vi": "Việc chuyển đổi sang làm việc từ xa đã gây ra sự dịch chuyển trong mô hình quản trị doanh nghiệp.",
+                        "structure": "cause a shift in (Gây ra sự dịch chuyển trong)"
+                }
+        ]
+    },
+    "ubiquitous": {
+        "pos": "adj",
+        "level": "C1",
+        "synonyms": "omnipresent, pervasive, universal",
+        "antonyms": "rare, scarce",
+        "extraExamples": [
+                {
+                        "en": "Artificial intelligence applications are rapidly becoming ubiquitous in modern society.",
+                        "vi": "Các ứng dụng trí tuệ nhân tạo đang nhanh chóng trở nên hiện diện ở khắp mọi nơi trong xã hội hiện đại.",
+                        "structure": "become + adj (Trở nên như thế nào)"
+                }
+        ]
+    },
+    "comprehensive": {
+        "pos": "adj",
+        "level": "C1",
+        "synonyms": "exhaustive, thorough, inclusive",
+        "antonyms": "partial, limited",
+        "extraExamples": [
+                {
+                        "en": "A comprehensive review of academic literature was conducted prior to experimentation.",
+                        "vi": "Một bản đánh giá toàn diện các tài liệu học thuật đã được thực hiện trước khi tiến hành thí nghiệm.",
+                        "structure": "prior to + N (Trước khi có sự kiện gì)"
+                }
+        ]
+    },
+    "substantiate": {
+        "pos": "verb",
+        "level": "C1",
+        "synonyms": "corroborate, validate, authenticate",
+        "antonyms": "refute, debunk",
+        "extraExamples": [
+                {
+                        "en": "Without empirical data, it is impossible to substantiate the proposed hypothesis.",
+                        "vi": "Nếu không có số liệu thực nghiệm, không thể nào chứng minh giả thuyết đã đề xuất.",
+                        "structure": "it is impossible to V (Không thể làm gì)"
+                }
+        ]
+    },
+    "equivocal": {
+        "pos": "adj",
+        "level": "C2",
+        "synonyms": "ambiguous, cryptic, vague",
+        "antonyms": "unequivocal, clear",
+        "extraExamples": [
+                {
+                        "en": "The experimental results remained equivocal despite repeated testing under controlled conditions.",
+                        "vi": "Kết quả thí nghiệm vẫn còn mập mờ dù đã lặp lại thử nghiệm nhiều lần trong điều kiện kiểm soát.",
+                        "structure": "despite + N (Mặc dù có điều gì)"
+                }
+        ]
+    },
+    "juxtaposition": {
+        "pos": "noun",
+        "level": "C2",
+        "synonyms": "contrast, collocation, pairing",
+        "antonyms": "",
+        "extraExamples": [
+                {
+                        "en": "The artistic juxtaposition of classical architecture and modern skyscrapers created a striking visual impact.",
+                        "vi": "Sự đặt cạnh nhau đầy nghệ thuật giữa kiến trúc cổ điển và các tòa nhà chọc trời hiện đại đã tạo nên hiệu ứng thị giác ấn tượng.",
+                        "structure": "juxtaposition of A and B (Sự đặt cạnh nhau giữa A và B)"
+                }
+        ]
+    },
+    "ephemeral": {
+        "pos": "adj",
+        "level": "C2",
+        "synonyms": "transient, fleeting, momentary",
+        "antonyms": "permanent, enduring",
+        "extraExamples": [
+                {
+                        "en": "Online viral trends are notoriously ephemeral, vanishing within days of their emergence.",
+                        "vi": "Các xu hướng lan truyền trên mạng nổi tiếng là ngắn ngủi, biến mất chỉ trong vài ngày sau khi xuất hiện.",
+                        "structure": "vanishing within (Biến mất trong vòng)"
+                }
+        ]
+    },
+    "exemplify": {
+        "pos": "verb",
+        "level": "C1",
+        "synonyms": "illustrate, epitomize, represent",
+        "antonyms": "contradict",
+        "extraExamples": [
+                {
+                        "en": "Her innovative research exemplifies the transformative power of multidisciplinary collaboration.",
+                        "vi": "Nghiên cứu sáng tạo của cô ấy minh họa cho sức mạnh biến đổi của sự hợp tác đa ngành.",
+                        "structure": "exemplify the power of (Minh họa cho sức mạnh của)"
+                }
+        ]
+    },
+    "disseminate": {
+        "pos": "verb",
+        "level": "C1",
+        "synonyms": "broadcast, distribute, circulate",
+        "antonyms": "suppress, withhold",
+        "extraExamples": [
+                {
+                        "en": "Conferences serve as premier venues to disseminate cutting-edge scientific discoveries.",
+                        "vi": "Các hội nghị khoa học đóng vai trò là những địa điểm hàng đầu để phổ biến các phát hiện khoa học tiên tiến.",
+                        "structure": "serve as venues to V (Đóng vai trò là nơi để làm gì)"
+                }
+        ]
+    },
+    "pragmatic": {
+        "pos": "adj",
+        "level": "C1",
+        "synonyms": "practical, realistic, utilitarian",
+        "antonyms": "idealistic, theoretical",
+        "extraExamples": [
+                {
+                        "en": "We must adopt a pragmatic approach to balance academic rigor with project deadlines.",
+                        "vi": "Chúng ta phải áp dụng một phương pháp tiếp cận thực tế để cân bằng giữa sự chặt chẽ học thuật và thời hạn dự án.",
+                        "structure": "adopt an approach to V (Áp dụng phương pháp để làm gì)"
+                }
+        ]
+    }
 };
 
 // Built-in Academic & Reading Dictionary for Instant Word Lookup in Reading Workspace

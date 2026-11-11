@@ -286,7 +286,11 @@ async function processUserConversationUtterance(rawText, confidence = 0.85, dura
 }
 
 /* ==================== MODE 2: TOPIC SPEAKING ==================== */
-function openTopicSpeakingWorkspace(topicId) {
+function openTopicSpeakingWorkspace(topicId, customTopic = null) {
+    const allTopics = getAllContentForSkill("speaking");
+    if (customTopic) window.lastCustomSpeakingTopic = customTopic;
+    const t = customTopic || allTopics.find(x => x.id === topicId) ||
+        (topicId.startsWith("custom-s-") ? window.lastCustomSpeakingTopic : null);
     const allTopics = getAllContentForSkill("speaking");
     const t = allTopics.find(x => x.id === topicId);
     if (!t) return;

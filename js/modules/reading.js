@@ -95,7 +95,11 @@ function switchReadingMobileTab(tab) {
     }
 }
 
-function openReadingPassage(id) {
+function openReadingPassage(id, customPassage = null) {
+    const allPassages = getAllContentForSkill("reading");
+    if (customPassage) window.lastCustomReadingPassage = customPassage;
+    const p = customPassage || allPassages.find(x => x.id === id) ||
+        (id.startsWith("custom-r-") ? window.lastCustomReadingPassage : null);
     const allPassages = getAllContentForSkill("reading");
     const p = allPassages.find(x => x.id === id);
     if (!p) return;
