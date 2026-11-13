@@ -574,14 +574,24 @@ const AIClient = {
     },
 
     async checkStatus() {
-        // When opened directly via file:// without a custom http(s) backend URL, relative /api/ai cannot exist
         const base = this.getEndpointBase();
+        const host = window.location.hostname || "";
         if (window.location.protocol === "file:" && base.startsWith("/")) {
             this.status = {
                 checked: true,
                 connected: false,
                 provider: null,
-                message: "Đang mở ở chế độ File tĩnh (Offline/Local). Chưa kết nối Backend AI Server."
+                message: "Đang mở qua file:// tĩnh (Offline). Hãy chạy node server.js hoặc mở URL Vercel để kết nối AI Backend."
+            };
+            this.syncStatusBadges();
+            return this.status;
+        }
+        if (/github\.io$/i.test(host) && base.startsWith("/")) {
+            this.status = {
+                checked: true,
+                connected: false,
+                provider: null,
+                message: "Đang chạy trên GitHub Pages (chỉ hỗ trợ web tĩnh, không chạy được API Backend). Hãy triển khai trên Vercel và đặt GEMINI_API_KEY / OPENAI_API_KEY."
             };
             this.syncStatusBadges();
             return this.status;
@@ -590,7 +600,7 @@ const AIClient = {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 5000);
         try {
-            const res = await fetch(`${base}/status`, { method: "GET", signal: ctrl.signal });
+            const res = await fetch(`${base}/status`, { method: "GET", cache: "no-store", signal: ctrl.signal });
             clearTimeout(timer);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
@@ -599,8 +609,8 @@ const AIClient = {
                 connected: Boolean(data && data.configured),
                 provider: data.provider || null,
                 message: data.configured
-                    ? `Đã kết nối AI Backend (${data.provider || "Server"}).`
-                    : (data.message || "Backend đang chạy nhưng chưa cấu hình GEMINI_API_KEY / OPENAI_API_KEY trong biến môi trường (.env).")
+                    ? `Đã kết nối AI Backend (${data.provider || "Server"}${data.model ? " — " + data.model : ""}).`
+                    : (data.message || "Backend đang chạy nhưng chưa cấu hình GEMINI_API_KEY hoặc OPENAI_API_KEY trong Environment Variables.")
             };
         } catch (err) {
             clearTimeout(timer);
@@ -639,7 +649,7 @@ const AIClient = {
                     <span class="text-lg">${this.status.connected ? "🟢" : "🟡"}</span>
                     <div>
                         <p class="text-sm font-bold ${this.status.connected ? "text-emerald-300" : "text-amber-300"}">${escHtml(this.status.message)}</p>
-                        <p class="text-xs text-slate-400 mt-1">Bảo mật chuẩn Thiết kế: API Key <strong>TUYỆT ĐỐI KHÔNG</strong> lưu ở frontend hay trình duyệt. API Key chỉ được nạp qua biến môi trường <code>.env</code> trên máy chủ Backend (<code>server.js</code> hoặc Vercel Serverless <code>api/ai.js</code>).</p>
+                        <p class="text-xs text-slate-400 mt-1">Bảo mật chuẩn Thiết kế: API Key <strong>TUYỆT ĐỐI KHÔNG</strong> lưu ở frontend hay trình duyệt. API Key chỉ được nạp qua biến môi trường trên máy chủ Backend (<code>.env</code> hoặc Vercel Environment Variables).</p>
                     </div>
                 </div>
             `;
@@ -648,18 +658,28 @@ const AIClient = {
 
     async request(task, payload) {
         if (task !== "extract-url" && (!appSettings || !appSettings.aiConsentAccepted)) {
-            return { ok: false, notConnected: false, consentRequired: true, error: "Vui lòng bật xác nhận đồng ý gửi văn bản tới Backend AI trong phần Cài đặt (Settings) trước khi dùng AI." };
+            return {
+                ok: false,
+                notConnected: false,
+                consentRequired: true,
+                error: "Vui lòng bật mục \"Tôi đồng ý gửi văn bản tới Backend AI\" trong Settings trước khi chấm bằng AI."
+            };
         }
         const base = this.getEndpointBase();
         if (window.location.protocol === "file:" && base.startsWith("/")) {
             return { ok: false, notConnected: true, error: "Chưa kết nối Backend Server (đang chạy file tĩnh cục bộ)." };
         }
+        const headers = { "Content-Type": "application/json" };
+        if (typeof CloudClient !== "undefined" && CloudClient.getAccessToken()) {
+            headers["Authorization"] = `Bearer ${CloudClient.getAccessToken()}`;
+        }
         const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 22000); // 22s timeout cap
+        const timeoutMs = task === "writing-eval" ? 48000 : 28000;
+        const timer = setTimeout(() => ctrl.abort(), timeoutMs);
         try {
             const res = await fetch(`${base}/${task}`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers,
                 body: JSON.stringify(payload),
                 signal: ctrl.signal
             });
@@ -679,7 +699,7 @@ const AIClient = {
                 ok: false,
                 notConnected: true,
                 error: err.name === "AbortError"
-                    ? "Yêu cầu AI quá thời gian giới hạn (22 giây). Vui lòng thử lại."
+                    ? `Yêu cầu AI quá thời gian giới hạn (${Math.round(timeoutMs / 1000)}s). Vui lòng thử lại.`
                     : "Không thể kết nối tới AI Backend Server."
             };
         }

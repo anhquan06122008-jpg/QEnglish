@@ -148,10 +148,14 @@ function renderAudioPlayerControls(ex, singleSentenceMode = false) {
                     </select>
                 </div>
             </div>
-            <div class="flex items-center justify-between text-[11px] text-slate-400">
+            <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
                 <span id="listening-player-status">${hasExternalUrl && !hasTranscript ? "Đang dùng trình phát tệp âm thanh gốc của bạn (không tự bịa transcript)" : "Sẵn sàng phát âm thanh (Web Speech API en-US)"}</span>
-                <span id="listening-sentence-indicator"></span>
+                <div class="flex items-center gap-2">
+                    <span id="listening-sentence-indicator"></span>
+                    ${hasTranscript ? `<button onclick="runAIListeningCoach()" class="px-2.5 py-1 rounded-lg bg-violet-600/25 hover:bg-violet-600/40 border border-violet-400/30 text-violet-200 font-bold">🤖 AI Giải thích cụm từ khó</button>` : ""}
+                </div>
             </div>
+            <div id="listening-coach-output" class="hidden pt-1"></div>
         </div>
     `;
 }
@@ -688,4 +692,46 @@ function finalizeListeningCompletion(scorePct) {
         { type: "listening", skill: "listening", title: `Hoàn thành bài nghe: ${activeListeningItem.title}`, scorePct }
     );
     showToast(`Hoàn thành bài nghe (${scorePct}%)! Đã mở Transcript.`);
+}
+
+/* ==================== AI LISTENING COACH ==================== */
+async function runAIListeningCoach() {
+    if (!activeListeningItem) return;
+    const tr = String(activeListeningItem.transcript || activeListeningItem.audioText || "").trim();
+    const outBox = document.getElementById("listening-coach-output");
+    if (!outBox || !tr) {
+        showToast("Bài nghe này chưa có transcript văn bản để AI phân tích cụm từ.", "warning");
+        return;
+    }
+    outBox.classList.remove("hidden");
+    outBox.innerHTML = `<div class="p-3 rounded-xl bg-slate-900 border border-violet-500/30 text-xs text-violet-300 font-bold animate-pulse">⏳ AI Listening Coach đang bóc cụm từ nối âm / dễ nghe nhầm & câu hỏi nghe hiểu...</div>`;
+
+    const res = await AIClient.request("listening-coach", {
+        title: activeListeningItem.title,
+        level: activeListeningItem.level || "B1",
+        transcript: tr,
+        focus: activeListeningItem.sentences?.[dictationIdx] || ""
+    });
+
+    if (!res.ok || !res.data) {
+        outBox.innerHTML = `<div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 flex justify-between items-center"><span>${escHtml(res.error || "Cần kết nối AI Backend để phân tích cụm từ nối âm & câu hỏi nghe hiểu.")}</span><button onclick="document.getElementById('listening-coach-output').classList.add('hidden')" class="ml-2">✕</button></div>`;
+        return;
+    }
+
+    const d = res.data;
+    outBox.innerHTML = `
+        <div class="p-4 rounded-xl bg-slate-900 border border-cyan-500/30 space-y-2.5 text-xs">
+            <div class="flex items-center justify-between">
+                <span class="font-extrabold text-cyan-300">🎧 AI Listening Coach — Phân Tích Transcript</span>
+                <button onclick="document.getElementById('listening-coach-output').classList.add('hidden')" class="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <p class="text-slate-200">${escHtml(d.summaryVi || "")}</p>
+            ${(d.keyPhrases && d.keyPhrases.length) ? `
+                <div class="space-y-1">
+                    <p class="font-bold text-amber-300">Cụm từ & Mẹo nghe nối âm:</p>
+                    ${d.keyPhrases.map(p => `<div class="p-2 rounded-lg bg-slate-950 border border-white/5"><strong class="text-white">${escHtml(p.phrase)}</strong> (${escHtml(p.meaningVi || "")}) — <span class="text-cyan-300">${escHtml(p.connectedSpeechTip || "")}</span></div>`).join("")}
+                </div>
+            ` : ""}
+        </div>
+    `;
 }

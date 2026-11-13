@@ -4,7 +4,7 @@
    Compatible legacy keys: qenglish_deck_v2, qenglish_deck_v1, fpt_eng_deck_v3
    ========================================================================== */
 
-const STORAGE_KEYS = {
+const BASE_STORAGE_KEYS = {
     DECK_V2: "qenglish_deck_v2",
     DECK_V1: "qenglish_deck_v1",
     FPT_V3: "fpt_eng_deck_v3",
@@ -21,6 +21,27 @@ const STORAGE_KEYS = {
     CMS: "qenglish_cms_v1",
     SETTINGS: "qenglish_settings_v1"
 };
+
+function getScopedStorageKey(baseKey) {
+    const uid = typeof window !== "undefined" ? window.__QENGLISH_ACTIVE_UID : null;
+    if (!uid) return baseKey;
+    return `qenglish_u_${uid}::${baseKey}`;
+}
+
+const STORAGE_KEYS = {};
+[
+    "DECK_V2", "SRS", "PROGRESS", "DASHBOARD", "GRAMMAR",
+    "LISTENING", "SPEAKING", "READING", "WRITING", "NOTEBOOK",
+    "CMS", "SETTINGS"
+].forEach(prop => {
+    Object.defineProperty(STORAGE_KEYS, prop, {
+        enumerable: true,
+        get: () => getScopedStorageKey(BASE_STORAGE_KEYS[prop])
+    });
+});
+STORAGE_KEYS.DECK_V1 = BASE_STORAGE_KEYS.DECK_V1;
+STORAGE_KEYS.FPT_V3 = BASE_STORAGE_KEYS.FPT_V3;
+STORAGE_KEYS.LEGACY_SNAPSHOT = BASE_STORAGE_KEYS.LEGACY_SNAPSHOT;
 
 const SRS_INTERVALS_DAYS = [1, 3, 7, 14, 30];
 
@@ -47,6 +68,15 @@ function safeParseJSON(raw, fallback) {
 function safeWriteJSON(key, value) {
     try {
         localStorage.setItem(key, JSON.stringify(value));
+        if (
+            typeof window !== "undefined" &&
+            window.__QENGLISH_ACTIVE_UID &&
+            !window.__QENGLISH_SUPPRESS_SYNC &&
+            typeof CloudClient !== "undefined" &&
+            key.startsWith(`qenglish_u_${window.__QENGLISH_ACTIVE_UID}::`)
+        ) {
+            CloudClient.scheduleCloudSync();
+        }
         return true;
     } catch (err) {
         console.error("[QEnglish Storage] Write error for key " + key, err);
@@ -67,19 +97,23 @@ function getLocalDateKey(dateObj = new Date()) {
 // Non-destructive backup BEFORE any upgrade/migration touches deck data
 function ensureLegacyBackupSnapshot() {
     try {
-        if (localStorage.getItem(STORAGE_KEYS.LEGACY_SNAPSHOT)) return;
-        const v2 = localStorage.getItem(STORAGE_KEYS.DECK_V2);
-        const v1 = localStorage.getItem(STORAGE_KEYS.DECK_V1);
-        const fpt3 = localStorage.getItem(STORAGE_KEYS.FPT_V3);
-        if (v2 || v1 || fpt3) {
+        if (localStorage.getItem(BASE_STORAGE_KEYS.LEGACY_SNAPSHOT)) return;
+        const v2 = localStorage.getItem(BASE_STORAGE_KEYS.DECK_V2);
+        const v1 = localStorage.getItem(BASE_STORAGE_KEYS.DECK_V1);
+        const fpt3 = localStorage.getItem(BASE_STORAGE_KEYS.FPT_V3);
+        const nb = localStorage.getItem(BASE_STORAGE_KEYS.NOTEBOOK);
+        const wr = localStorage.getItem(BASE_STORAGE_KEYS.WRITING);
+        if (v2 || v1 || fpt3 || nb || wr) {
             const snapshot = {
                 createdAt: new Date().toISOString(),
                 note: "Automatic non-destructive pre-upgrade backup",
                 qenglish_deck_v2: v2 ? safeParseJSON(v2, null) : null,
                 qenglish_deck_v1: v1 ? safeParseJSON(v1, null) : null,
-                fpt_eng_deck_v3: fpt3 ? safeParseJSON(fpt3, null) : null
+                fpt_eng_deck_v3: fpt3 ? safeParseJSON(fpt3, null) : null,
+                qenglish_notebook_v1: nb ? safeParseJSON(nb, null) : null,
+                qenglish_writing_v1: wr ? safeParseJSON(wr, null) : null
             };
-            safeWriteJSON(STORAGE_KEYS.LEGACY_SNAPSHOT, snapshot);
+            safeWriteJSON(BASE_STORAGE_KEYS.LEGACY_SNAPSHOT, snapshot);
         }
     } catch (e) {
         console.warn("[QEnglish] Snapshot skipped:", e);
@@ -124,15 +158,16 @@ function normalizeWordItem(item, indexFallback = 0) {
 
 function loadDeckFromStorage() {
     ensureLegacyBackupSnapshot();
+    const isIsolatedAccount = Boolean(typeof window !== "undefined" && window.__QENGLISH_ACTIVE_UID);
     const rawV2 = localStorage.getItem(STORAGE_KEYS.DECK_V2);
-    const rawV1 = localStorage.getItem(STORAGE_KEYS.DECK_V1);
-    const rawFpt = localStorage.getItem(STORAGE_KEYS.FPT_V3);
+    const rawV1 = isIsolatedAccount ? null : localStorage.getItem(BASE_STORAGE_KEYS.DECK_V1);
+    const rawFpt = isIsolatedAccount ? null : localStorage.getItem(BASE_STORAGE_KEYS.FPT_V3);
+    const syncFlagKey = getScopedStorageKey("qenglish_builtin_sync_v50");
 
     let loaded = null;
     for (const raw of [rawV2, rawV1, rawFpt]) {
         if (raw !== null) {
             const parsed = safeParseJSON(raw, null);
-            // Note: An intentionally cleared deck `[]` in v2 is still a valid array, preserve user state!
             if (parsed !== null && Array.isArray(parsed)) {
                 if (parsed.length === 0 || isValidDeckArray(parsed)) {
                     loaded = parsed;
@@ -144,11 +179,10 @@ function loadDeckFromStorage() {
 
     if (loaded === null) {
         loaded = DEFAULT_DECK.map((d, idx) => normalizeWordItem({ ...d }, idx));
-        try { localStorage.setItem("qenglish_builtin_sync_v50", "1"); } catch (e) {}
+        try { localStorage.setItem(syncFlagKey, "1"); } catch (e) {}
     } else {
         loaded = loaded.map((d, idx) => normalizeWordItem(d, idx));
-        // Non-destructive one-time sync of newly expanded built-in CEFR A1-C2 words (keeps user edits/additions & honors cleared [])
-        if (loaded.length > 0 && !localStorage.getItem("qenglish_builtin_sync_v50")) {
+        if (loaded.length > 0 && !localStorage.getItem(syncFlagKey)) {
             const existingTerms = new Set(loaded.map(w => String(w.term || "").trim().toLowerCase()));
             DEFAULT_DECK.forEach((d, idx) => {
                 const key = String(d.term || "").trim().toLowerCase();
@@ -157,7 +191,7 @@ function loadDeckFromStorage() {
                     loaded.push(normalizeWordItem({ ...d, source: "built-in" }, idx));
                 }
             });
-            try { localStorage.setItem("qenglish_builtin_sync_v50", "1"); } catch (e) {}
+            try { localStorage.setItem(syncFlagKey, "1"); } catch (e) {}
         }
     }
 
@@ -186,7 +220,7 @@ function getDefaultSettings() {
         autoPlay: true,
         backendApiUrl: "/api/ai",
         cloudSyncUrl: "",
-        aiConsentAccepted: false,
+        aiConsentAccepted: true,
         onboardingCompleted: false,
         programStart: "2026-11-04",
         programEnd: "2026-12-17"
@@ -469,18 +503,51 @@ function computeOverallAnalytics() {
     const writingPct = Math.min(100, Math.round((uniqueWritingTopics / writingTotal) * 100));
     const speakingPct = Math.min(100, Math.round((totalSpeaking / speakingTarget) * 100));
 
+    // Real Writing 10-point & 4-criterion analytics
+    const gradedWritings = (writingSaved.submissions || []).filter(s => typeof s.totalScore10 === "number");
+    const writingAvg10 = gradedWritings.length > 0
+        ? Number((gradedWritings.reduce((sum, s) => sum + s.totalScore10, 0) / gradedWritings.length).toFixed(1))
+        : null;
+    const writingCriteriaAvg = { taskResponse: null, coherenceCohesion: null, lexicalResource: null, grammarAccuracy: null };
+    ["taskResponse", "coherenceCohesion", "lexicalResource", "grammarAccuracy"].forEach(ck => {
+        const vals = gradedWritings
+            .map(s => Number(s.criteria?.[ck]?.scoreOutOf2_5))
+            .filter(v => Number.isFinite(v));
+        if (vals.length > 0) {
+            writingCriteriaAvg[ck] = Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2));
+        }
+    });
+
+    // Aggregate common mistake categories across Study logs + Notebook
+    const mistakeCounts = {};
+    dayKeys.forEach(k => {
+        (progressState.days[k]?.mistakes || []).forEach(m => {
+            const cat = m.category || "Khác";
+            mistakeCounts[cat] = (mistakeCounts[cat] || 0) + 1;
+        });
+    });
+    const topMistakeCategories = Object.entries(mistakeCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(([category, count]) => ({ category, count }));
+
     return {
         totalDaysStudied,
         streak,
         totalMinutes: Math.round(totalMinutes),
         wordsLearned,
         wordsMastered,
+        srsCounts,
         totalListening,
         totalReading,
         totalWriting,
         totalSpeaking,
         totalGrammar,
         avgScore,
+        writingSubmissionsCount: (writingSaved.submissions || []).length,
+        writingAvg10,
+        writingCriteriaAvg,
+        topMistakeCategories,
         skills: {
             vocabulary: vocabPct,
             grammar: grammarPct,
@@ -868,14 +935,20 @@ function importAllBackupJSON(file, onComplete) {
                     deck = d.qenglish_deck_v2.map((it, idx) => normalizeWordItem(it, idx));
                     saveDeckToStorage();
                 }
-                const optionalKeys = [
-                    STORAGE_KEYS.SRS, STORAGE_KEYS.PROGRESS, STORAGE_KEYS.DASHBOARD,
-                    STORAGE_KEYS.GRAMMAR, STORAGE_KEYS.LISTENING, STORAGE_KEYS.SPEAKING,
-                    STORAGE_KEYS.READING, STORAGE_KEYS.WRITING, STORAGE_KEYS.NOTEBOOK,
-                    STORAGE_KEYS.CMS
+                const keyPairs = [
+                    [BASE_STORAGE_KEYS.SRS, STORAGE_KEYS.SRS],
+                    [BASE_STORAGE_KEYS.PROGRESS, STORAGE_KEYS.PROGRESS],
+                    [BASE_STORAGE_KEYS.DASHBOARD, STORAGE_KEYS.DASHBOARD],
+                    [BASE_STORAGE_KEYS.GRAMMAR, STORAGE_KEYS.GRAMMAR],
+                    [BASE_STORAGE_KEYS.LISTENING, STORAGE_KEYS.LISTENING],
+                    [BASE_STORAGE_KEYS.SPEAKING, STORAGE_KEYS.SPEAKING],
+                    [BASE_STORAGE_KEYS.READING, STORAGE_KEYS.READING],
+                    [BASE_STORAGE_KEYS.WRITING, STORAGE_KEYS.WRITING],
+                    [BASE_STORAGE_KEYS.NOTEBOOK, STORAGE_KEYS.NOTEBOOK],
+                    [BASE_STORAGE_KEYS.CMS, STORAGE_KEYS.CMS]
                 ];
-                optionalKeys.forEach(k => {
-                    if (d[k] !== undefined) safeWriteJSON(k, d[k]);
+                keyPairs.forEach(([baseKey, scopedKey]) => {
+                    if (d[baseKey] !== undefined) safeWriteJSON(scopedKey, d[baseKey]);
                 });
                 if (d.qenglish_settings_v1 && typeof d.qenglish_settings_v1 === "object") {
                     saveSettings(d.qenglish_settings_v1);
@@ -908,17 +981,18 @@ function importAllBackupJSON(file, onComplete) {
 /* ==================== 9. MULTI-ACCOUNT & GROUP STUDY SYSTEM ==================== */
 const ACCOUNTS_STORAGE_KEY = "qenglish_accounts_v1";
 const USER_SCOPED_KEYS = [
-    STORAGE_KEYS.DECK_V2,
-    STORAGE_KEYS.SRS,
-    STORAGE_KEYS.PROGRESS,
-    STORAGE_KEYS.DASHBOARD,
-    STORAGE_KEYS.GRAMMAR,
-    STORAGE_KEYS.LISTENING,
-    STORAGE_KEYS.SPEAKING,
-    STORAGE_KEYS.READING,
-    STORAGE_KEYS.WRITING,
-    STORAGE_KEYS.NOTEBOOK,
-    STORAGE_KEYS.SETTINGS
+    BASE_STORAGE_KEYS.DECK_V2,
+    BASE_STORAGE_KEYS.SRS,
+    BASE_STORAGE_KEYS.PROGRESS,
+    BASE_STORAGE_KEYS.DASHBOARD,
+    BASE_STORAGE_KEYS.GRAMMAR,
+    BASE_STORAGE_KEYS.LISTENING,
+    BASE_STORAGE_KEYS.SPEAKING,
+    BASE_STORAGE_KEYS.READING,
+    BASE_STORAGE_KEYS.WRITING,
+    BASE_STORAGE_KEYS.NOTEBOOK,
+    BASE_STORAGE_KEYS.CMS,
+    BASE_STORAGE_KEYS.SETTINGS
 ];
 
 let accountsStore = null;
@@ -974,7 +1048,7 @@ function syncCurrentAccountSnapshot() {
 
     const snap = {};
     USER_SCOPED_KEYS.forEach(k => {
-        const val = localStorage.getItem(k);
+        const val = localStorage.getItem(getScopedStorageKey(k));
         if (val !== null) snap[k] = val;
     });
     acc.data = snap;
@@ -1019,13 +1093,13 @@ function createNewUserAccount({ name, username, avatar = "🌟", goal = "Giao ti
     const freshDeck = DEFAULT_DECK.map(item => normalizeWordItem(item, 0));
 
     // Clear user-scoped keys and initialize fresh default deck for the new member
-    USER_SCOPED_KEYS.forEach(k => localStorage.removeItem(k));
+    USER_SCOPED_KEYS.forEach(k => localStorage.removeItem(getScopedStorageKey(k)));
     safeWriteJSON(STORAGE_KEYS.DECK_V2, freshDeck);
-    safeWriteJSON(STORAGE_KEYS.SETTINGS, { ...DEFAULT_SETTINGS, onboardingCompleted: true });
+    safeWriteJSON(STORAGE_KEYS.SETTINGS, { ...getDefaultSettings(), onboardingCompleted: true });
 
     const newAccSnapshot = {};
     USER_SCOPED_KEYS.forEach(k => {
-        const v = localStorage.getItem(k);
+        const v = localStorage.getItem(getScopedStorageKey(k));
         if (v !== null) newAccSnapshot[k] = v;
     });
 
@@ -1067,11 +1141,11 @@ function switchToUserAccount(targetAccountId, enteredPin = null) {
     syncCurrentAccountSnapshot();
 
     // 2. Clear user-scoped keys and restore target account's keys
-    USER_SCOPED_KEYS.forEach(k => localStorage.removeItem(k));
+    USER_SCOPED_KEYS.forEach(k => localStorage.removeItem(getScopedStorageKey(k)));
     const targetData = target.data || {};
     Object.keys(targetData).forEach(k => {
         if (targetData[k] !== null && targetData[k] !== undefined) {
-            localStorage.setItem(k, targetData[k]);
+            localStorage.setItem(getScopedStorageKey(k), targetData[k]);
         }
     });
 
@@ -1158,4 +1232,143 @@ function importUserAccountJSON(file, onComplete) {
         }
     };
     reader.readAsText(file);
+}
+
+/* ==================== 10. CLOUD WORKSPACE SNAPSHOTS & SAFE LEGACY MIGRATION ==================== */
+function resetInMemoryWorkspaceState() {
+    deck = [];
+    srsState = {};
+    progressState = null;
+    dashboardState = null;
+    notebookItems = [];
+    cmsItems = [];
+    appSettings = null;
+    accountsStore = null;
+    if (typeof activeWritingTopic !== "undefined") activeWritingTopic = null;
+    ["writing-evaluation", "writing-inline-check-box", "speaking-eval-output", "grammar-coach-output", "listening-coach-output", "reading-coach-output", "vocab-coach-output", "dash-ai-assistant-output"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.innerHTML = "";
+            el.classList.add("hidden");
+        }
+    });
+}
+
+function collectCurrentWorkspaceSnapshot() {
+    return {
+        settings: appSettings || safeParseJSON(localStorage.getItem(STORAGE_KEYS.SETTINGS), getDefaultSettings()),
+        deck_v2: Array.isArray(deck) && deck.length ? deck : safeParseJSON(localStorage.getItem(STORAGE_KEYS.DECK_V2), []),
+        srs_state: srsState || safeParseJSON(localStorage.getItem(STORAGE_KEYS.SRS), {}),
+        progress_state: progressState || safeParseJSON(localStorage.getItem(STORAGE_KEYS.PROGRESS), {}),
+        dashboard_state: safeParseJSON(localStorage.getItem(STORAGE_KEYS.DASHBOARD), { tasksByDate: {} }),
+        grammar_state: safeParseJSON(localStorage.getItem(STORAGE_KEYS.GRAMMAR), { completedIds: [], scores: {} }),
+        listening_state: safeParseJSON(localStorage.getItem(STORAGE_KEYS.LISTENING), { completedIds: [], scores: {}, history: [] }),
+        speaking_state: safeParseJSON(localStorage.getItem(STORAGE_KEYS.SPEAKING), { history: [] }),
+        reading_state: safeParseJSON(localStorage.getItem(STORAGE_KEYS.READING), { completedIds: [], highlights: {}, notes: {}, scores: {} }),
+        writing_state: safeParseJSON(localStorage.getItem(STORAGE_KEYS.WRITING), { drafts: {}, submissions: [] }),
+        notebook: Array.isArray(notebookItems) ? notebookItems : safeParseJSON(localStorage.getItem(STORAGE_KEYS.NOTEBOOK), []),
+        cms_items: Array.isArray(cmsItems) ? cmsItems : safeParseJSON(localStorage.getItem(STORAGE_KEYS.CMS), [])
+    };
+}
+
+function applyWorkspaceSnapshotToLocal(snapshot) {
+    if (!snapshot || typeof snapshot !== "object") return;
+    window.__QENGLISH_SUPPRESS_SYNC = true;
+    try {
+        if (snapshot.settings && typeof snapshot.settings === "object") {
+            safeWriteJSON(STORAGE_KEYS.SETTINGS, { ...getDefaultSettings(), ...snapshot.settings });
+        }
+        if (Array.isArray(snapshot.deck_v2)) {
+            safeWriteJSON(STORAGE_KEYS.DECK_V2, snapshot.deck_v2.map((w, i) => normalizeWordItem(w, i)));
+        }
+        if (snapshot.srs_state && typeof snapshot.srs_state === "object") {
+            safeWriteJSON(STORAGE_KEYS.SRS, snapshot.srs_state);
+        }
+        if (snapshot.progress_state && typeof snapshot.progress_state === "object") {
+            safeWriteJSON(STORAGE_KEYS.PROGRESS, snapshot.progress_state);
+        }
+        if (snapshot.dashboard_state && typeof snapshot.dashboard_state === "object") {
+            safeWriteJSON(STORAGE_KEYS.DASHBOARD, snapshot.dashboard_state);
+        }
+        if (snapshot.grammar_state && typeof snapshot.grammar_state === "object") {
+            safeWriteJSON(STORAGE_KEYS.GRAMMAR, snapshot.grammar_state);
+        }
+        if (snapshot.listening_state && typeof snapshot.listening_state === "object") {
+            safeWriteJSON(STORAGE_KEYS.LISTENING, snapshot.listening_state);
+        }
+        if (snapshot.speaking_state && typeof snapshot.speaking_state === "object") {
+            safeWriteJSON(STORAGE_KEYS.SPEAKING, snapshot.speaking_state);
+        }
+        if (snapshot.reading_state && typeof snapshot.reading_state === "object") {
+            safeWriteJSON(STORAGE_KEYS.READING, snapshot.reading_state);
+        }
+        if (snapshot.writing_state && typeof snapshot.writing_state === "object") {
+            safeWriteJSON(STORAGE_KEYS.WRITING, snapshot.writing_state);
+        }
+        if (Array.isArray(snapshot.notebook)) {
+            safeWriteJSON(STORAGE_KEYS.NOTEBOOK, snapshot.notebook);
+        }
+        if (Array.isArray(snapshot.cms_items)) {
+            safeWriteJSON(STORAGE_KEYS.CMS, snapshot.cms_items);
+        }
+        reloadAllActiveAccountStates();
+    } finally {
+        window.__QENGLISH_SUPPRESS_SYNC = false;
+    }
+}
+
+function detectLegacyUnscopedDataSummary(userId) {
+    if (!userId) return null;
+    if (localStorage.getItem(`qenglish_legacy_prompted_${userId}`)) return null;
+
+    const legDeck = safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.DECK_V2), null)
+        || safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.DECK_V1), null)
+        || safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.FPT_V3), null);
+    const legNotebook = safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.NOTEBOOK), []);
+    const legWriting = safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.WRITING), { submissions: [], drafts: {} });
+    const legCms = safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.CMS), []);
+    const legProgress = safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.PROGRESS), null);
+
+    const hasCustomWords = Array.isArray(legDeck) && legDeck.some(w => Number(w.id) > 50 || w.starred || w.source === "user-imported");
+    const wordCount = Array.isArray(legDeck) ? legDeck.length : 0;
+    const noteCount = Array.isArray(legNotebook) ? legNotebook.length : 0;
+    const writingCount = Array.isArray(legWriting?.submissions) ? legWriting.submissions.length : 0;
+    const materialCount = Array.isArray(legCms) ? legCms.length : 0;
+    const daysCount = legProgress?.days ? Object.keys(legProgress.days).length : 0;
+
+    if (!hasCustomWords && noteCount === 0 && writingCount === 0 && materialCount === 0 && daysCount === 0) {
+        return null;
+    }
+    return { wordCount, noteCount, writingCount, materialCount, daysCount };
+}
+
+function migrateLegacyUnscopedDataToCurrentUser(userId) {
+    if (!userId) return { ok: false };
+    ensureLegacyBackupSnapshot();
+    const legSnap = {
+        settings: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.SETTINGS), getDefaultSettings()),
+        deck_v2: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.DECK_V2), null)
+            || safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.DECK_V1), null)
+            || safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.FPT_V3), []) || [],
+        srs_state: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.SRS), {}),
+        progress_state: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.PROGRESS), { days: {}, activities: [], skillHistory: {} }),
+        dashboard_state: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.DASHBOARD), { tasksByDate: {} }),
+        grammar_state: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.GRAMMAR), { completedIds: [], scores: {} }),
+        listening_state: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.LISTENING), { completedIds: [], scores: {}, history: [] }),
+        speaking_state: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.SPEAKING), { history: [] }),
+        reading_state: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.READING), { completedIds: [], highlights: {}, notes: {}, scores: {} }),
+        writing_state: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.WRITING), { drafts: {}, submissions: [] }),
+        notebook: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.NOTEBOOK), []),
+        cms_items: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.CMS), [])
+    };
+
+    const currentSnap = collectCurrentWorkspaceSnapshot();
+    const merged = typeof CloudClient !== "undefined"
+        ? CloudClient.mergeSnapshotData(currentSnap, legSnap)
+        : legSnap;
+
+    applyWorkspaceSnapshotToLocal(merged);
+    localStorage.setItem(`qenglish_legacy_prompted_${userId}`, "migrated");
+    if (typeof CloudClient !== "undefined") CloudClient.syncNow();
+    return { ok: true };
 }

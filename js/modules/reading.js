@@ -517,3 +517,43 @@ function closeReadingSession() {
     document.getElementById("reading-filter-bar")?.classList.remove("hidden");
     filterReadingPassages();
 }
+
+/* ==================== AI READING COACH (Sentence Breakdown & Summary) ==================== */
+async function runAIReadingCoach(action = "analyze") {
+    if (!activeReadingPassage) return;
+    const sel = String(window.getSelection ? window.getSelection().toString() : "").trim();
+    const outBox = document.getElementById("reading-coach-output");
+    if (!outBox) return;
+
+    outBox.classList.remove("hidden");
+    outBox.innerHTML = `<div class="p-4 rounded-2xl bg-slate-950 border border-cyan-500/35 text-xs text-cyan-300 font-bold animate-pulse">⏳ AI Reading Coach đang phân tích ${sel ? `đoạn "${escHtml(sel.slice(0, 60))}..."` : "bài đọc"}...</div>`;
+
+    const res = await AIClient.request("reading-coach", {
+        action,
+        title: activeReadingPassage.title,
+        selection: sel || activeReadingPassage.passage.slice(0, 400),
+        passage: activeReadingPassage.passage
+    });
+
+    if (!res.ok || !res.data) {
+        outBox.innerHTML = `<div class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 flex justify-between items-center"><span>${escHtml(res.error || "Cần kết nối AI Backend để phân tích câu phức & tóm tắt đoạn đọc.")}</span><button onclick="document.getElementById('reading-coach-output').classList.add('hidden')" class="ml-2">✕</button></div>`;
+        return;
+    }
+
+    const d = res.data;
+    outBox.innerHTML = `
+        <div class="p-4 rounded-2xl bg-slate-950 border border-cyan-500/35 space-y-2.5 text-xs">
+            <div class="flex items-center justify-between">
+                <span class="font-extrabold text-cyan-300">🤖 Phân Tích Từ AI Reading Coach</span>
+                <button onclick="document.getElementById('reading-coach-output').classList.add('hidden')" class="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <p class="text-white"><strong>Ý chính:</strong> ${escHtml(d.mainIdeaVi || "")}</p>
+            <p class="text-slate-300 leading-relaxed"><strong>Phân tích câu & cấu trúc:</strong> ${escHtml(d.sentenceBreakdownVi || "")}</p>
+            ${(d.keyVocabulary && d.keyVocabulary.length) ? `
+                <div class="flex flex-wrap gap-1.5 pt-1">
+                    ${d.keyVocabulary.map(v => `<button onclick='showReadingWordPopup(${JSON.stringify(v.word)})' class="px-2.5 py-1 rounded-lg bg-slate-900 border border-white/10 text-amber-300 font-bold">+ ${escHtml(v.word)}: ${escHtml(v.meaningInContextVi)}</button>`).join("")}
+                </div>
+            ` : ""}
+        </div>
+    `;
+}

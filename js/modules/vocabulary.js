@@ -349,6 +349,7 @@ function renderWordList() {
                         <button onclick="speakWordById(${escHtml(safeIdJson)}, 0.5)" class="p-2 rounded-lg hover:bg-white/5 text-slate-400 hover:text-cyan-300 transition text-xs" title="Nghe chậm 0.5x">🐢</button>
                         <button onclick="toggleStarItem(${escHtml(safeIdJson)})" class="p-2 rounded-lg hover:bg-white/5 ${item.starred ? "text-amber-400" : "text-slate-500"} hover:text-amber-300 transition" title="Đánh dấu từ khó">★</button>
                         <button onclick="saveWordIdToNotebook(${escHtml(safeIdJson)})" class="p-2 rounded-lg hover:bg-white/5 text-violet-300 hover:text-violet-200 transition text-xs" title="Lưu vào Sổ tay">📓</button>
+                        <button onclick="enrichWordWithAICoach(${escHtml(safeIdJson)})" class="p-2 rounded-lg hover:bg-white/5 text-emerald-300 hover:text-emerald-200 transition text-xs" title="AI Phân tích 13 thông tin & Collocations">✨</button>
                         <button onclick="deleteItem(${escHtml(safeIdJson)})" class="p-2 rounded-lg hover:bg-white/5 text-rose-400/80 hover:text-rose-300 transition" title="Xóa từ">🗑</button>
                     </div>
                 </div>
@@ -1445,4 +1446,126 @@ function setupVocabularyKeyboardShortcuts() {
         if (e.code === "ArrowRight") nextCard();
         if (e.code === "ArrowLeft") prevCard();
     });
+}
+
+/* ==================== AI VOCABULARY COACH (13+ Fields & Leech Quiz) ==================== */
+async function enrichWordWithAICoach(wordId) {
+    const item = deck.find(d => String(d.id) === String(wordId));
+    if (!item) return;
+    let outBox = document.getElementById("vocab-coach-output");
+    if (!outBox) {
+        const list = document.getElementById("word-list-container");
+        if (list && list.parentElement) {
+            outBox = document.createElement("div");
+            outBox.id = "vocab-coach-output";
+            list.parentElement.insertBefore(outBox, list);
+        }
+    }
+    if (!outBox) return;
+    outBox.classList.remove("hidden");
+    outBox.innerHTML = `<div class="p-4 rounded-2xl bg-slate-950 border border-violet-500/35 text-xs text-violet-300 font-bold animate-pulse">⏳ AI Vocabulary Coach đang phân tích sâu từ "${escHtml(item.term)}"...</div>`;
+
+    const res = await AIClient.request("vocab-coach", {
+        action: "enrich",
+        word: item.term,
+        meaningHint: item.def
+    });
+    if (!res.ok || !res.data) {
+        outBox.innerHTML = `
+            <div class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-1.5">
+                <div class="flex items-center justify-between">
+                    <span class="font-extrabold text-amber-300">🛠️ Dữ liệu cục bộ cho từ "${escHtml(item.term)}" (Chưa kết nối AI Backend)</span>
+                    <button onclick="document.getElementById('vocab-coach-output').classList.add('hidden')" class="text-slate-400 hover:text-white">✕</button>
+                </div>
+                <p class="text-slate-300">${escHtml(res.error || "Kết nối AI Backend để xem collocations, word family, phrasal verbs và ví dụ đa ngữ cảnh.")}</p>
+            </div>
+        `;
+        return;
+    }
+
+    const d = res.data;
+    outBox.innerHTML = `
+        <div class="p-5 rounded-2xl bg-slate-950/95 border border-emerald-500/30 space-y-3 text-xs mb-4">
+            <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-lg font-black text-white">${escHtml(d.term || item.term)}</span>
+                    <span class="font-mono text-cyan-300">${escHtml(d.ipa || item.ipa)}</span>
+                    <span class="px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-200 font-bold">${escHtml(d.pos || item.pos)} • ${escHtml(d.level || item.level)}</span>
+                    ${renderSourceBadge("ai-generated")}
+                </div>
+                <button onclick="document.getElementById('vocab-coach-output').classList.add('hidden')" class="text-slate-400 hover:text-white font-bold">✕ Đóng</button>
+            </div>
+            <div class="grid md:grid-cols-2 gap-3">
+                <div class="p-3 rounded-xl bg-slate-900 border border-white/10 space-y-1">
+                    <p class="font-bold text-amber-300">Nghĩa & Sắc thái:</p>
+                    <p class="text-slate-200">${(d.coreMeaningsVi || []).map(m => escHtml(m)).join(" • ")}</p>
+                    <p class="font-bold text-cyan-300 pt-1">Collocations thường gặp:</p>
+                    <p class="text-slate-300">${(d.collocations || []).map(c => escHtml(c)).join(" | ")}</p>
+                </div>
+                <div class="p-3 rounded-xl bg-slate-900 border border-white/10 space-y-1">
+                    <p class="font-bold text-emerald-300">Word Family & Idioms:</p>
+                    <p class="text-slate-300">${(d.wordFamily || []).map(w => escHtml(w)).join(", ")}</p>
+                    <p class="text-slate-300">${(d.phrasalOrIdioms || []).map(p => escHtml(p)).join(" • ")}</p>
+                    <p class="text-rose-300 pt-1">⚠️ Lỗi thường gặp: ${escHtml(d.commonMistakeVi || "")}</p>
+                </div>
+            </div>
+            ${(d.contextExamples && d.contextExamples.length) ? `
+                <div class="space-y-1">
+                    <p class="font-bold text-violet-300">Ví dụ đa ngữ cảnh:</p>
+                    ${d.contextExamples.map(ex => `<p class="text-slate-200">• <strong>${escHtml(ex.en)}</strong> — <span class="text-slate-400">${escHtml(ex.vi)}</span></p>`).join("")}
+                </div>
+            ` : ""}
+        </div>
+    `;
+}
+
+async function runVocabLeechAICoach() {
+    const targetWords = deck.filter(w => {
+        const st = classifyWordSRS(w.id);
+        return st === "leech" || st === "due" || w.starred;
+    }).slice(0, 8);
+    const sample = targetWords.length ? targetWords : deck.slice(0, 6);
+    if (!sample.length) {
+        showToast("Kho từ vựng trống — hãy thêm từ trước!", "warning");
+        return;
+    }
+    let outBox = document.getElementById("vocab-coach-output");
+    if (!outBox) {
+        const list = document.getElementById("word-list-container");
+        if (list && list.parentElement) {
+            outBox = document.createElement("div");
+            outBox.id = "vocab-coach-output";
+            list.parentElement.insertBefore(outBox, list);
+        }
+    }
+    if (!outBox) return;
+    outBox.classList.remove("hidden");
+    outBox.innerHTML = `<div class="p-4 rounded-2xl bg-slate-950 border border-violet-500/35 text-xs text-violet-300 font-bold animate-pulse">⏳ AI Vocabulary Coach đang tạo bài kiểm tra ngữ cảnh từ nhóm từ cần ôn / hay sai của bạn...</div>`;
+
+    const res = await AIClient.request("vocab-coach", {
+        action: "quiz",
+        count: 4,
+        words: sample.map(w => ({ term: w.term, def: w.def }))
+    });
+    if (!res.ok || !res.data?.questions) {
+        outBox.innerHTML = `<div class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200">${escHtml(res.error || "Cần kết nối AI Backend để tạo Quiz AI theo ngữ cảnh.")}</div>`;
+        return;
+    }
+    outBox.innerHTML = `
+        <div class="p-5 rounded-2xl bg-slate-950 border border-cyan-500/35 space-y-3 text-xs mb-4">
+            <div class="flex items-center justify-between">
+                <span class="font-extrabold text-cyan-300 text-sm">🎯 Bài Luyện Ngữ Cảnh Từ Kho Cá Nhân (${res.data.questions.length} câu)</span>
+                <button onclick="document.getElementById('vocab-coach-output').classList.add('hidden')" class="text-slate-400 hover:text-white">✕</button>
+            </div>
+            ${res.data.questions.map((q, qi) => `
+                <div class="p-3 rounded-xl bg-slate-900 border border-white/10 space-y-2">
+                    <p class="font-bold text-white">${qi + 1}. ${escHtml(q.question)}</p>
+                    <div class="flex flex-wrap gap-2">
+                        ${(q.options || []).map(opt => `<button onclick='const ok = ${JSON.stringify(opt)} === ${JSON.stringify(q.answer)}; showToast(ok ? "✅ Chính xác!" : "❌ Đáp án đúng: " + ${JSON.stringify(q.answer)}, ok ? "success" : "warning");' class="px-3 py-1.5 rounded-lg bg-slate-950 border border-white/15 hover:border-cyan-400 text-slate-200 font-bold">${escHtml(opt)}</button>`).join("")}
+                    </div>
+                    <p class="text-[11px] text-slate-400">💡 ${escHtml(q.explanationVi || "")}</p>
+                </div>
+            `).join("")}
+        </div>
+    `;
 }

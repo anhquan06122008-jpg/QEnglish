@@ -161,9 +161,13 @@ function refreshDashboardUI() {
     setTxt("dash-writing-done", `${stats.totalWriting}`);
     setTxt("dash-speaking-done", `${stats.totalSpeaking}`);
     setTxt("dash-avg", stats.avgScore !== null ? `${stats.avgScore}%` : "Chưa có");
+    setTxt("dash-writing-avg10", stats.writingAvg10 !== null ? `${stats.writingAvg10} / 10` : "Chưa chấm AI");
+    setTxt("dash-srs-due", `${(stats.srsCounts?.due || 0) + (stats.srsCounts?.leech || 0)}`);
 
     // Personal Goal & Overall Mastery Progress
+    const authUser = typeof CloudClient !== "undefined" ? CloudClient.getUser() : null;
     const activeAcc = typeof getActiveAccount === "function" ? getActiveAccount() : null;
+    const displayUserName = authUser?.user_metadata?.display_name || activeAcc?.name || authUser?.email?.split("@")[0] || "bạn";
     const avgMasteryPct = Math.min(100, Math.max(5, Math.round(
         (stats.skills.listening + stats.skills.speaking + stats.skills.reading + stats.skills.writing + stats.skills.vocabGrammar) / 5
     )));
@@ -175,8 +179,8 @@ function refreshDashboardUI() {
         goalText.textContent = `🎯 Mục tiêu cá nhân: ${activeAcc?.goal || "Chinh phục 5 kỹ năng Tiếng Anh"} • Mức độ hoàn thiện tổng thể: ${avgMasteryPct}%`;
     }
     const heroGreeting = document.getElementById("dash-hero-greeting");
-    if (heroGreeting && activeAcc) {
-        heroGreeting.textContent = `Chào ${activeAcc.name}! Sẵn sàng bứt phá Tiếng Anh hôm nay?`;
+    if (heroGreeting) {
+        heroGreeting.textContent = `Chào ${displayUserName}! Sẵn sàng bứt phá Tiếng Anh hôm nay?`;
     }
     if (typeof syncAccountBadgesUI === "function") syncAccountBadgesUI();
     if (typeof syncCurrentAccountSnapshot === "function") syncCurrentAccountSnapshot();
@@ -410,7 +414,40 @@ function renderProgressAnalyticsPage() {
                     </tbody>
                 </table>
             </div>
-            <p class="text-[11px] text-slate-400 mt-2">*Tất cả số liệu trên được tính toán trực tiếp từ kết quả làm bài thực tế lưu trên trình duyệt của bạn, tuyệt đối không tự sinh điểm giả.</p>
+            <p class="text-[11px] text-slate-400 mt-2">*Tất cả số liệu trên được tính toán trực tiếp từ kết quả làm bài thực tế của riêng tài khoản của bạn, tuyệt đối không tự sinh điểm giả.</p>
+        `;
+    }
+
+    // 7.2B Writing 4-Criteria Analytics & Common Mistakes (Real Data Only)
+    const extraProgBox = document.getElementById("prog-writing-mistakes-summary");
+    if (extraProgBox) {
+        const wc = stats.writingCriteriaAvg || {};
+        const fmtCrit = v => (typeof v === "number" ? `${v}/2.5` : "—");
+        const wSaved = safeParseJSON(localStorage.getItem(STORAGE_KEYS.WRITING), { submissions: [] });
+        const recentScored = (wSaved.submissions || []).filter(s => typeof s.totalScore10 === "number").slice(0, 5);
+        extraProgBox.innerHTML = `
+            <div class="grid md:grid-cols-2 gap-4 text-xs">
+                <div class="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <span class="font-extrabold text-violet-300">✍️ Điểm Writing Trung Bình (4 Tiêu Chí × 2.5)</span>
+                        <span class="font-black text-cyan-300">${stats.writingAvg10 !== null ? `${stats.writingAvg10} / 10` : "Chưa có bài AI"}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="p-2.5 rounded-xl bg-slate-900 border border-white/5"><span class="text-slate-400 block text-[10px]">Task Response</span><strong class="text-white text-sm">${fmtCrit(wc.taskResponse)}</strong></div>
+                        <div class="p-2.5 rounded-xl bg-slate-900 border border-white/5"><span class="text-slate-400 block text-[10px]">Coherence & Cohesion</span><strong class="text-white text-sm">${fmtCrit(wc.coherenceCohesion)}</strong></div>
+                        <div class="p-2.5 rounded-xl bg-slate-900 border border-white/5"><span class="text-slate-400 block text-[10px]">Lexical Resource</span><strong class="text-white text-sm">${fmtCrit(wc.lexicalResource)}</strong></div>
+                        <div class="p-2.5 rounded-xl bg-slate-900 border border-white/5"><span class="text-slate-400 block text-[10px]">Grammar & Accuracy</span><strong class="text-white text-sm">${fmtCrit(wc.grammarAccuracy)}</strong></div>
+                    </div>
+                    ${recentScored.length ? `<div class="pt-1 space-y-1"><p class="text-[11px] font-bold text-slate-400">Xu hướng điểm các bài Writing gần đây:</p>${recentScored.map(s => `<div class="flex justify-between text-[11px]"><span class="text-slate-300 truncate max-w-[70%]">${escHtml(s.title)}</span><strong class="text-emerald-300">${s.totalScore10}/10</strong></div>`).join("")}</div>` : ""}
+                </div>
+                <div class="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-2.5">
+                    <span class="font-extrabold text-rose-300 block">⚠️ Nhóm Lỗi Thường Gặp & SRS Cần Ôn Tập</span>
+                    <p class="text-slate-300">Từ cần ôn hôm nay (Due): <strong class="text-amber-300">${stats.srsCounts?.due || 0}</strong> • Từ hay sai (Leech): <strong class="text-rose-300">${stats.srsCounts?.leech || 0}</strong></p>
+                    ${(stats.topMistakeCategories && stats.topMistakeCategories.length)
+                        ? `<div class="space-y-1.5">${stats.topMistakeCategories.map(m => `<div class="flex justify-between p-2 rounded-lg bg-slate-900"><span class="text-slate-200">${escHtml(m.category)}</span><span class="font-black text-rose-300">${m.count} lần</span></div>`).join("")}</div>`
+                        : `<p class="text-slate-500 italic">Chưa ghi nhận lỗi sai hệ thống nào.</p>`}
+                </div>
+            </div>
         `;
     }
 
@@ -577,20 +614,27 @@ function closeOnboardingModal() {
 
 /* ==================== MULTI-ACCOUNT & GROUP LEADERBOARD UI ==================== */
 function syncAccountBadgesUI() {
-    if (typeof getActiveAccount !== "function") return;
-    const acc = getActiveAccount();
-    if (!acc) return;
+    const authUser = typeof CloudClient !== "undefined" ? CloudClient.getUser() : null;
+    const acc = typeof getActiveAccount === "function" ? getActiveAccount() : null;
+    const avatar = authUser?.user_metadata?.avatar || acc?.avatar || "🚀";
+    const name = authUser?.user_metadata?.display_name || acc?.name || authUser?.email?.split("@")[0] || "Học viên";
+    const subLabel = authUser?.email || (acc ? `@${acc.username}` : "");
+    const goal = acc?.goal || "Chinh phục 5 kỹ năng Tiếng Anh";
 
     const headerBtn = document.getElementById("header-account-btn");
     if (headerBtn) {
-        headerBtn.innerHTML = `<span>${escHtml(acc.avatar || "🚀")}</span><span class="max-w-[110px] truncate">${escHtml(acc.name)}</span><span class="text-[10px] text-cyan-300">▾</span>`;
+        headerBtn.innerHTML = `<span>${escHtml(avatar)}</span><span class="max-w-[110px] truncate">${escHtml(name)}</span><span class="text-[10px] text-cyan-300">▾</span>`;
     }
     const sbName = document.getElementById("sidebar-account-name");
-    if (sbName) sbName.textContent = `${acc.avatar || "🚀"} ${acc.name}`;
+    if (sbName) sbName.textContent = `${avatar} ${name}`;
     const sbGoal = document.getElementById("sidebar-account-goal");
-    if (sbGoal) sbGoal.textContent = acc.goal || "QEnglish Personal System";
+    if (sbGoal) sbGoal.textContent = subLabel || goal;
     const dashBadge = document.getElementById("dash-user-badge");
-    if (dashBadge) dashBadge.textContent = `${acc.avatar || "🚀"} Tài khoản: ${acc.name} (@${acc.username})`;
+    if (dashBadge) {
+        const modeTag = (typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) ? "Cloud" : "Local";
+        dashBadge.textContent = `${avatar} ${name} (${subLabel || modeTag})`;
+    }
+    if (typeof updateCloudSyncBadgeUI === "function") updateCloudSyncBadgeUI();
 }
 
 function openAccountModal() {
@@ -745,8 +789,203 @@ function handleImportAccountFile(event) {
     if (event?.target) event.target.value = "";
 }
 
-/* ==================== MASTER APPLICATION BOOTSTRAP ==================== */
-window.addEventListener("DOMContentLoaded", () => {
+/* ==================== MASTER AUTHENTICATION & APPLICATION BOOTSTRAP ==================== */
+function showAuthScreen({ tab = "login", notice = "", error = "" } = {}) {
+    const authOverlay = document.getElementById("auth-screen");
+    const appShell = document.getElementById("main-app-shell");
+    if (authOverlay) authOverlay.classList.remove("hidden");
+    if (appShell) appShell.classList.add("hidden");
+    switchAuthTab(tab);
+
+    const noticeEl = document.getElementById("auth-mode-banner");
+    if (noticeEl && typeof CloudClient !== "undefined") {
+        noticeEl.innerHTML = CloudClient.isCloudMode()
+            ? `<div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-200">☁️ <strong>Chế độ Cloud Sync đã bật (Supabase):</strong> Mỗi tài khoản có không gian lưu trữ độc lập và tự động đồng bộ qua nhiều thiết bị.</div>`
+            : `<div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200">💾 <strong>Chế độ Cục bộ trên thiết bị này:</strong> Chưa cấu hình Supabase Cloud trên máy chủ. Dữ liệu tài khoản lưu an toàn trong trình duyệt hiện tại.</div>`;
+    }
+    const localContinueWrap = document.getElementById("auth-local-continue-wrap");
+    if (localContinueWrap) {
+        const hasLegacy = Boolean(localStorage.getItem("qenglish_deck_v2") || localStorage.getItem("qenglish_deck_v1") || localStorage.getItem("fpt_eng_deck_v3") || localStorage.getItem("qenglish_progress_v1"));
+        localContinueWrap.classList.toggle("hidden", (typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) || !hasLegacy);
+    }
+    document.getElementById("auth-resend-wrap")?.classList.add("hidden");
+    const msgEl = document.getElementById("auth-feedback-box");
+    if (msgEl) {
+        if (error) {
+            msgEl.className = "p-3 rounded-xl bg-rose-500/15 border border-rose-500/35 text-xs text-rose-200 font-bold";
+            msgEl.textContent = error;
+            msgEl.classList.remove("hidden");
+        } else if (notice) {
+            msgEl.className = "p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/35 text-xs text-emerald-200 font-bold";
+            msgEl.textContent = notice;
+            msgEl.classList.remove("hidden");
+        } else {
+            msgEl.classList.add("hidden");
+        }
+    }
+}
+
+function hideAuthScreen() {
+    document.getElementById("auth-screen")?.classList.add("hidden");
+    document.getElementById("main-app-shell")?.classList.remove("hidden");
+}
+
+function switchAuthTab(tab) {
+    ["login", "signup", "forgot", "recovery"].forEach(t => {
+        document.getElementById(`auth-form-${t}`)?.classList.toggle("hidden", t !== tab);
+    });
+    document.querySelectorAll(".auth-tab-btn").forEach(btn => {
+        const active = btn.getAttribute("data-atab") === tab;
+        btn.className = `auth-tab-btn flex-1 py-2.5 rounded-xl text-xs font-extrabold transition ${active ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"}`;
+    });
+    document.getElementById("auth-feedback-box")?.classList.add("hidden");
+}
+
+function setAuthLoading(btnId, loading, idleText) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.disabled = loading;
+    btn.classList.toggle("opacity-60", loading);
+    btn.textContent = loading ? "⏳ Đang xử lý..." : idleText;
+}
+
+async function handleAuthLoginSubmit(e) {
+    if (e) e.preventDefault();
+    const email = document.getElementById("auth-login-email")?.value || "";
+    const password = document.getElementById("auth-login-password")?.value || "";
+    setAuthLoading("auth-login-submit", true, "🔐 Đăng Nhập Vào QEnglish");
+    try {
+        const res = await CloudClient.signIn({ email, password });
+        if (!res.ok) {
+            showAuthScreen({ tab: "login", error: res.error });
+            const resendWrap = document.getElementById("auth-resend-wrap");
+            if (resendWrap) resendWrap.classList.toggle("hidden", !res.unconfirmed);
+            return;
+        }
+        await bootAuthenticatedWorkspace(res.user);
+    } finally {
+        setAuthLoading("auth-login-submit", false, "🔐 Đăng Nhập Vào QEnglish");
+    }
+}
+
+async function handleAuthResendVerification() {
+    const email = document.getElementById("auth-login-email")?.value || "";
+    const res = await CloudClient.resendVerification(email);
+    showAuthScreen({
+        tab: "login",
+        notice: res.ok ? `Đã gửi lại email xác minh tới ${email}.` : "",
+        error: res.ok ? "" : (res.error || "Không gửi lại được email.")
+    });
+}
+
+async function handleAuthSignUpSubmit(e) {
+    if (e) e.preventDefault();
+    const displayName = document.getElementById("auth-signup-name")?.value || "";
+    const email = document.getElementById("auth-signup-email")?.value || "";
+    const password = document.getElementById("auth-signup-password")?.value || "";
+    const confirmPw = document.getElementById("auth-signup-confirm")?.value || "";
+    const termsAccepted = Boolean(document.getElementById("auth-signup-terms")?.checked);
+
+    if (password !== confirmPw) {
+        showAuthScreen({ tab: "signup", error: "Mật khẩu xác nhận không khớp!" });
+        return;
+    }
+
+    setAuthLoading("auth-signup-submit", true, "🚀 Tạo Tài Khoản Học Tập Riêng");
+    try {
+        const res = await CloudClient.signUp({ displayName, email, password, termsAccepted });
+        if (!res.ok) {
+            showAuthScreen({ tab: "signup", error: res.error });
+            return;
+        }
+        if (res.needsVerification) {
+            showAuthScreen({ tab: "login", notice: res.message });
+            return;
+        }
+        await bootAuthenticatedWorkspace(res.user);
+    } finally {
+        setAuthLoading("auth-signup-submit", false, "🚀 Tạo Tài Khoản Học Tập Riêng");
+    }
+}
+
+async function handleAuthResetRequest(e) {
+    if (e) e.preventDefault();
+    const email = document.getElementById("auth-forgot-email")?.value || "";
+    setAuthLoading("auth-forgot-submit", true, "📧 Gửi Liên Kết Đặt Lại Mật Khẩu");
+    try {
+        const res = await CloudClient.sendPasswordReset(email);
+        showAuthScreen({
+            tab: res.ok ? "login" : "forgot",
+            notice: res.ok ? res.message : "",
+            error: res.ok ? "" : res.error
+        });
+    } finally {
+        setAuthLoading("auth-forgot-submit", false, "📧 Gửi Liên Kết Đặt Lại Mật Khẩu");
+    }
+}
+
+async function handleAuthNewPasswordSubmit(e) {
+    if (e) e.preventDefault();
+    const p1 = document.getElementById("auth-recovery-pw1")?.value || "";
+    const p2 = document.getElementById("auth-recovery-pw2")?.value || "";
+    if (p1 !== p2) {
+        showAuthScreen({ tab: "recovery", error: "Mật khẩu xác nhận chưa khớp." });
+        return;
+    }
+    setAuthLoading("auth-recovery-submit", true, "💾 Cập Nhật Mật Khẩu Mới");
+    try {
+        const res = await CloudClient.updatePasswordWithRecovery(p1);
+        if (!res.ok) {
+            showAuthScreen({ tab: "recovery", error: res.error });
+            return;
+        }
+        showAuthScreen({ tab: "login", notice: "✅ Đã cập nhật mật khẩu mới thành công! Hãy đăng nhập lại." });
+    } finally {
+        setAuthLoading("auth-recovery-submit", false, "💾 Cập Nhật Mật Khẩu Mới");
+    }
+}
+
+async function handleContinueWithExistingLocalDevice() {
+    // Safe bridge ONLY in non-cloud offline mode when pre-existing anonymous browser data is present
+    const fallbackUser = {
+        id: "legacy-device",
+        email: "local@device",
+        user_metadata: { display_name: "Tài khoản trên thiết bị", avatar: "🚀" }
+    };
+    await bootAuthenticatedWorkspace(fallbackUser, { useLegacyNamespace: true });
+}
+
+async function handleAppLogout() {
+    if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) {
+        await CloudClient.syncNow();
+        await CloudClient.signOut();
+    } else if (typeof CloudClient !== "undefined") {
+        await CloudClient.signOut();
+    }
+    resetInMemoryWorkspaceState();
+    closeAccountModal();
+    showAuthScreen({ tab: "login", notice: "Bạn đã đăng xuất an toàn. Dữ liệu tài khoản đã được bảo vệ riêng tư." });
+}
+
+async function bootAuthenticatedWorkspace(user, options = {}) {
+    resetInMemoryWorkspaceState();
+    window.__QENGLISH_AUTH_USER = user;
+    window.__QENGLISH_ACTIVE_UID = options.useLegacyNamespace ? null : user.id;
+
+    hideAuthScreen();
+
+    // Pull cloud data if authenticated against Supabase Cloud
+    if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode() && user.id) {
+        await CloudClient.upsertProfile(user);
+        const cloud = await CloudClient.fetchCloudWorkspace(user.id);
+        if (cloud.ok && cloud.snapshot) {
+            applyWorkspaceSnapshotToLocal(cloud.snapshot);
+            if (cloud.isLegacyTable) {
+                CloudClient.scheduleCloudSync();
+            }
+        }
+    }
+
     loadAccountsStore();
     loadSettings();
     loadDeckFromStorage();
@@ -754,10 +993,23 @@ window.addEventListener("DOMContentLoaded", () => {
     loadProgressState();
     loadNotebook();
     loadCMSItems();
+
+    // Prompt safe non-destructive migration ONLY if pre-upgrade anonymous browser data exists for first time
+    if (window.__QENGLISH_ACTIVE_UID) {
+        const legSummary = detectLegacyUnscopedDataSummary(window.__QENGLISH_ACTIVE_UID);
+        if (legSummary) {
+            window._pendingLegacyMigrationUid = window.__QENGLISH_ACTIVE_UID;
+            const summaryTxt = document.getElementById("legacy-migration-summary");
+            if (summaryTxt) {
+                summaryTxt.textContent = `Phát hiện dữ liệu học tập cũ trên trình duyệt (${legSummary.wordCount} từ vựng, ${legSummary.noteCount} ghi chú, ${legSummary.writingCount} bài Writing, ${legSummary.materialCount} tài liệu).`;
+            }
+            document.getElementById("legacy-migration-modal")?.classList.remove("hidden");
+        }
+    }
+
     syncAccountBadgesUI();
     syncCurrentAccountSnapshot();
 
-    // Sync saved audio & level preferences
     speechRate = appSettings.speechRate || 1.0;
     autoPlay = appSettings.autoPlay !== false;
     const speedSel = document.getElementById("speed-select");
@@ -770,25 +1022,131 @@ window.addEventListener("DOMContentLoaded", () => {
         if (exists) glSel.value = appSettings.selectedLevel;
     }
 
-    // Sync initial study deck & dashboard
     applyStudyFilter();
-    setupVocabularyKeyboardShortcuts();
+    renderWordList();
     setupRealStudyTimer();
     refreshDashboardUI();
-
-    // Check Backend AI connection honestly in background
+    navigateTo("dashboard");
     AIClient.checkStatus();
 
-    // Double-click word lookup inside Reading passage
+    if (!appSettings.onboardingCompleted) {
+        openOnboardingModal();
+    }
+}
+
+function confirmMigrateLegacyToAccount() {
+    const uid = window._pendingLegacyMigrationUid || window.__QENGLISH_ACTIVE_UID;
+    if (uid) {
+        migrateLegacyUnscopedDataToCurrentUser(uid);
+        applyStudyFilter();
+        renderWordList();
+        refreshDashboardUI();
+        showToast("✅ Đã gộp an toàn dữ liệu cũ vào tài khoản của bạn mà không mất dữ liệu nào!");
+    }
+    document.getElementById("legacy-migration-modal")?.classList.add("hidden");
+}
+
+function dismissLegacyMigrationModal() {
+    const uid = window._pendingLegacyMigrationUid || window.__QENGLISH_ACTIVE_UID;
+    if (uid) localStorage.setItem(`qenglish_legacy_prompted_${uid}`, "skipped");
+    document.getElementById("legacy-migration-modal")?.classList.add("hidden");
+}
+
+async function runAILearningAssistant() {
+    const outBox = document.getElementById("dash-ai-assistant-output");
+    if (!outBox) return;
+    outBox.classList.remove("hidden");
+    outBox.innerHTML = `<div class="p-4 rounded-2xl bg-slate-950 border border-violet-500/35 text-xs text-violet-300 font-bold animate-pulse">⏳ Trợ lý học tập AI đang phân tích riêng dữ liệu học tập thực tế của bạn...</div>`;
+
+    const stats = computeOverallAnalytics();
+    const res = await AIClient.request("learning-assistant", {
+        summary: {
+            totalDaysStudied: stats.totalDaysStudied,
+            streak: stats.streak,
+            totalMinutes: stats.totalMinutes,
+            wordsLearned: stats.wordsLearned,
+            wordsMastered: stats.wordsMastered,
+            srsDue: stats.srsCounts?.due || 0,
+            srsLeech: stats.srsCounts?.leech || 0,
+            skillsCompletionPct: stats.skills,
+            writingAvg10: stats.writingAvg10,
+            writingCriteriaAvg: stats.writingCriteriaAvg,
+            topMistakeCategories: stats.topMistakeCategories,
+            targetLevel: appSettings?.selectedLevel || "B1"
+        }
+    });
+
+    if (!res.ok || !res.data) {
+        outBox.innerHTML = `
+            <div class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-1.5">
+                <div class="flex justify-between">
+                    <span class="font-extrabold text-amber-300">🛠️ Đề xuất cục bộ từ dữ liệu thực (AI Backend chưa kết nối)</span>
+                    <button onclick="document.getElementById('dash-ai-assistant-output').classList.add('hidden')" class="text-slate-400">✕</button>
+                </div>
+                <p class="text-slate-200">Từ cần ôn SRS: <strong class="text-amber-300">${stats.srsCounts?.due || 0}</strong> • Bài Writing đã chấm: <strong class="text-cyan-300">${stats.writingSubmissionsCount}</strong></p>
+                <p class="text-slate-400">${escHtml(res.error || "Kết nối AI Backend để nhận lộ trình học 7 ngày cá nhân hóa.")}</p>
+            </div>
+        `;
+        return;
+    }
+
+    const d = res.data;
+    outBox.innerHTML = `
+        <div class="p-5 rounded-2xl bg-slate-950 border border-violet-500/35 space-y-3 text-xs">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                    <span class="font-extrabold text-violet-300 text-sm">🤖 Trợ Lý AI Cá Nhân Hóa</span>
+                    <span class="ml-2 px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 font-bold">Tham khảo: ${escHtml(d.estimatedLevelReference || "—")}</span>
+                </div>
+                <button onclick="document.getElementById('dash-ai-assistant-output').classList.add('hidden')" class="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <p class="text-slate-200 leading-relaxed">${escHtml(d.diagnosisVi || "")}</p>
+            ${(d.priorityFocus && d.priorityFocus.length) ? `<p class="text-amber-300"><strong>Ưu tiên trọng tâm:</strong> ${d.priorityFocus.map(p => escHtml(p)).join(" • ")}</p>` : ""}
+            ${(d.recommendedNextSteps && d.recommendedNextSteps.length) ? `
+                <div class="grid sm:grid-cols-2 gap-2">
+                    ${d.recommendedNextSteps.map(st => `<div class="p-2.5 rounded-xl bg-slate-900 border border-white/10"><strong class="text-emerald-300">${escHtml(st.day)} (${escHtml(st.skill)} • ${st.minutes || 20}p):</strong> <span class="text-slate-300">${escHtml(st.taskVi)}</span></div>`).join("")}
+                </div>
+            ` : ""}
+        </div>
+    `;
+}
+
+window.addEventListener("DOMContentLoaded", async () => {
+    setupVocabularyKeyboardShortcuts();
     const readingTextEl = document.getElementById("reading-passage-text");
     if (readingTextEl) {
         readingTextEl.addEventListener("dblclick", () => handlePassageWordLookup());
     }
 
-    // Show first-time user guide if never seen (PHẦN 8.4)
-    if (!appSettings.onboardingCompleted) {
-        openOnboardingModal();
+    window.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden" && typeof CloudClient !== "undefined" && CloudClient.isCloudMode() && window.__QENGLISH_ACTIVE_UID) {
+            CloudClient.syncNow();
+        }
+    });
+    window.addEventListener("online", () => {
+        if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode() && window.__QENGLISH_ACTIVE_UID) {
+            CloudClient.syncNow();
+        }
+    });
+
+    if (typeof CloudClient !== "undefined") {
+        const sess = await CloudClient.restoreSession();
+        if (sess.recoveryMode) {
+            showAuthScreen({ tab: "recovery", notice: "Xác thực liên kết thành công. Hãy nhập mật khẩu mới của bạn." });
+            return;
+        }
+        if (sess.error) {
+            showAuthScreen({ tab: "login", error: sess.error });
+            return;
+        }
+        if (sess.restored && sess.user) {
+            await bootAuthenticatedWorkspace(sess.user);
+            if (sess.emailConfirmed) showToast("✅ Email của bạn đã được xác minh thành công!");
+            return;
+        }
     }
+
+    showAuthScreen({ tab: "login" });
 });
 
 
@@ -846,9 +1204,15 @@ function renderMaterialsPageTable() {
                         ${renderSourceBadge(item.source)}
                         ${statusBadge}
                     </div>
-                    <div class="flex items-center gap-1.5">
+                    <div class="flex flex-wrap items-center gap-1.5">
                         <button onclick='launchMaterialPracticeSession(${JSON.stringify(item.id)})' class="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold text-xs shadow-md hover:from-violet-500 hover:to-indigo-500 transition">
                             🚀 Vào Luyện Tập Ngay
+                        </button>
+                        <button onclick='cycleMaterialStatus(${JSON.stringify(item.id)})' class="px-2.5 py-1.5 rounded-xl bg-slate-900 border border-white/10 text-emerald-300 text-xs font-bold hover:bg-slate-800 transition" title="Đổi trạng thái học">
+                            ✓
+                        </button>
+                        <button onclick='openEditMaterialModal(${JSON.stringify(item.id)})' class="px-2.5 py-1.5 rounded-xl bg-slate-900 border border-white/10 text-cyan-300 text-xs font-bold hover:bg-slate-800 transition" title="Sửa tên, nội dung hoặc phân loại">
+                            ✏️
                         </button>
                         <button onclick='deleteMaterialItem(${JSON.stringify(item.id)})' class="px-2.5 py-1.5 rounded-xl bg-rose-500/15 text-rose-300 text-xs font-bold hover:bg-rose-500/30 transition">
                             ✕
@@ -857,7 +1221,7 @@ function renderMaterialsPageTable() {
                 </div>
                 <p class="text-xs text-slate-300 line-clamp-2 leading-relaxed">${escHtml(item.contentText || (item.payload && (item.payload.passage || item.payload.prompt || item.payload.transcript)) || "")}</p>
                 <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-white/5">
-                    <span>Thư mục: <strong class="text-slate-300">${escHtml(item.topic || "General")}</strong></span>
+                    <span>Thư mục: <strong class="text-slate-300">${escHtml(item.topic || "General")}</strong>${item.payload?.cloudStoragePath ? ` • <span class="text-emerald-400">☁️ Cloud Storage</span>` : ""}</span>
                     <span>Thêm ngày: ${new Date(item.createdAt).toLocaleDateString("vi-VN")}</span>
                 </div>
             </div>
@@ -865,13 +1229,90 @@ function renderMaterialsPageTable() {
     }).join("");
 }
 
-function launchMaterialPracticeSession(id) {
+function cycleMaterialStatus(id) {
+    const item = cmsItems.find(x => x.id === id);
+    if (!item) return;
+    const order = ["not_started", "in_progress", "completed"];
+    const nextIdx = (order.indexOf(item.studyStatus || "not_started") + 1) % order.length;
+    item.studyStatus = order[nextIdx];
+    item.updatedAt = new Date().toISOString();
+    saveCMSItems();
+    renderMaterialsPageTable();
+}
+
+function openEditMaterialModal(id) {
+    const item = cmsItems.find(x => x.id === id);
+    if (!item) return;
+    window._editingMaterialId = id;
+    const modal = document.getElementById("material-edit-modal");
+    if (!modal) return;
+    document.getElementById("mat-edit-title").value = item.title || "";
+    document.getElementById("mat-edit-topic").value = item.topic || "";
+    document.getElementById("mat-edit-level").value = item.level || "B1";
+    document.getElementById("mat-edit-body").value = item.contentText || item.payload?.passage || item.payload?.prompt || item.payload?.transcript || "";
+    modal.classList.remove("hidden");
+}
+
+function saveEditedMaterialModal() {
+    const id = window._editingMaterialId;
+    const item = cmsItems.find(x => x.id === id);
+    if (!item) return;
+    const newTitle = (document.getElementById("mat-edit-title")?.value || "").trim();
+    const newTopic = (document.getElementById("mat-edit-topic")?.value || "").trim() || "Personal";
+    const newLevel = document.getElementById("mat-edit-level")?.value || "B1";
+    const newBody = (document.getElementById("mat-edit-body")?.value || "").trim();
+    if (!newTitle) {
+        showToast("Tên tài liệu không được để trống!", "error");
+        return;
+    }
+    item.title = newTitle;
+    item.topic = newTopic;
+    item.level = newLevel;
+    item.contentText = newBody;
+    item.updatedAt = new Date().toISOString();
+    if (item.payload) {
+        item.payload.title = newTitle;
+        item.payload.topic = newTopic;
+        item.payload.level = newLevel;
+        if (item.skill === "reading") item.payload.passage = newBody;
+        if (item.skill === "writing" || item.skill === "speaking") item.payload.prompt = newBody;
+        if (item.skill === "listening") {
+            item.payload.transcript = newBody;
+            item.payload.audioText = newBody;
+            item.payload.sentences = (newBody.match(/[^.!?]+[.!?]+/g) || [newBody]).map(s => s.trim()).filter(Boolean);
+        }
+        if (item.skill === "grammar") item.payload.explanation = newBody;
+    }
+    saveCMSItems();
+    document.getElementById("material-edit-modal")?.classList.add("hidden");
+    renderMaterialsPageTable();
+    showToast("Đã cập nhật tài liệu thành công!");
+}
+
+async function launchMaterialPracticeSession(id) {
     if (!cmsItems.length) loadCMSItems();
     const item = cmsItems.find(x => x.id === id);
     if (!item) return;
 
     item.studyStatus = "in_progress";
     saveCMSItems();
+
+    // Resolve signed URL if asset was stored on Supabase Cloud Storage
+    if (item.payload?.cloudStoragePath && typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) {
+        const signed = await CloudClient.getSignedStorageUrl(item.payload.cloudStoragePath);
+        if (signed) {
+            if (item.payload.isPdfUpload) {
+                if (!window.sessionPdfUrls) window.sessionPdfUrls = {};
+                window.sessionPdfUrls[item.id] = signed;
+            } else if (item.skill === "listening") {
+                if (!window.sessionAudioBlobUrls) window.sessionAudioBlobUrls = {};
+                window.sessionAudioBlobUrls[item.id] = signed;
+            } else {
+                if (!window.sessionImageUrls) window.sessionImageUrls = {};
+                window.sessionImageUrls[item.id] = signed;
+            }
+        }
+    }
 
     const skill = item.skill;
     if (skill === "writing") {
@@ -1077,11 +1518,22 @@ function saveManualMaterialChannel() {
     showToast(`Đã lưu "${title}" vào kho tài liệu ${skill.toUpperCase()}!`);
 }
 
+function attachCloudUploadAsync(file, record) {
+    if (!file || !record || typeof CloudClient === "undefined" || !CloudClient.isCloudMode()) return;
+    CloudClient.uploadMaterialFile(file, record.id).then(up => {
+        if (up.ok && up.storagePath) {
+            record.payload = { ...(record.payload || {}), cloudStoragePath: up.storagePath, mimeType: file.type || "", fileSize: file.size };
+            saveCMSItems();
+            renderMaterialsPageTable();
+        }
+    }).catch(() => {});
+}
+
 function handleMaterialFileUpload(event) {
     const file = event?.target?.files?.[0];
     if (!file) return;
 
-    // File limit check (15MB)
+    // File limit check (10MB Cloud / 15MB Local)
     if (file.size > 15 * 1024 * 1024) {
         showToast("Dung lượng file vượt quá giới hạn 15MB cho phép!", "error");
         if (event?.target) event.target.value = "";
@@ -1139,6 +1591,7 @@ function handleMaterialFileUpload(event) {
                 : { passage: noteText, isPdfUpload: true, questions: [] }
         });
         if (!res.ok) { showToast("Chống trùng lặp: " + res.error, "error"); return; }
+        attachCloudUploadAsync(file, res.record);
         renderMaterialsPageTable();
         showToast(`Đã thêm "${baseTitle}" (.pdf). Mở ngay trong phiên này để xem PDF trực tiếp!`);
     } else if (lowerName.endsWith(".doc") || lowerName.endsWith(".docx")) {
@@ -1170,6 +1623,7 @@ function handleMaterialFileUpload(event) {
                 }
             });
             if (!res.ok) { showToast("Chống trùng lặp: " + res.error, "error"); return; }
+            attachCloudUploadAsync(file, res.record);
             renderMaterialsPageTable();
             showToast(`Đã thêm file nghe "${baseTitle}" vào mục Listening!`);
         };
@@ -1204,6 +1658,7 @@ function handleMaterialFileUpload(event) {
                     : { passage: noteText, imageDataUrl: persistent ? imgUrl : "", questions: [] }
             });
             if (!res.ok) { showToast("Chống trùng lặp: " + res.error, "error"); return; }
+            attachCloudUploadAsync(file, res.record);
             renderMaterialsPageTable();
             showToast(`Đã thêm ảnh đề bài "${baseTitle}"!`);
         };

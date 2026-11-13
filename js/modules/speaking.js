@@ -598,7 +598,7 @@ async function evaluateSpeakingSession(sessionTitle, sampleAnswer = "") {
                 </div>
             </div>
 
-            <p class="text-[11px] text-slate-400 italic">*Lưu ý minh bạch: Tiêu chí Pronunciation đo mức độ rõ chữ qua Web Speech Recognition, không chấm trọng âm IPA chuyên sâu.</p>
+            <p class="text-[11px] text-amber-300/90 italic">*Lưu ý minh bạch: ${escHtml(aiResult?.transcriptHonestyNote || "Tiêu chí Pronunciation dựa trên độ rõ văn bản Speech-to-Text (SpeechRecognition), không phân tích sóng âm IPA chuyên sâu.")}</p>
 
             <!-- Transcript & Unclear Words -->
             <div class="p-4 rounded-2xl bg-slate-950/90 border border-white/10 space-y-2">
@@ -628,13 +628,14 @@ async function evaluateSpeakingSession(sessionTitle, sampleAnswer = "") {
             </div>
 
             <!-- Sample Answer & Repeat Exercise -->
-            ${(aiResult?.sampleAnswer || sampleAnswer) ? `
+            ${(aiResult?.modelAnswer || aiResult?.sampleAnswer || sampleAnswer) ? `
                 <div class="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 space-y-2">
                     <div class="flex items-center justify-between">
                         <span class="font-extrabold uppercase text-indigo-300">🌟 Bản trả lời mẫu tham khảo (Model Answer):</span>
-                        <button onclick='speakText(${JSON.stringify(aiResult?.sampleAnswer || sampleAnswer)}, 1.0)' class="px-3 py-1 rounded-lg bg-indigo-600/30 text-white font-bold">🔊 Nghe bài mẫu</button>
+                        <button onclick='speakText(${JSON.stringify(aiResult?.modelAnswer || aiResult?.sampleAnswer || sampleAnswer)}, 1.0)' class="px-3 py-1 rounded-lg bg-indigo-600/30 text-white font-bold">🔊 Nghe bài mẫu</button>
                     </div>
-                    <p class="text-slate-200 leading-relaxed">${escHtml(aiResult?.sampleAnswer || sampleAnswer)}</p>
+                    <p class="text-slate-200 leading-relaxed">${escHtml(aiResult?.modelAnswer || aiResult?.sampleAnswer || sampleAnswer)}</p>
+                    ${(aiResult?.upgradePhrases && aiResult.upgradePhrases.length) ? `<p class="text-cyan-300"><strong>Cụm từ tự nhiên nên dùng:</strong> ${aiResult.upgradePhrases.map(p => escHtml(p)).join(" • ")}</p>` : ""}
                 </div>
             ` : ""}
         </div>

@@ -2,7 +2,7 @@
    QEnglish — Zero-Dependency Local & Cloud Node.js Server (Node 18+)
    - Automatically loads .env without external npm packages
    - Serves frontend static files safely
-   - Hosts /api/ai/* endpoints keeping API keys 100% off the frontend
+   - Hosts /api/config and /api/ai/* endpoints keeping secrets off the frontend
    ========================================================================== */
 
 "use strict";
@@ -30,10 +30,11 @@ const path = require("path");
 })();
 
 const { handleAIRequest, detectProvider } = require("./api/ai");
+const { getPublicConfig } = require("./api/config");
 
 const PORT = parseInt(process.env.PORT || "3000", 10) || 3000;
 const ROOT_DIR = __dirname;
-const MAX_BODY_BYTES = 32 * 1024;
+const MAX_BODY_BYTES = 256 * 1024;
 
 const MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -53,7 +54,7 @@ function readJsonBody(req) {
         req.on("data", chunk => {
             bytes += chunk.length;
             if (bytes > MAX_BODY_BYTES) {
-                reject(new Error("Payload vượt quá 32KB cho phép."));
+                reject(new Error("Payload vượt quá 256KB cho phép."));
                 req.destroy();
                 return;
             }
@@ -75,14 +76,18 @@ const server = http.createServer(async (req, res) => {
     const parsedUrl = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     const pathname = decodeURIComponent(parsedUrl.pathname);
 
-    // CORS headers for optional local dev port separation
     res.setHeader("Access-Control-Allow-Origin", process.env.ALLOWED_ORIGIN || "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
     if (req.method === "OPTIONS") {
         res.writeHead(204);
         return res.end();
+    }
+
+    if (pathname === "/api/config") {
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        return res.end(JSON.stringify(getPublicConfig()));
     }
 
     // Secure Backend AI API routes
@@ -98,7 +103,13 @@ const server = http.createServer(async (req, res) => {
                 return res.end(JSON.stringify({ ok: false, error: err.message }));
             }
         }
-        const out = await handleAIRequest({ method: req.method, task, body, clientIp });
+        const out = await handleAIRequest({
+            method: req.method,
+            task,
+            body,
+            clientIp,
+            authHeader: req.headers.authorization || ""
+        });
         res.writeHead(out.statusCode, { "Content-Type": "application/json; charset=utf-8" });
         return res.end(JSON.stringify(out.json));
     }
@@ -136,8 +147,10 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
     const info = detectProvider();
+    const cfg = getPublicConfig();
     console.log("==============================================================");
     console.log(`🚀 QEnglish Server đang chạy tại: http://localhost:${PORT}`);
     console.log(`🔐 Trạng thái AI Backend: ${info.configured ? `Đã kích hoạt (${info.provider} - ${info.model})` : "Chưa cấu hình API Key trong .env (Chế độ Local Mode)"}`);
+    console.log(`☁️  Supabase Cloud Auth: ${cfg.authConfigured ? "Đã cấu hình" : "Chưa cấu hình (Chế độ Local Fallback)"}`);
     console.log("==============================================================");
 });

@@ -296,3 +296,57 @@ function closeGrammarLesson() {
     document.getElementById("grammar-filter-bar")?.classList.remove("hidden");
     filterGrammarLessons();
 }
+
+/* ==================== AI GRAMMAR COACH (Sentence Debug & Pair Compare) ==================== */
+async function runAIGrammarCoach(action = "debug") {
+    const queryEl = document.getElementById("grammar-coach-input");
+    const outBox = document.getElementById("grammar-coach-output");
+    const query = (queryEl?.value || "").trim();
+    if (!outBox) return;
+    if (!query) {
+        showToast("Hãy nhập câu tiếng Anh muốn kiểm tra hoặc cặp cấu trúc muốn so sánh (VD: used to vs be used to)!", "error");
+        return;
+    }
+    outBox.classList.remove("hidden");
+    outBox.innerHTML = `<div class="p-4 rounded-2xl bg-slate-950 border border-violet-500/35 text-xs text-violet-300 font-bold animate-pulse">⏳ AI Grammar Coach đang phân tích cấu trúc & sửa lỗi...</div>`;
+
+    const res = await AIClient.request("grammar-coach", {
+        action,
+        topic: activeGrammarLesson?.title || "General English Grammar",
+        query
+    });
+
+    if (!res.ok || !res.data) {
+        const localDiag = analyzeEnglishTextLocal(query);
+        outBox.innerHTML = `
+            <div class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-2">
+                <div class="flex justify-between">
+                    <span class="font-extrabold text-amber-300">🛠️ Phân tích quy tắc cục bộ (AI Backend chưa kết nối)</span>
+                    <button onclick="document.getElementById('grammar-coach-output').classList.add('hidden')" class="text-slate-400">✕</button>
+                </div>
+                <p class="text-slate-200">Gợi ý sửa nhanh: <strong class="text-emerald-300">${escHtml(localDiag.correctedText)}</strong></p>
+                <p class="text-slate-400">${escHtml(res.error || "Kết nối AI Backend để phân tích sâu ngữ cảnh & so sánh cấu trúc gây nhầm lẫn.")}</p>
+            </div>
+        `;
+        return;
+    }
+
+    const d = res.data;
+    outBox.innerHTML = `
+        <div class="p-5 rounded-2xl bg-slate-950 border border-cyan-500/35 space-y-3 text-xs">
+            <div class="flex items-center justify-between">
+                <span class="font-extrabold text-cyan-300 text-sm">🤖 Phân Tích Từ AI Grammar Coach</span>
+                <div class="flex items-center gap-2">${renderSourceBadge("ai-generated")}<button onclick="document.getElementById('grammar-coach-output').classList.add('hidden')" class="text-slate-400 hover:text-white">✕</button></div>
+            </div>
+            <p class="text-slate-200 leading-relaxed">${escHtml(d.summaryVi || "")}</p>
+            ${d.correctedSentence ? `<div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25"><strong class="text-emerald-300">✅ Câu chuẩn:</strong> <span class="text-white">${escHtml(d.correctedSentence)}</span></div>` : ""}
+            ${d.formula ? `<div class="p-2.5 rounded-xl bg-slate-900 font-mono text-amber-300 font-bold">Công thức: ${escHtml(d.formula)}</div>` : ""}
+            ${(d.comparisonTable && d.comparisonTable.length) ? `
+                <div class="space-y-1.5">
+                    <p class="font-bold text-violet-300">So sánh chi tiết:</p>
+                    ${d.comparisonTable.map(row => `<div class="p-2.5 rounded-xl bg-slate-900 border border-white/10"><strong class="text-white">${escHtml(row.structure)}</strong>: <span class="text-slate-300">${escHtml(row.usageVi)}</span><p class="text-cyan-300 italic mt-0.5">${escHtml(row.example)}</p></div>`).join("")}
+                </div>
+            ` : ""}
+        </div>
+    `;
+}
