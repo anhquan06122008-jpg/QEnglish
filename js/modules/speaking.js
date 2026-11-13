@@ -288,16 +288,16 @@ async function processUserConversationUtterance(rawText, confidence = 0.85, dura
 /* ==================== MODE 2: TOPIC SPEAKING ==================== */
 function openTopicSpeakingWorkspace(topicId, customTopic = null) {
     const allTopics = getAllContentForSkill("speaking");
+    const targetId = String(topicId || "");
     if (customTopic) window.lastCustomSpeakingTopic = customTopic;
     const t = customTopic || allTopics.find(x => x.id === topicId) ||
-        (topicId.startsWith("custom-s-") ? window.lastCustomSpeakingTopic : null);
-    const allTopics = getAllContentForSkill("speaking");
-    const t = allTopics.find(x => x.id === topicId);
+        (targetId.startsWith("custom-s-") ? window.lastCustomSpeakingTopic : null);
     if (!t) return;
     activeSpeakingTopic = t;
     speakingTurns = [];
     lastRecordedAudioUrl = null;
 
+    document.getElementById("speaking-mode-cards")?.classList.add("hidden");
     document.getElementById("speaking-topics-list")?.classList.add("hidden");
     document.getElementById("speaking-session")?.classList.remove("hidden");
 

@@ -118,7 +118,7 @@ function normalizeWordItem(item, indexFallback = 0) {
         level: item.level || enrich.level || "B1",
         synonyms: item.synonyms !== undefined ? String(item.synonyms) : (enrich.synonyms || ""),
         antonyms: item.antonyms !== undefined ? String(item.antonyms) : (enrich.antonyms || ""),
-        source: item.source || (Number(item.id) >= 1 && Number(item.id) <= 20 ? "built-in" : "local-browser")
+        source: item.source || (Number(item.id) >= 1 && Number(item.id) <= 50 ? "built-in" : "local-browser")
     };
 }
 
@@ -144,8 +144,21 @@ function loadDeckFromStorage() {
 
     if (loaded === null) {
         loaded = DEFAULT_DECK.map((d, idx) => normalizeWordItem({ ...d }, idx));
+        try { localStorage.setItem("qenglish_builtin_sync_v50", "1"); } catch (e) {}
     } else {
         loaded = loaded.map((d, idx) => normalizeWordItem(d, idx));
+        // Non-destructive one-time sync of newly expanded built-in CEFR A1-C2 words (keeps user edits/additions & honors cleared [])
+        if (loaded.length > 0 && !localStorage.getItem("qenglish_builtin_sync_v50")) {
+            const existingTerms = new Set(loaded.map(w => String(w.term || "").trim().toLowerCase()));
+            DEFAULT_DECK.forEach((d, idx) => {
+                const key = String(d.term || "").trim().toLowerCase();
+                if (key && !existingTerms.has(key)) {
+                    existingTerms.add(key);
+                    loaded.push(normalizeWordItem({ ...d, source: "built-in" }, idx));
+                }
+            });
+            try { localStorage.setItem("qenglish_builtin_sync_v50", "1"); } catch (e) {}
+        }
     }
 
     deck = loaded;

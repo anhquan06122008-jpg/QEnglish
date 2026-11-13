@@ -647,8 +647,8 @@ const AIClient = {
     },
 
     async request(task, payload) {
-        if (!appSettings || !appSettings.aiConsentAccepted) {
-            return { ok: false, notConnected: false, consentRequired: true, error: "Vui lòng bật xác nhận đồng ý gửi văn bản tới Backend AI trong phần Cài đặt (Settings) hoặc hộp thoại xác nhận trước khi dùng AI." };
+        if (task !== "extract-url" && (!appSettings || !appSettings.aiConsentAccepted)) {
+            return { ok: false, notConnected: false, consentRequired: true, error: "Vui lòng bật xác nhận đồng ý gửi văn bản tới Backend AI trong phần Cài đặt (Settings) trước khi dùng AI." };
         }
         const base = this.getEndpointBase();
         if (window.location.protocol === "file:" && base.startsWith("/")) {

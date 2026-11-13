@@ -148,7 +148,11 @@ function openWritingEditor(topicId, customTopic) {
     document.getElementById("writing-inline-check-box")?.classList.add("hidden");
 
     document.getElementById("writing-topic-title").innerHTML = `${renderLevelBadge(t.level)} <span class="ml-1">${escHtml(t.title)}</span>`;
+    const wImgSrc = t.imageDataUrl || (window.sessionImageUrls && window.sessionImageUrls[t.id]) || "";
+    const wPdfSrc = (window.sessionPdfUrls && window.sessionPdfUrls[t.id]) || "";
     document.getElementById("writing-prompt").innerHTML = `
+        ${wImgSrc ? `<div class="mb-2"><img src="${escHtml(wImgSrc)}" alt="Ảnh đề bài Writing" class="w-full max-h-[380px] object-contain rounded-xl border border-white/10 bg-black/40"></div>` : ""}
+        ${wPdfSrc ? `<div class="mb-2"><iframe src="${escHtml(wPdfSrc)}" title="Đề bài PDF" class="w-full h-[380px] rounded-xl border border-white/10 bg-white"></iframe></div>` : ""}
         <div class="p-3.5 rounded-xl bg-slate-950/80 border border-white/10 space-y-1.5">
             <p class="font-semibold text-white">${escHtml(t.prompt)}</p>
             ${t.promptVi ? `<p class="text-xs text-slate-400">🇻🇳 ${escHtml(t.promptVi)}</p>` : ""}
@@ -403,13 +407,33 @@ function buildLocalWritingEvaluation(text, wordCount, topic, aiOfflineReason) {
         + Math.min(10, usedConnectors.length * 3)
     ));
 
+    // Compute honest rule-based 6 criteria metrics (no fake constant scores)
+    const cleanTokens = normalizeWords(text).split(" ").filter(Boolean);
+    const lexicalRatio = cleanTokens.length > 0 ? new Set(cleanTokens).size / cleanTokens.length : 0;
+    const spellingErrorsCount = corrections.filter(c => /chính tả|dấu câu/i.test(String(c.errorType))).length;
+    const grammarErrorsCount = corrections.length - spellingErrorsCount;
+    const taskRespTen = Math.max(3.0, Math.min(9.5, Number(((Math.min(1.2, wordCount / Math.max(minW, 1)) * 7.5)).toFixed(1))));
+    const grammarTen = Math.max(3.0, Math.min(9.5, Number((9.0 - grammarErrorsCount * 0.9).toFixed(1))));
+    const vocabTen = Math.max(4.0, Math.min(9.0, Number((4.5 + lexicalRatio * 4.5 + (wordCount >= minW ? 0.5 : 0)).toFixed(1))));
+    const spellingTen = Math.max(3.0, Math.min(9.5, Number((9.5 - spellingErrorsCount * 1.0).toFixed(1))));
+    const coherenceTen = Math.max(4.0, Math.min(9.0, Number((5.0 + Math.min(2.5, usedConnectors.length * 0.8) + (paragraphs.length >= 2 ? 1.5 : 0)).toFixed(1))));
+    const naturalTen = Math.max(4.0, Math.min(8.5, Number(((grammarTen + vocabTen + coherenceTen) / 3).toFixed(1))));
+
     return {
         isLocalFallback: true,
         offlineNotice: aiOfflineReason || "AI Backend chưa được kết nối.",
         scorePct: heuristicScore,
         cefrEstimate: null, // Honest AI rule: Local rule checker does not claim AI CEFR/IELTS grading
         ieltsEstimate: null,
-        overviewVi: `Bộ phân tích cục bộ đã kiểm tra ${wordCount} từ (${sentences.length} câu) trên 6 khía cạnh cơ bản (Grammar, Vocabulary, Spelling, Coherence, Task Length, Expression).`,
+        criteriaScores: {
+            taskResponse: `${taskRespTen}/10`,
+            grammar: `${grammarTen}/10`,
+            vocabulary: `${vocabTen}/10`,
+            spelling: `${spellingTen}/10`,
+            coherence: `${coherenceTen}/10`,
+            naturalness: `${naturalTen}/10`
+        },
+        overviewVi: `Bộ phân tích cục bộ đã kiểm tra ${wordCount} từ (${sentences.length} câu, ${Math.round(lexicalRatio * 100)}% độ đa dạng từ vựng) trên 6 tiêu chí quy tắc kỹ thuật.`,
         strengths,
         weaknesses,
         corrections,
@@ -421,6 +445,9 @@ function buildLocalWritingEvaluation(text, wordCount, topic, aiOfflineReason) {
 function renderWritingEvaluationResult(originalText, wordCount, r, evalMode) {
     const evalBox = document.getElementById("writing-evaluation");
     if (!evalBox) return;
+
+    const cs = r.criteriaScores || {};
+    const fmtCrit = (val) => val ? escHtml(String(val)) : "— (Xem nhận xét AI)";
 
     const html = `
         <div class="p-5 rounded-2xl bg-slate-950/95 border border-violet-500/35 space-y-5 text-xs">
@@ -441,11 +468,11 @@ function renderWritingEvaluationResult(originalText, wordCount, r, evalMode) {
                 ${renderSourceBadge(evalMode === "ai" ? "ai-generated" : "local-browser")}
             </div>
 
-            <!-- 1 & 2. Điểm Tổng, Ước Lượng Trình Độ & Chi Tiết 6 Tiêu Chí (Hạng mục 5.1) -->
+            <!-- 1 & 2. Điểm Tổng & Ước Lượng Trình Độ -->
             <div class="grid sm:grid-cols-3 gap-3">
                 <div class="p-3 rounded-xl bg-slate-900 border border-white/10">
-                    <span class="text-[10px] text-slate-400 uppercase font-bold">Điểm tổng kỹ thuật</span>
-                    <p class="text-xl font-black text-cyan-300 mt-0.5">${r.scorePct ?? 75}%</p>
+                    <span class="text-[10px] text-slate-400 uppercase font-bold">${evalMode === "ai" ? "Điểm tổng đánh giá (AI)" : "Mức hoàn thiện kỹ thuật (Cục bộ)"}</span>
+                    <p class="text-xl font-black text-cyan-300 mt-0.5">${r.scorePct ?? 0}%</p>
                 </div>
                 <div class="p-3 rounded-xl bg-slate-900 border border-white/10">
                     <span class="text-[10px] text-slate-400 uppercase font-bold">Ước lượng CEFR (Tham khảo)</span>
@@ -457,48 +484,34 @@ function renderWritingEvaluationResult(originalText, wordCount, r, evalMode) {
                 </div>
             </div>
 
-            <!-- Bảng Chi Tiết 6 Tiêu Chí Đánh Giá Chuẩn -->
+            <!-- Bảng Chi Tiết 6 Tiêu Chí Đánh Giá -->
             <div class="p-4 rounded-xl bg-slate-900 border border-white/10 space-y-2">
-                <span class="text-[11px] font-extrabold uppercase text-cyan-300">📊 Điểm Chi Tiết Từng Tiêu Chí:</span>
+                <span class="text-[11px] font-extrabold uppercase text-cyan-300">📊 Điểm Chi Tiết Từng Tiêu Chí ${evalMode === "ai" ? "(Đánh giá từ AI)" : "(Ước lượng theo bộ quy tắc cục bộ)"}:</span>
                 <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-center text-xs">
                     <div class="p-2 rounded-lg bg-slate-950 border border-white/5">
                         <span class="text-[10px] text-slate-400 block">Độ dài & Đáp ứng</span>
-                        <strong class="text-emerald-300 text-sm">${(r.criteriaScores && r.criteriaScores.taskResponse) || (wordCount >= (parseInt(document.getElementById("writing-target-min")?.value || "60", 10)) ? "8.5/10" : "6.0/10")}</strong>
+                        <strong class="text-emerald-300 text-sm">${fmtCrit(cs.taskResponse)}</strong>
                     </div>
                     <div class="p-2 rounded-lg bg-slate-950 border border-white/5">
                         <span class="text-[10px] text-slate-400 block">Ngữ pháp</span>
-                        <strong class="text-cyan-300 text-sm">${(r.criteriaScores && r.criteriaScores.grammar) || Math.max(5, Math.round(9 - (r.corrections ? r.corrections.length * 0.8 : 0))) + "/10"}</strong>
+                        <strong class="text-cyan-300 text-sm">${fmtCrit(cs.grammar)}</strong>
                     </div>
                     <div class="p-2 rounded-lg bg-slate-950 border border-white/5">
                         <span class="text-[10px] text-slate-400 block">Từ vựng</span>
-                        <strong class="text-violet-300 text-sm">${(r.criteriaScores && r.criteriaScores.vocabulary) || "8.0/10"}</strong>
+                        <strong class="text-violet-300 text-sm">${fmtCrit(cs.vocabulary)}</strong>
                     </div>
                     <div class="p-2 rounded-lg bg-slate-950 border border-white/5">
                         <span class="text-[10px] text-slate-400 block">Chính tả & Dấu câu</span>
-                        <strong class="text-amber-300 text-sm">${(r.criteriaScores && r.criteriaScores.spelling) || Math.max(6, Math.round(9.5 - (r.corrections ? r.corrections.filter(c => String(c.errorType).includes("chính tả")).length : 0))) + "/10"}</strong>
+                        <strong class="text-amber-300 text-sm">${fmtCrit(cs.spelling)}</strong>
                     </div>
                     <div class="p-2 rounded-lg bg-slate-950 border border-white/5">
                         <span class="text-[10px] text-slate-400 block">Mạch lạc & Liên kết</span>
-                        <strong class="text-pink-300 text-sm">${(r.criteriaScores && r.criteriaScores.coherence) || "7.5/10"}</strong>
+                        <strong class="text-pink-300 text-sm">${fmtCrit(cs.coherence)}</strong>
                     </div>
                     <div class="p-2 rounded-lg bg-slate-950 border border-white/5">
                         <span class="text-[10px] text-slate-400 block">Độ tự nhiên</span>
-                        <strong class="text-indigo-300 text-sm">${(r.criteriaScores && r.criteriaScores.naturalness) || "7.5/10"}</strong>
+                        <strong class="text-indigo-300 text-sm">${fmtCrit(cs.naturalness)}</strong>
                     </div>
-                </div>
-            </div>
-            <div class="grid sm:grid-cols-3 gap-3">
-                <div class="p-3 rounded-xl bg-slate-900 border border-white/10">
-                    <span class="text-[10px] text-slate-400 uppercase font-bold">Mức hoàn thiện kỹ thuật</span>
-                    <p class="text-xl font-black text-cyan-300 mt-0.5">${r.scorePct ?? 75}%</p>
-                </div>
-                <div class="p-3 rounded-xl bg-slate-900 border border-white/10">
-                    <span class="text-[10px] text-slate-400 uppercase font-bold">Ước lượng CEFR (Tham khảo)</span>
-                    <p class="text-base font-black text-violet-300 mt-0.5">${escHtml(r.cefrEstimate || "Cần kết nối AI Backend")}</p>
-                </div>
-                <div class="p-3 rounded-xl bg-slate-900 border border-white/10">
-                    <span class="text-[10px] text-slate-400 uppercase font-bold">Ước lượng IELTS (Tham khảo)</span>
-                    <p class="text-base font-black text-amber-300 mt-0.5">${escHtml(r.ieltsEstimate || "Cần kết nối AI Backend")}</p>
                 </div>
             </div>
 

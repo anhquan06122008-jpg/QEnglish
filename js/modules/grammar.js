@@ -155,13 +155,13 @@ function openGrammarLesson(lessonId) {
         <div class="glass-panel rounded-3xl p-6 md:p-8 space-y-5">
             <div class="flex items-center justify-between">
                 <h3 class="text-lg font-black text-white">7. Bài tập thực hành (${exercises.length} câu)</h3>
-                <span class="text-xs text-slate-400">Hoàn thành tất cả câu rồi bấm Chấm bài</span>
+                <span class="text-xs text-slate-400">${exercises.length > 0 ? "Hoàn thành tất cả câu rồi bấm Chấm bài" : "Tài liệu lý thuyết cá nhân"}</span>
             </div>
-            <div class="space-y-5">
-                ${exercises.map((ex, i) => renderGrammarExerciseItem(ex, i)).join("")}
-            </div>
+            ${exercises.length > 0
+                ? `<div class="space-y-5">${exercises.map((ex, i) => renderGrammarExerciseItem(ex, i)).join("")}</div>`
+                : `<p class="text-xs text-slate-400 italic">Bài học này chưa có câu hỏi trắc nghiệm đính kèm. Sau khi đọc xong lý thuyết và ví dụ, bạn có thể bấm nút bên dưới để ghi nhận đã hoàn thành.</p>`}
             <button onclick="gradeGrammarExercises()" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold text-sm shadow-xl shadow-violet-600/25 active:scale-99 transition">
-                ✅ Chấm bài & Xem giải thích chi tiết
+                ${exercises.length > 0 ? "✅ Chấm bài & Xem giải thích chi tiết" : "✅ Đánh dấu đã học xong bài ngữ pháp"}
             </button>
         </div>
     `;

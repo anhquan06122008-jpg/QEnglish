@@ -156,6 +156,14 @@ Return JSON with exact keys:
   "scorePct": number,
   "cefrEstimate": "e.g. B1 (Tham khảo học tập)",
   "ieltsEstimate": "e.g. Band 5.0 - 5.5 (Tham khảo, không phải điểm thi chính thức)",
+  "criteriaScores": {
+    "taskResponse": "e.g. 7.5/10",
+    "grammar": "e.g. 7.0/10",
+    "vocabulary": "e.g. 7.5/10",
+    "spelling": "e.g. 8.5/10",
+    "coherence": "e.g. 7.0/10",
+    "naturalness": "e.g. 7.0/10"
+  },
   "overviewVi": "Vietnamese summary covering all 6 criteria",
   "strengths": ["Vietnamese point 1", "Vietnamese point 2"],
   "weaknesses": ["Vietnamese point 1", "Vietnamese point 2"],
@@ -247,6 +255,28 @@ Return JSON:
     throw err;
 }
 
+function isBlockedHost(hostname) {
+    const h = String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "");
+    if (!h) return true;
+    if (
+        h === "localhost" ||
+        h === "127.0.0.1" ||
+        h === "::1" ||
+        h === "0.0.0.0" ||
+        h.startsWith("192.168.") ||
+        h.startsWith("10.") ||
+        h.startsWith("169.254.") ||
+        /^172\.(1[6-9]|2\d|3[01])\./.test(h) ||
+        /^fe80:/i.test(h) ||
+        /^fc00:|^fd[0-9a-f]{2}:/i.test(h) ||
+        h.endsWith(".local") ||
+        h.endsWith(".internal")
+    ) {
+        return true;
+    }
+    return false;
+}
+
 async function extractFromPublicUrl(targetUrl) {
     let parsed;
     try {
@@ -264,15 +294,7 @@ async function extractFromPublicUrl(targetUrl) {
 
     const hostname = parsed.hostname.toLowerCase();
     // Block loopback and local private networks (SSRF defense)
-    if (
-        hostname === "localhost" ||
-        hostname === "127.0.0.1" ||
-        hostname === "0.0.0.0" ||
-        hostname.startsWith("192.168.") ||
-        hostname.startsWith("10.") ||
-        hostname.endsWith(".local") ||
-        hostname.endsWith(".internal")
-    ) {
+    if (isBlockedHost(hostname)) {
         const err = new Error("Không được phép truy cập địa chỉ mạng nội bộ (SSRF Protection).");
         err.statusCode = 403;
         throw err;
@@ -283,6 +305,7 @@ async function extractFromPublicUrl(targetUrl) {
     try {
         const resp = await fetch(parsed.toString(), {
             method: "GET",
+            redirect: "manual",
             headers: {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) QEnglish-LearningBot/2.0",
                 "Accept": "text/html,text/plain,application/xhtml+xml;q=0.9"
@@ -290,6 +313,12 @@ async function extractFromPublicUrl(targetUrl) {
             signal: ctrl.signal
         });
         clearTimeout(timer);
+        if (resp.status >= 300 && resp.status < 400) {
+            const loc = resp.headers.get("location") || "";
+            const err = new Error(`Website nguồn chuyển hướng sang địa chỉ khác (${loc ? "vui lòng dùng URL đích trực tiếp" : "Redirect bị chặn để bảo vệ SSRF"}).`);
+            err.statusCode = 400;
+            throw err;
+        }
         if (!resp.ok) {
             const err = new Error(`Máy chủ nguồn phản hồi mã lỗi HTTP ${resp.status}. Không thể trích xuất nội dung.`);
             err.statusCode = resp.status >= 500 ? 502 : 400;
@@ -375,18 +404,6 @@ async function handleAIRequest({ method, task, body, clientIp }) {
         }
     }
 
-    if (method === "GET" && task === "status") {
-        return { statusCode: 200, json: { ok: true, ...detectProvider() } };
-    }
-    if (method !== "POST") {
-        return { statusCode: 405, json: { ok: false, error: "Method Not Allowed" } };
-    }
-    if (!checkRateLimit(clientIp)) {
-        return {
-            statusCode: 429,
-            json: { ok: false, error: "Bạn đang gửi yêu cầu AI quá nhanh (Rate Limit bảo vệ chi phí). Vui lòng đợi 1 phút rồi thử lại." }
-        };
-    }
     try {
         const { system, prompt } = buildTaskPrompt(task, body || {});
         const out = await callLLMJson(system, prompt);

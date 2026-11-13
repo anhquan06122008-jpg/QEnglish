@@ -74,14 +74,36 @@ function navigateTo(page, subTab = null) {
 
     toggleSidebar(true);
 
-    // Trigger active module refresh
+    // Stop any stray background audio/timers when switching pages
+    if (typeof listeningStopAudio === "function") listeningStopAudio();
+    if (typeof stopActiveSpeakingCapture === "function") stopActiveSpeakingCapture();
+    if (typeof stopSpeech === "function") stopSpeech();
+    if (typeof fullTestTimerId !== "undefined") clearInterval(fullTestTimerId);
+    if (typeof writingTimerId !== "undefined") clearInterval(writingTimerId);
+
+    // Trigger active module refresh & ensure landing list visibility
     if (page === "dashboard") refreshDashboardUI();
     if (page === "vocabulary") switchVocabTab(subTab || currentVocabSubTab || "flashcards");
-    if (page === "grammar") filterGrammarLessons();
-    if (page === "listening") filterListeningExercises();
-    if (page === "speaking") renderSpeakingTopicsGrid();
-    if (page === "reading") filterReadingPassages();
-    if (page === "writing") filterWritingTopics();
+    if (page === "grammar") {
+        if (typeof closeGrammarLesson === "function") closeGrammarLesson();
+        else filterGrammarLessons();
+    }
+    if (page === "listening") {
+        if (typeof closeListeningExercise === "function") closeListeningExercise();
+        else filterListeningExercises();
+    }
+    if (page === "speaking") {
+        if (typeof closeSpeakingSession === "function") closeSpeakingSession();
+        renderSpeakingTopicsGrid();
+    }
+    if (page === "reading") {
+        if (typeof closeReadingSession === "function") closeReadingSession();
+        else filterReadingPassages();
+    }
+    if (page === "writing") {
+        if (typeof closeWritingEditor === "function") closeWritingEditor();
+        else filterWritingTopics();
+    }
     if (page === "notebook") renderNotebook();
     if (page === "progress") renderProgressAnalyticsPage();
     if (page === "materials") renderMaterialsPageTable();
@@ -864,16 +886,16 @@ function launchMaterialPracticeSession(id) {
         });
     } else if (skill === "reading") {
         navigateTo("reading");
-        openReadingPassage(item.id);
+        openReadingPassage(item.id, item.payload || null);
     } else if (skill === "listening") {
         navigateTo("listening");
-        openListeningExercise(item.id);
+        openListeningExercise(item.id, item.payload || null);
     } else if (skill === "speaking") {
         navigateTo("speaking");
-        openTopicSpeakingWorkspace(item.id);
+        openTopicSpeakingWorkspace(item.id, item.payload || null);
     } else if (skill === "grammar") {
         navigateTo("grammar");
-        openGrammarLessonModal(item.id);
+        openGrammarLesson(item.id);
     }
 }
 
@@ -907,7 +929,7 @@ async function extractContentFromUrlChannel() {
             previewBox.innerHTML = `
                 <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 space-y-1.5">
                     <p class="font-bold">⚠️ Trích xuất trực tiếp chưa hoàn tất: ${escHtml(res.error || "Không thể tải từ URL.")}</p>
-                    <p class="text-slate-300">Quy tắc bảo mật & Bản quyền: Nếu website yêu cầu đăng nhập, chứa paywall hoặc chặn bot, bạn có thể sao chép văn bản bài học và dán vào ô <strong>Phương thức 2: Dán Đề Bài Thủ Công</strong> bên cạnh để hệ thống lưu và hỗ trợ luyện tập ngay lập tức!</p>
+                    <p class="text-slate-300">Lưu ý kỹ thuật: Tính năng trích xuất URL cần chạy qua Backend Server (Vercel <code>/api/ai/extract-url</code> hoặc <code>node server.js</code>) và không vượt qua trang yêu cầu đăng nhập/paywall. Bạn luôn có thể sao chép văn bản bài học và dán trực tiếp vào ô <strong>Phương thức 2: Dán Đề Bài Thủ Công</strong> bên cạnh để luyện tập ngay lập tức!</p>
                 </div>
             `;
         }
@@ -915,21 +937,30 @@ async function extractContentFromUrlChannel() {
     }
 
     const ext = res.data;
+    const textBody = String(ext.extractedText || "").trim();
+    const sents = (textBody.match(/[^.!?]+[.!?]+/g) || [textBody]).map(s => s.trim()).filter(Boolean);
+    let urlPayload = { questions: [] };
+    if (skill === "reading") {
+        urlPayload = { passage: textBody, questions: [] };
+    } else if (skill === "listening") {
+        urlPayload = { type: "dictation", transcript: textBody, audioText: textBody, sentences: sents, questions: [] };
+    } else if (skill === "writing") {
+        urlPayload = { type: "essay", prompt: `Dựa vào tài liệu từ "${ext.title}":\n\n${textBody}`, minWords: 80, timeLimit: 25 };
+    } else if (skill === "speaking") {
+        urlPayload = { type: "monologue", prompt: `Tóm tắt và nêu quan điểm của bạn về bài đọc "${ext.title}": ${textBody.slice(0, 400)}`, suggestedQuestions: ["What is the main point of this article?", "Do you agree with the key ideas? Why?"], duration: 90 };
+    } else if (skill === "grammar") {
+        urlPayload = { intro: ext.hostname || "Web Resource", explanation: textBody, formula: "Tài liệu ngữ pháp từ URL", examples: [], commonMistakes: [], exercises: [] };
+    }
+
     const candidatePayload = {
         skill,
         level,
         title: ext.title || "Tài liệu học từ URL",
         topic: ext.hostname || "Web Resource",
-        contentText: ext.extractedText,
+        contentText: textBody,
         source: "external-link",
         sourceUrl: ext.url,
-        payload: {
-            passage: ext.extractedText,
-            transcript: ext.extractedText,
-            prompt: `Dựa vào tài liệu từ "${ext.title}": Hãy phân tích và tóm tắt nội dung chính.`,
-            audioText: ext.extractedText,
-            questions: []
-        }
+        payload: urlPayload
     };
 
     window.lastExtractedCandidate = candidatePayload;
@@ -1053,27 +1084,29 @@ function handleMaterialFileUpload(event) {
     // File limit check (15MB)
     if (file.size > 15 * 1024 * 1024) {
         showToast("Dung lượng file vượt quá giới hạn 15MB cho phép!", "error");
+        if (event?.target) event.target.value = "";
         return;
     }
 
     const name = file.name;
     const lowerName = name.toLowerCase();
+    const baseTitle = name.replace(/\.[^.]+$/, "");
+    const isWriting = /writing|essay|task|de\s*bai/i.test(name);
 
-    // Text-based files
-    if (lowerName.endsWith(".txt") || lowerName.endsWith(".doc") || lowerName.endsWith(".docx") || lowerName.endsWith(".pdf")) {
+    // 1. Plain UTF-8 text formats
+    if (/\.(txt|md|csv|srt|vtt)$/i.test(lowerName)) {
         const reader = new FileReader();
         reader.onload = (e) => {
-            const content = String(e.target.result || "");
-            // Clean up binary noise if any
-            const cleanText = content.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, " ").trim();
-            const title = name.replace(/\.[^.]+$/, "");
-            const isWriting = /writing|essay|task|de\s*bai/i.test(name);
+            const cleanText = String(e.target.result || "").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, " ").trim();
+            if (!cleanText) {
+                showToast("Tệp văn bản trống!", "error");
+                return;
+            }
             const skill = isWriting ? "writing" : "reading";
-
-            addCMSContent({
+            const res = addCMSContent({
                 skill,
                 level: "B1",
-                title: `[Tập tin] ${title}`,
+                title: `[Tập tin] ${baseTitle}`,
                 topic: "Tài liệu tải lên",
                 contentText: cleanText.slice(0, 5000),
                 source: "user-imported",
@@ -1081,45 +1114,111 @@ function handleMaterialFileUpload(event) {
                     ? { type: "essay", prompt: cleanText.slice(0, 3000), minWords: 80, timeLimit: 25 }
                     : { passage: cleanText.slice(0, 5000), questions: [] }
             });
+            if (!res.ok) { showToast("Chống trùng lặp: " + res.error, "error"); return; }
             renderMaterialsPageTable();
-            showToast(`Đã tải lên và lưu tài liệu "${title}"!`);
+            showToast(`Đã tải lên và lưu tài liệu "${baseTitle}"!`);
         };
-        reader.readAsText(file);
-    } else if (lowerName.endsWith(".mp3") || lowerName.endsWith(".wav") || lowerName.endsWith(".ogg") || lowerName.endsWith(".m4a")) {
-        const title = name.replace(/\.[^.]+$/, "");
-        addCMSContent({
-            skill: "listening",
+        reader.readAsText(file, "utf-8");
+    } else if (lowerName.endsWith(".pdf")) {
+        // Honest PDF viewer support via session Blob URL (avoids garbled binary readAsText)
+        const itemId = `cms-${isWriting ? "writing" : "reading"}-${Date.now()}`;
+        if (!window.sessionPdfUrls) window.sessionPdfUrls = {};
+        window.sessionPdfUrls[itemId] = URL.createObjectURL(file);
+        const skill = isWriting ? "writing" : "reading";
+        const noteText = `Tài liệu PDF cá nhân: ${name} (${Math.round(file.size / 1024)} KB). Bấm Vào Luyện Tập Ngay để xem trực tiếp file PDF trong phiên làm việc này (copy-paste đoạn văn vào Dán Đề Bài Thủ Công nếu muốn tra từ hoặc chấm AI).`;
+        const res = addCMSContent({
+            id: itemId,
+            skill,
             level: "B1",
-            title: `[Audio] ${title}`,
-            topic: "File âm thanh cá nhân",
-            contentText: `File âm thanh: ${name} (Đã sẵn sàng để phát giọng chuẩn và luyện nghe)`,
+            title: `[PDF] ${baseTitle}`,
+            topic: "Tài liệu PDF tải lên",
+            contentText: noteText,
             source: "user-imported",
-            payload: {
-                type: "dictation",
-                audioText: `This is your personal audio material named ${title}. Listen carefully and practice dictation.`,
-                transcript: `This is your personal audio material named ${title}. Listen carefully and practice dictation.`,
-                sentences: [`This is your personal audio material named ${title}.`, "Listen carefully and practice dictation."],
-                questions: []
-            }
+            payload: skill === "writing"
+                ? { type: "essay", prompt: noteText, isPdfUpload: true, minWords: 80, timeLimit: 25 }
+                : { passage: noteText, isPdfUpload: true, questions: [] }
         });
+        if (!res.ok) { showToast("Chống trùng lặp: " + res.error, "error"); return; }
         renderMaterialsPageTable();
-        showToast(`Đã thêm file nghe "${title}" vào mục Listening!`);
-    } else if (file.type.startsWith("image/")) {
-        const title = name.replace(/\.[^.]+$/, "");
-        addCMSContent({
-            skill: "reading",
-            level: "B1",
-            title: `[Ảnh đề bài] ${title}`,
-            topic: "Ảnh chụp đề bài giáo viên",
-            contentText: `Ảnh chụp đề bài: ${name}. Bạn có thể xem và thực hành bài làm trực tiếp.`,
-            source: "user-imported",
-            payload: {
-                passage: `Đề bài từ ảnh chụp "${name}". Hãy đọc kỹ yêu cầu và thực hiện bài tập.`,
-                questions: []
-            }
-        });
-        renderMaterialsPageTable();
-        showToast(`Đã thêm ảnh chụp đề bài "${title}"!`);
+        showToast(`Đã thêm "${baseTitle}" (.pdf). Mở ngay trong phiên này để xem PDF trực tiếp!`);
+    } else if (lowerName.endsWith(".doc") || lowerName.endsWith(".docx")) {
+        // Honest Word handling: do not store corrupted binary ZIP bytes
+        const manualTitle = document.getElementById("mat-manual-title");
+        const manualBody = document.getElementById("mat-manual-body");
+        if (manualTitle && !manualTitle.value.trim()) manualTitle.value = baseTitle;
+        if (manualBody) manualBody.focus();
+        showToast("File .doc/.docx là định dạng nén Word: vui lòng copy nội dung trong Word và dán vào ô 'Dán Đề Bài Thủ Công' ngay bên cạnh để tránh lỗi font!", "warning");
+    } else if (/\.(mp3|wav|ogg|m4a)$/i.test(lowerName)) {
+        const itemId = `cms-listening-${Date.now()}`;
+        const saveAudioItem = (audioUrl, persistent) => {
+            const res = addCMSContent({
+                id: itemId,
+                skill: "listening",
+                level: "B1",
+                title: `[Audio] ${baseTitle}`,
+                topic: "File âm thanh cá nhân",
+                contentText: `File âm thanh thật: ${name} (${Math.round(file.size / 1024)} KB)${persistent ? " — Đã lưu ngoại tuyến trên trình duyệt." : " — Phát trực tiếp trong phiên hiện tại."}`,
+                source: "user-imported",
+                payload: {
+                    type: "multiple_choice",
+                    audioUrl,
+                    isLocalAudioOnly: true,
+                    audioText: "",
+                    transcript: "",
+                    sentences: [],
+                    questions: []
+                }
+            });
+            if (!res.ok) { showToast("Chống trùng lặp: " + res.error, "error"); return; }
+            renderMaterialsPageTable();
+            showToast(`Đã thêm file nghe "${baseTitle}" vào mục Listening!`);
+        };
+
+        if (file.size <= 1.8 * 1024 * 1024) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const dataUrl = String(e.target.result || "");
+                saveAudioItem(dataUrl, true);
+            };
+            reader.readAsDataURL(file);
+        } else {
+            if (!window.sessionAudioBlobUrls) window.sessionAudioBlobUrls = {};
+            window.sessionAudioBlobUrls[itemId] = URL.createObjectURL(file);
+            saveAudioItem(window.sessionAudioBlobUrls[itemId], false);
+        }
+    } else if (file.type && file.type.startsWith("image/")) {
+        const skill = isWriting ? "writing" : "reading";
+        const itemId = `cms-${skill}-${Date.now()}`;
+        const saveImgItem = (imgUrl, persistent) => {
+            const noteText = `Ảnh đề bài: ${name} (${Math.round(file.size / 1024)} KB). Mở để xem trực tiếp ảnh và làm bài.`;
+            const res = addCMSContent({
+                id: itemId,
+                skill,
+                level: "B1",
+                title: `[Ảnh] ${baseTitle}`,
+                topic: "Ảnh chụp đề bài giáo viên",
+                contentText: noteText,
+                source: "user-imported",
+                payload: skill === "writing"
+                    ? { type: "essay", prompt: noteText, imageDataUrl: persistent ? imgUrl : "", minWords: 80, timeLimit: 25 }
+                    : { passage: noteText, imageDataUrl: persistent ? imgUrl : "", questions: [] }
+            });
+            if (!res.ok) { showToast("Chống trùng lặp: " + res.error, "error"); return; }
+            renderMaterialsPageTable();
+            showToast(`Đã thêm ảnh đề bài "${baseTitle}"!`);
+        };
+
+        if (file.size <= 1.5 * 1024 * 1024) {
+            const reader = new FileReader();
+            reader.onload = (e) => saveImgItem(String(e.target.result || ""), true);
+            reader.readAsDataURL(file);
+        } else {
+            if (!window.sessionImageUrls) window.sessionImageUrls = {};
+            window.sessionImageUrls[itemId] = URL.createObjectURL(file);
+            saveImgItem(window.sessionImageUrls[itemId], false);
+        }
+    } else {
+        showToast("Định dạng file chưa được hỗ trợ trực tiếp. Hãy dùng .txt, .pdf, ảnh (.png/.jpg) hoặc audio (.mp3/.wav).", "warning");
     }
 
     if (event?.target) event.target.value = "";

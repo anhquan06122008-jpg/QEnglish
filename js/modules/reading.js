@@ -97,15 +97,15 @@ function switchReadingMobileTab(tab) {
 
 function openReadingPassage(id, customPassage = null) {
     const allPassages = getAllContentForSkill("reading");
+    const targetId = String(id || "");
     if (customPassage) window.lastCustomReadingPassage = customPassage;
     const p = customPassage || allPassages.find(x => x.id === id) ||
-        (id.startsWith("custom-r-") ? window.lastCustomReadingPassage : null);
-    const allPassages = getAllContentForSkill("reading");
-    const p = allPassages.find(x => x.id === id);
+        (targetId.startsWith("custom-r-") ? window.lastCustomReadingPassage : null);
     if (!p) return;
     activeReadingPassage = p;
     flaggedQuestions = new Set();
 
+    document.getElementById("reading-custom-panel")?.classList.add("hidden");
     document.getElementById("reading-list")?.classList.add("hidden");
     document.getElementById("reading-filter-bar")?.classList.add("hidden");
     document.getElementById("reading-session")?.classList.remove("hidden");
@@ -117,12 +117,19 @@ function openReadingPassage(id, customPassage = null) {
     const st = getReadingState();
     const savedHtml = st.highlightsById && st.highlightsById[p.id];
     const passageContainer = document.getElementById("reading-passage-text");
+    const imgSrc = p.imageDataUrl || (window.sessionImageUrls && window.sessionImageUrls[p.id]) || "";
+    const pdfSrc = (window.sessionPdfUrls && window.sessionPdfUrls[p.id]) || "";
+    const mediaHtml = imgSrc
+        ? `<div class="mb-3"><img src="${escHtml(imgSrc)}" alt="Ảnh đề bài đính kèm" class="w-full max-h-[520px] object-contain rounded-xl border border-white/10 bg-black/40"></div>`
+        : (pdfSrc
+            ? `<div class="mb-3 space-y-2"><iframe src="${escHtml(pdfSrc)}" title="Trình xem PDF" class="w-full h-[460px] rounded-xl border border-white/10 bg-white"></iframe><p class="text-[11px] text-amber-300">📄 Đang hiển thị trực tiếp file PDF từ máy của bạn (phiên hiện tại). Nếu muốn tra từng từ hoặc chấm AI, hãy copy đoạn chữ cần học vào ô Dán Thủ Công.</p></div>`
+            : "");
 
     if (savedHtml) {
         passageContainer.innerHTML = savedHtml;
     } else {
         const paragraphs = String(p.passage || "").split(/\n\s*\n/).filter(Boolean);
-        passageContainer.innerHTML = paragraphs.map((para, idx) => `
+        passageContainer.innerHTML = mediaHtml + paragraphs.map((para, idx) => `
             <p id="reading-para-${idx + 1}" class="p-2.5 rounded-xl transition duration-500 leading-7 text-slate-200">
                 <span class="text-[10px] font-black uppercase text-violet-400 mr-1.5 select-none">[Đoạn ${idx + 1}]</span>${escHtml(para.trim())}
             </p>
@@ -310,7 +317,7 @@ function renderReadingQuestionsList() {
         short_answer: "Short Answer"
     };
 
-    qWrap.innerHTML = questions.map((q, qi) => {
+    qWrap.innerHTML = questions.length > 0 ? questions.map((q, qi) => {
         const hasOptions = Array.isArray(q.options) && q.options.length > 0;
         const badge = typeLabels[q.type] || "Question";
         return `
@@ -337,7 +344,12 @@ function renderReadingQuestionsList() {
                 <div id="r-qfb-${qi}" class="hidden text-xs pt-2 border-t border-white/10 space-y-1"></div>
             </div>
         `;
-    }).join("");
+    }).join("") : `
+        <div class="p-4 rounded-2xl bg-slate-950/85 border border-white/10 space-y-2 text-xs text-slate-300">
+            <p class="font-bold text-cyan-300">📖 Tài liệu đọc cá nhân (Chế độ đọc tự do & tra từ)</p>
+            <p>Bài đọc này chưa kèm câu hỏi trắc nghiệm. Bạn có thể <strong>bôi đen hoặc nhấp đúp bất kỳ từ nào</strong> bên trái để tra nghĩa & lưu vào Vocabulary Bank, tô Highlight 4 màu, hoặc viết ghi chú rồi bấm Nộp bài để lưu tiến độ.</p>
+        </div>
+    `;
 
     updateReadingProgressUI();
 }
@@ -500,6 +512,7 @@ function extractKeyVocabFromPassage(passageText) {
 function closeReadingSession() {
     activeReadingPassage = null;
     document.getElementById("reading-session")?.classList.add("hidden");
+    document.getElementById("reading-custom-panel")?.classList.remove("hidden");
     document.getElementById("reading-list")?.classList.remove("hidden");
     document.getElementById("reading-filter-bar")?.classList.remove("hidden");
     filterReadingPassages();

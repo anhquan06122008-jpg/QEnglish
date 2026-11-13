@@ -112,14 +112,22 @@ function renderListeningHistoryPanel() {
     `).join("");
 }
 
+function getResolvedAudioUrl(ex) {
+    if (!ex) return "";
+    const sess = window.sessionAudioBlobUrls && ex.id ? window.sessionAudioBlobUrls[ex.id] : "";
+    return String(sess || ex.audioUrl || "").trim();
+}
+
 function renderAudioPlayerControls(ex, singleSentenceMode = false) {
-    const hasExternalUrl = Boolean(ex.audioUrl && String(ex.audioUrl).trim());
+    const resolvedUrl = getResolvedAudioUrl(ex);
+    const hasExternalUrl = Boolean(resolvedUrl);
+    const hasTranscript = Boolean(String(ex.audioText || ex.transcript || "").trim());
     return `
         <div class="p-4 rounded-2xl bg-slate-950/90 border border-white/10 space-y-3">
             ${hasExternalUrl ? `
-                <audio id="ext-audio-el" src="${escHtml(ex.audioUrl)}" controls class="w-full" onerror="handleExternalAudioError()"></audio>
+                <audio id="ext-audio-el" src="${escHtml(resolvedUrl)}" controls class="w-full" onerror="handleExternalAudioError()"></audio>
                 <div id="ext-audio-error" class="hidden p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-xs text-rose-200 font-semibold">
-                    ❗ Không truy cập được nguồn file audio bên ngoài (có thể do mất mạng, CORS hoặc đường dẫn hết hạn). Hệ thống KHÔNG hiển thị bài nghe giả. Bạn có thể chuyển sang chế độ Đọc Transcript bằng Web Speech API bên dưới hoặc kiểm tra lại kết nối.
+                    ❗ Không truy cập được file audio (có thể file tạm của phiên trước đã hết hạn sau khi tải lại trang, mất mạng hoặc CORS). Hãy tải lại file âm thanh từ máy của bạn hoặc dùng transcript bên dưới.
                 </div>
             ` : ""}
             <div class="flex flex-wrap items-center justify-between gap-3">
@@ -141,7 +149,7 @@ function renderAudioPlayerControls(ex, singleSentenceMode = false) {
                 </div>
             </div>
             <div class="flex items-center justify-between text-[11px] text-slate-400">
-                <span id="listening-player-status">Sẵn sàng phát âm thanh (Web Speech API en-US)</span>
+                <span id="listening-player-status">${hasExternalUrl && !hasTranscript ? "Đang dùng trình phát tệp âm thanh gốc của bạn (không tự bịa transcript)" : "Sẵn sàng phát âm thanh (Web Speech API en-US)"}</span>
                 <span id="listening-sentence-indicator"></span>
             </div>
         </div>
@@ -165,12 +173,22 @@ function getSentencesOfActiveListening() {
     if (Array.isArray(activeListeningItem.sentences) && activeListeningItem.sentences.length > 0) {
         return activeListeningItem.sentences;
     }
-    return String(activeListeningItem.audioText || activeListeningItem.transcript || "")
-        .match(/[^.!?]+[.!?]+/g) || [activeListeningItem.transcript || ""];
+    const raw = String(activeListeningItem.audioText || activeListeningItem.transcript || "").trim();
+    if (!raw) return [];
+    return raw.match(/[^.!?]+[.!?]+/g) || [raw];
 }
 
 function listeningPlayAudio(singleSentenceMode = false) {
     if (!activeListeningItem) return;
+    const extAudio = document.getElementById("ext-audio-el");
+    const sentences = getSentencesOfActiveListening();
+    if (extAudio && sentences.length === 0) {
+        extAudio.playbackRate = listeningSpeed;
+        extAudio.play().catch(() => showToast("Không thể tự phát audio; hãy bấm nút Play trên trình phát.", "warning"));
+        const stEl = document.getElementById("listening-player-status");
+        if (stEl) stEl.textContent = `🔊 Đang phát file âm thanh của bạn (${listeningSpeed}x)...`;
+        return;
+    }
     if (!("speechSynthesis" in window)) {
         const stEl = document.getElementById("listening-player-status");
         if (stEl) stEl.innerHTML = `<span class="text-rose-400 font-bold">❗ Trình duyệt không hỗ trợ phát giọng nói Web SpeechSynthesis.</span>`;
@@ -178,7 +196,6 @@ function listeningPlayAudio(singleSentenceMode = false) {
         return;
     }
 
-    const sentences = getSentencesOfActiveListening();
     if (singleSentenceMode) {
         const sent = sentences[dictationIdx] || "";
         const stEl = document.getElementById("listening-player-status");
@@ -237,17 +254,18 @@ function listeningReplayAudio(singleSentenceMode = false) {
 function listeningStopAudio() {
     listeningIsPlaying = false;
     stopSpeech();
+    const extAudio = document.getElementById("ext-audio-el");
+    if (extAudio && !extAudio.paused) extAudio.pause();
     const stEl = document.getElementById("listening-player-status");
     if (stEl) stEl.textContent = "⏹ Đã dừng phát.";
 }
 
 function openListeningExercise(id, customItem = null) {
     const allItems = getAllContentForSkill("listening");
+    const targetId = String(id || "");
     if (customItem) window.lastCustomListeningExercise = customItem;
     const ex = customItem || allItems.find(x => x.id === id) ||
-        (id.startsWith("custom-l-") ? window.lastCustomListeningExercise : null);
-    const allItems = getAllContentForSkill("listening");
-    const ex = allItems.find(x => x.id === id);
+        (targetId.startsWith("custom-l-") ? window.lastCustomListeningExercise : null);
     if (!ex) return;
 
     clearInterval(fullTestTimerId);
@@ -255,6 +273,7 @@ function openListeningExercise(id, customItem = null) {
     activeListeningItem = ex;
     listeningSentenceCursor = 0;
 
+    document.getElementById("listening-custom-panel")?.classList.add("hidden");
     document.getElementById("listening-list")?.classList.add("hidden");
     document.getElementById("listening-filter-bar")?.classList.add("hidden");
     document.getElementById("listening-exercise")?.classList.remove("hidden");
@@ -278,6 +297,7 @@ function closeListeningExercise() {
     listeningStopAudio();
     activeListeningItem = null;
     document.getElementById("listening-exercise")?.classList.add("hidden");
+    document.getElementById("listening-custom-panel")?.classList.remove("hidden");
     document.getElementById("listening-list")?.classList.remove("hidden");
     document.getElementById("listening-filter-bar")?.classList.remove("hidden");
     filterListeningExercises();
@@ -516,26 +536,38 @@ function renderListenChooseView(isFullTest = false) {
 
         ${renderAudioPlayerControls(ex, false)}
 
-        <div class="space-y-4">
-            ${questions.map((q, qi) => `
-                <div class="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-2.5" id="l-qbox-${qi}">
-                    <p class="text-sm font-bold text-white"><span class="text-violet-400 mr-1">Question ${qi + 1}:</span> ${escHtml(q.question)}</p>
-                    <div class="grid gap-2">
-                        ${(q.options || []).map(opt => `
-                            <label class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-900 border border-white/10 cursor-pointer hover:border-violet-500/40 text-xs text-slate-200">
-                                <input type="radio" name="l-mc-${qi}" value="${escHtml(opt)}" onchange="updateListeningTestProgress()" class="accent-violet-500">
-                                <span>${escHtml(opt)}</span>
-                            </label>
-                        `).join("")}
+        ${questions.length > 0 ? `
+            <div class="space-y-4">
+                ${questions.map((q, qi) => `
+                    <div class="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-2.5" id="l-qbox-${qi}">
+                        <p class="text-sm font-bold text-white"><span class="text-violet-400 mr-1">Question ${qi + 1}:</span> ${escHtml(q.question)}</p>
+                        <div class="grid gap-2">
+                            ${(q.options || []).map(opt => `
+                                <label class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-900 border border-white/10 cursor-pointer hover:border-violet-500/40 text-xs text-slate-200">
+                                    <input type="radio" name="l-mc-${qi}" value="${escHtml(opt)}" onchange="updateListeningTestProgress()" class="accent-violet-500">
+                                    <span>${escHtml(opt)}</span>
+                                </label>
+                            `).join("")}
+                        </div>
+                        <div id="l-qfb-${qi}" class="hidden text-xs pt-2 border-t border-white/10"></div>
                     </div>
-                    <div id="l-qfb-${qi}" class="hidden text-xs pt-2 border-t border-white/10"></div>
-                </div>
-            `).join("")}
-        </div>
+                `).join("")}
+            </div>
 
-        <button id="l-submit-mc-btn" onclick="gradeListeningMCQuestions()" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold text-sm shadow-lg">
-            Nộp bài nghe & Xem đáp án + Transcript
-        </button>
+            <button id="l-submit-mc-btn" onclick="gradeListeningMCQuestions()" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold text-sm shadow-lg">
+                Nộp bài nghe & Xem đáp án + Transcript
+            </button>
+        ` : `
+            <div class="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
+                <label class="text-xs font-extrabold uppercase text-cyan-300 block">📝 Ghi chép nội dung bạn nghe được (Listening Notes / Dictation Scratchpad):</label>
+                <textarea id="custom-listening-notes" rows="5" placeholder="Nghe đoạn âm thanh phía trên và ghi lại ý chính, câu thoại hoặc từ mới bạn nghe được..." class="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-cyan-500"></textarea>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="finalizeListeningCompletion(100); showToast('Đã đánh dấu hoàn thành bài nghe cá nhân!');" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs">
+                        ✅ Đánh dấu đã hoàn thành
+                    </button>
+                </div>
+            </div>
+        `}
         <div id="listening-result-box" class="hidden"></div>
         <div id="listening-transcript-box" class="hidden p-4 rounded-2xl bg-slate-950/80 border border-cyan-500/25 space-y-2"></div>
     `;
