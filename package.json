@@ -2,5 +2,8 @@
   "name": "qenglish-personal-learning-system",
   "version": "2.0.0",
   "private": true,
-  "description": "Personal English Learning System for FPT University Students"
+  "description": "Personal English Learning System for FPT University Students",
+  "scripts": {
+    "start": "node scripts/local-server.js"
+  }
 }

@@ -1,0 +1,5 @@
+.env
+.env.*
+scripts/
+*backup*.json
+qenglish-backup-*.json

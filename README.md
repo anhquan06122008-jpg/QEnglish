@@ -48,7 +48,8 @@ QEnglish/
 ├── api/
 │   ├── config.js                           # Trả cờ cấu hình công khai (/api/config) — tuyệt đối không lộ secret
 │   └── ai.js                               # Vercel Serverless AI API (Translation Eval, Writing Eval, 6 AI Coaches, JWT check)
-├── server.js                               # Node.js HTTP Server chạy nội bộ hỗ trợ /api/config & /api/ai/*
+├── scripts/
+│   └── local-server.js                     # Node.js HTTP Server chạy nội bộ hỗ trợ /api/config & /api/ai/*
 ├── supabase-schema.sql                     # Schema PostgreSQL + RLS (auth.uid() = user_id) & Storage Bucket
 ├── vercel.json                             # Định tuyến /api/config và /api/ai/:task trên Vercel
 ├── .env.example                            # Mẫu cấu hình biến môi trường
@@ -76,7 +77,7 @@ Sau khi lưu Environment Variables, hãy bấm **Redeploy** trên Vercel để k
 
 ### Bước 3: Chạy Cục bộ với Node.js Server
 1. Sao chép `.env.example` thành `.env` và điền key tương ứng.
-2. Chạy `node server.js` (yêu cầu Node.js 18+).
+2. Chạy `npm start` hoặc `node scripts/local-server.js` (yêu cầu Node.js 18+).
 3. Truy cập `http://localhost:3000`.
 
 *Lưu ý khi mở trực tiếp file `index.html` (`file://`) hoặc qua GitHub Pages tĩnh:* Trình duyệt không có `/api/config` và `/api/ai/*` nên hệ thống chạy ở chế độ **Cục bộ (Local Fallback Mode)** — tài khoản và dữ liệu lưu trên trình duyệt đó, không đồng bộ chéo thiết bị và không chấm bài AI từ xa.

@@ -13,7 +13,7 @@ const path = require("path");
 
 // Built-in .env loader (no dotenv dependency required)
 (function loadDotEnv() {
-    const envPath = path.join(__dirname, ".env");
+    const envPath = path.join(__dirname, "..", ".env");
     if (!fs.existsSync(envPath)) return;
     const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
     for (const line of lines) {
@@ -29,11 +29,11 @@ const path = require("path");
     }
 })();
 
-const { handleAIRequest, detectProvider } = require("./api/ai");
-const { getPublicConfig } = require("./api/config");
+const { handleAIRequest, detectProvider } = require("../api/ai");
+const { getPublicConfig } = require("../api/config");
 
 const PORT = parseInt(process.env.PORT || "3000", 10) || 3000;
-const ROOT_DIR = __dirname;
+const ROOT_DIR = path.resolve(__dirname, "..");
 const MAX_BODY_BYTES = 256 * 1024;
 
 const MIME_TYPES = {
