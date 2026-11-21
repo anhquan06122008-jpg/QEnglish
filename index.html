@@ -16472,7 +16472,7 @@ function renderTranslationFeedback(lesson, userTranslation, r, evalMode) {
                             : `🛠️ Phân Tích Cục Bộ (AI Backend chưa kết nối) — Bài ${lesson.id}: ${escHtml(lesson.title)}`}
                     </p>
                     <p class="text-slate-300 leading-relaxed">${escHtml(r.overviewVi || "")}</p>
-                    ${!isAi ? `<p class="text-[11px] text-amber-200">ℹ️ Hệ thống không bịa điểm AI 10/10 khi offline. Bản dịch mẫu và 3 câu luyện tập đã được mở khóa sau khi bạn nộp bài.</p>` : ""}
+                    ${!isAi ? `<p class="text-[11px] text-amber-200">ℹ️ ${escHtml(r.offlineNotice || "AI Backend chưa kết nối.")} — Hệ thống không bịa điểm AI 10/10 khi fallback cục bộ. Bản dịch mẫu và 3 câu luyện tập đã được mở khóa sau khi bạn nộp bài.</p>` : ""}
                 </div>
                 <div class="flex items-center gap-3 shrink-0">
                     <div class="px-5 py-3 rounded-2xl bg-slate-950 border border-white/15 text-center">

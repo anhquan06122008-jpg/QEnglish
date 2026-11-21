@@ -29,7 +29,7 @@ function detectProvider() {
         return {
             configured: true,
             provider: "Google Gemini",
-            model: process.env.GEMINI_MODEL || "gemini-2.5-flash"
+            model: process.env.GEMINI_MODEL || "gemini-flash-lite-latest"
         };
     }
     if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.trim()) {
@@ -128,26 +128,53 @@ async function callLLMJson(systemInstruction, userPrompt) {
     try {
         if (info.provider === "Google Gemini") {
             const apiKey = process.env.GEMINI_API_KEY.trim();
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(info.model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-            const resp = await fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    systemInstruction: { parts: [{ text: systemInstruction }] },
-                    contents: [{ role: "user", parts: [{ text: safePrompt }] }],
-                    generationConfig: {
-                        temperature: 0.3,
-                        maxOutputTokens: MAX_OUTPUT_TOKENS,
-                        responseMimeType: "application/json"
-                    }
-                }),
-                signal: ctrl.signal
-            });
-            clearTimeout(timer);
-            if (!resp.ok) throw new Error(`Gemini upstream HTTP ${resp.status}`);
-            const data = await resp.json();
-            const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-            return { provider: `${info.provider} (${info.model})`, result: extractJSONFromText(text) };
+            const modelChain = Array.from(new Set([
+                info.model,
+                "gemini-flash-lite-latest",
+                "gemini-3.5-flash-lite",
+                "gemini-3.1-flash-lite",
+                "gemini-3.8-flash"
+            ].filter(Boolean)));
+
+            let lastErr = null;
+            for (const candidateModel of modelChain) {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(candidateModel)}:generateContent`;
+                const resp = await fetch(url, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "x-goog-api-key": apiKey
+                    },
+                    body: JSON.stringify({
+                        systemInstruction: { parts: [{ text: systemInstruction }] },
+                        contents: [{ role: "user", parts: [{ text: safePrompt }] }],
+                        generationConfig: {
+                            temperature: 0.3,
+                            maxOutputTokens: MAX_OUTPUT_TOKENS,
+                            responseMimeType: "application/json"
+                        }
+                    }),
+                    signal: ctrl.signal
+                });
+
+                if (resp.ok) {
+                    clearTimeout(timer);
+                    const data = await resp.json();
+                    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+                    return { provider: `${info.provider} (${candidateModel})`, result: extractJSONFromText(text) };
+                }
+
+                const errBody = await resp.json().catch(() => ({}));
+                const errDetail = errBody?.error?.message || `HTTP ${resp.status}`;
+                lastErr = new Error(`Gemini upstream HTTP ${resp.status}: ${errDetail}`);
+                lastErr.statusCode = resp.status >= 400 && resp.status < 600 ? resp.status : 502;
+
+                // Retry next fallback model only on deprecated model (404), high demand (503), or rate limit (429)
+                if (resp.status !== 404 && resp.status !== 503 && resp.status !== 429) {
+                    throw lastErr;
+                }
+            }
+            throw lastErr || new Error("Gemini upstream unavailable");
         } else {
             const apiKey = process.env.OPENAI_API_KEY.trim();
             const resp = await fetch("https://api.openai.com/v1/chat/completions", {
