@@ -410,12 +410,26 @@ function logStudyMetrics(metrics = {}, activityEntry = null) {
 
 // Active Study Timer — counts real active engagement every 30s (no fake time!)
 let _lastInteractionTs = Date.now();
+let _studyTimerListenersBound = false;
+let _studyTimerIntervalId = null;
+
+function stopRealStudyTimer() {
+    if (_studyTimerIntervalId !== null) {
+        clearInterval(_studyTimerIntervalId);
+        _studyTimerIntervalId = null;
+    }
+}
+
 function setupRealStudyTimer() {
-    ["click", "keydown", "input", "touchstart"].forEach(ev => {
-        window.addEventListener(ev, () => { _lastInteractionTs = Date.now(); }, { passive: true });
-    });
-    setInterval(() => {
-        if (document.hidden) return;
+    if (!_studyTimerListenersBound) {
+        _studyTimerListenersBound = true;
+        ["click", "keydown", "input", "touchstart"].forEach(ev => {
+            window.addEventListener(ev, () => { _lastInteractionTs = Date.now(); }, { passive: true });
+        });
+    }
+    stopRealStudyTimer();
+    _studyTimerIntervalId = setInterval(() => {
+        if (document.hidden || !window.__QENGLISH_ACTIVE_UID) return;
         // Only count if student interacted within the last 3 minutes
         if (Date.now() - _lastInteractionTs <= 180000) {
             logStudyMetrics({ minutes: 0.5 });
@@ -499,14 +513,25 @@ function computeOverallAnalytics() {
     const vocabGrammarPct = Math.round((vocabPct + grammarPct) / 2);
     const listeningPct = Math.min(100, Math.round(((listeningSaved.completedIds || []).length / listeningTotal) * 100));
     const readingPct = Math.min(100, Math.round(((readingSaved.completedIds || []).length / readingTotal) * 100));
-    const uniqueWritingTopics = new Set((writingSaved.submissions || []).map(s => s.topicId)).size;
-    const writingPct = Math.min(100, Math.round((uniqueWritingTopics / writingTotal) * 100));
+    const transCompletedCount = Array.isArray(writingSaved.translation?.completedIds)
+        ? new Set(writingSaved.translation.completedIds.map(Number).filter(Number.isFinite)).size
+        : 0;
+    const transTotalLessons = (typeof TRANSLATION_80_LESSONS !== "undefined" && Array.isArray(TRANSLATION_80_LESSONS))
+        ? TRANSLATION_80_LESSONS.length
+        : 80;
+    const uniqueWritingTopics = new Set((writingSaved.submissions || []).map(s => s.topicId)).size + transCompletedCount;
+    const writingPct = Math.min(100, Math.round((uniqueWritingTopics / Math.max(writingTotal + transTotalLessons, 10)) * 100));
     const speakingPct = Math.min(100, Math.round((totalSpeaking / speakingTarget) * 100));
 
-    // Real Writing 10-point & 4-criterion analytics
+    // Real Writing 10-point & 4-criterion analytics (Writing Studio + Translation 80 Lessons)
+    const transHistory = Array.isArray(writingSaved.translation?.history) ? writingSaved.translation.history : [];
     const gradedWritings = (writingSaved.submissions || []).filter(s => typeof s.totalScore10 === "number");
-    const writingAvg10 = gradedWritings.length > 0
-        ? Number((gradedWritings.reduce((sum, s) => sum + s.totalScore10, 0) / gradedWritings.length).toFixed(1))
+    const allGraded10 = [
+        ...gradedWritings.map(s => s.totalScore10),
+        ...transHistory.filter(h => typeof h.totalScore10 === "number").map(h => h.totalScore10)
+    ];
+    const writingAvg10 = allGraded10.length > 0
+        ? Number((allGraded10.reduce((sum, v) => sum + v, 0) / allGraded10.length).toFixed(1))
         : null;
     const writingCriteriaAvg = { taskResponse: null, coherenceCohesion: null, lexicalResource: null, grammarAccuracy: null };
     ["taskResponse", "coherenceCohesion", "lexicalResource", "grammarAccuracy"].forEach(ck => {
@@ -544,7 +569,7 @@ function computeOverallAnalytics() {
         totalSpeaking,
         totalGrammar,
         avgScore,
-        writingSubmissionsCount: (writingSaved.submissions || []).length,
+        writingSubmissionsCount: (writingSaved.submissions || []).length + transHistory.length,
         writingAvg10,
         writingCriteriaAvg,
         topMistakeCategories,
@@ -1069,6 +1094,7 @@ function syncCurrentAccountSnapshot() {
 }
 
 function reloadAllActiveAccountStates() {
+    if (typeof resetTranslationWorkspaceMemory === "function") resetTranslationWorkspaceMemory();
     loadSettings();
     loadDeckFromStorage();
     loadSRSState();
@@ -1236,6 +1262,7 @@ function importUserAccountJSON(file, onComplete) {
 
 /* ==================== 10. CLOUD WORKSPACE SNAPSHOTS & SAFE LEGACY MIGRATION ==================== */
 function resetInMemoryWorkspaceState() {
+    stopRealStudyTimer();
     deck = [];
     srsState = {};
     progressState = null;
@@ -1245,13 +1272,26 @@ function resetInMemoryWorkspaceState() {
     appSettings = null;
     accountsStore = null;
     if (typeof activeWritingTopic !== "undefined") activeWritingTopic = null;
-    ["writing-evaluation", "writing-inline-check-box", "speaking-eval-output", "grammar-coach-output", "listening-coach-output", "reading-coach-output", "vocab-coach-output", "dash-ai-assistant-output"].forEach(id => {
+    if (typeof resetTranslationWorkspaceMemory === "function") resetTranslationWorkspaceMemory();
+    ["writing-evaluation", "writing-inline-check-box", "trans-feedback-panel", "speaking-eval-output", "grammar-coach-output", "listening-coach-output", "reading-coach-output", "vocab-coach-output", "dash-ai-assistant-output"].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             el.innerHTML = "";
             el.classList.add("hidden");
         }
     });
+    const transArea = document.getElementById("trans-english-textarea");
+    if (transArea) transArea.value = "";
+    const transHist = document.getElementById("trans-history-list");
+    if (transHist) transHist.innerHTML = "";
+    const transGrid = document.getElementById("trans-catalog-grid");
+    if (transGrid) transGrid.innerHTML = "";
+    const transSearch = document.getElementById("trans-search-input");
+    if (transSearch) transSearch.value = "";
+    const transLv = document.getElementById("trans-level-filter");
+    if (transLv) transLv.value = "all";
+    document.getElementById("trans-catalog-modal")?.classList.add("hidden");
+    if (typeof setTranslationSubmitLoading === "function") setTranslationSubmitLoading(false);
 }
 
 function collectCurrentWorkspaceSnapshot() {
@@ -1332,7 +1372,11 @@ function detectLegacyUnscopedDataSummary(userId) {
     const hasCustomWords = Array.isArray(legDeck) && legDeck.some(w => Number(w.id) > 50 || w.starred || w.source === "user-imported");
     const wordCount = Array.isArray(legDeck) ? legDeck.length : 0;
     const noteCount = Array.isArray(legNotebook) ? legNotebook.length : 0;
-    const writingCount = Array.isArray(legWriting?.submissions) ? legWriting.submissions.length : 0;
+    const transLegacyHist = Array.isArray(legWriting?.translation?.history) ? legWriting.translation.history.length : 0;
+    const transLegacyDrafts = legWriting?.translation?.drafts
+        ? Object.values(legWriting.translation.drafts).filter(v => String(v || "").trim().length > 0).length
+        : 0;
+    const writingCount = (Array.isArray(legWriting?.submissions) ? legWriting.submissions.length : 0) + transLegacyHist + transLegacyDrafts;
     const materialCount = Array.isArray(legCms) ? legCms.length : 0;
     const daysCount = legProgress?.days ? Object.keys(legProgress.days).length : 0;
 

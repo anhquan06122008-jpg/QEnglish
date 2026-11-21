@@ -464,6 +464,7 @@ const CloudClient = {
 
     async signOut() {
         clearTimeout(this._syncTimer);
+        this._pendingSyncAfterFlight = false;
         if (this.isCloudMode() && this.session?.access_token) {
             try {
                 await fetch(`${this.config.supabaseUrl}/auth/v1/logout`, {
@@ -579,11 +580,60 @@ const CloudClient = {
 
         const localW = localSnap.writing_state || { drafts: {}, submissions: [] };
         const remoteW = remoteSnap.writing_state || { drafts: {}, submissions: [] };
+        const localT = (localW.translation && typeof localW.translation === "object") ? localW.translation : {};
+        const remoteT = (remoteW.translation && typeof remoteW.translation === "object") ? remoteW.translation : {};
+        const mergedCompletedIds = Array.from(new Set([
+            ...(Array.isArray(remoteT.completedIds) ? remoteT.completedIds : []),
+            ...(Array.isArray(localT.completedIds) ? localT.completedIds : [])
+        ].map(Number).filter(Number.isFinite))).sort((a, b) => a - b);
+
+        const mergedTransScores = { ...(remoteT.scores || {}) };
+        Object.entries(localT.scores || {}).forEach(([lid, val]) => {
+            if (!val) return;
+            const rv = mergedTransScores[lid];
+            if (!rv) {
+                mergedTransScores[lid] = val;
+            } else {
+                const lObj = (val && typeof val === "object") ? val : { bestScore: Number(val) };
+                const rObj = (rv && typeof rv === "object") ? rv : { bestScore: Number(rv) };
+                const lBest = typeof lObj.bestScore === "number" ? lObj.bestScore : null;
+                const rBest = typeof rObj.bestScore === "number" ? rObj.bestScore : null;
+                const bestScore = (lBest !== null && rBest !== null) ? Math.max(lBest, rBest) : (lBest ?? rBest);
+                const lAt = new Date(lObj.updatedAt || 0).getTime();
+                const rAt = new Date(rObj.updatedAt || 0).getTime();
+                mergedTransScores[lid] = {
+                    ...(lAt >= rAt ? lObj : rObj),
+                    bestScore,
+                    attempts: Math.max(Number(lObj.attempts) || 0, Number(rObj.attempts) || 0)
+                };
+            }
+        });
+
+        const mergedTransDrafts = { ...(remoteT.drafts || {}) };
+        Object.entries(localT.drafts || {}).forEach(([lid, txt]) => {
+            const localStr = typeof txt === "string" ? txt : "";
+            const remoteStr = typeof mergedTransDrafts[lid] === "string" ? mergedTransDrafts[lid] : "";
+            // Do not let an empty local draft silently erase a non-empty remote draft during conflict merge
+            if (localStr.trim() || !remoteStr.trim()) {
+                mergedTransDrafts[lid] = localStr;
+            }
+        });
+
         const mergedWriting = {
             drafts: { ...(remoteW.drafts || {}), ...(localW.drafts || {}) },
             submissions: mergeByKey(localW.submissions, remoteW.submissions, s => String(s.id || s.at))
                 .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
-                .slice(0, 60)
+                .slice(0, 60),
+            translation: {
+                drafts: mergedTransDrafts,
+                completedIds: mergedCompletedIds,
+                scores: mergedTransScores,
+                history: mergeByKey(localT.history, remoteT.history, h => String(h.id || h.at))
+                    .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
+                    .slice(0, 120),
+                lastLessonId: (localT.lastLessonId && localT.lastLessonId !== 1) ? localT.lastLessonId : (remoteT.lastLessonId || localT.lastLessonId || 1),
+                splitRatio: (localT.splitRatio && localT.splitRatio !== 48) ? localT.splitRatio : (remoteT.splitRatio || localT.splitRatio || 48)
+            }
         };
 
         const localP = localSnap.progress_state || { days: {}, activities: [], skillHistory: {} };
@@ -673,12 +723,16 @@ const CloudClient = {
                     const remoteRev = Number(remoteRow.revision) || 1;
                     if (remoteRev > (this.syncStatus.revision || 0) && remoteRow.device_id !== getOrCreateDeviceId()) {
                         localSnap = this.mergeSnapshotData(localSnap, remoteRow);
-                        if (typeof applyWorkspaceSnapshotToLocal === "function") {
+                        if (window.__QENGLISH_ACTIVE_UID === uid && typeof applyWorkspaceSnapshotToLocal === "function") {
                             applyWorkspaceSnapshotToLocal(localSnap);
                         }
                     }
                     nextRevision = remoteRev + 1;
                 }
+            }
+
+            if (window.__QENGLISH_ACTIVE_UID !== uid) {
+                return { ok: false, aborted: true };
             }
 
             const payload = {

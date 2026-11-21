@@ -233,6 +233,7 @@ function openCustomWritingEditor() {
 }
 
 function openWritingEditor(topicId, customTopic) {
+    if (typeof switchWritingHubMode === "function") switchWritingHubMode("studio");
     const allTopics = getAllContentForSkill("writing");
     if (customTopic) window.lastCustomWritingTopic = customTopic;
     const t = customTopic || allTopics.find(x => x.id === topicId) ||

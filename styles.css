@@ -354,3 +354,111 @@ select optgroup {
     background-color: #0F172A;
     color: #F8FAFC;
 }
+
+/* ==================== VIETNAMESE-ENGLISH TRANSLATION SPLIT WORKSPACE ==================== */
+.trans-split-container {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    height: clamp(460px, 64vh, 760px);
+}
+
+.trans-pane-left {
+    flex: 0 0 var(--trans-left-width, 48%);
+    min-width: 220px;
+    max-width: calc(100% - 236px);
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+}
+
+.trans-pane-right {
+    flex: 1 1 0%;
+    min-width: 220px;
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+}
+
+.trans-resizer {
+    width: 14px;
+    flex-shrink: 0;
+    cursor: col-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    touch-action: none;
+    position: relative;
+    outline: none;
+}
+
+.trans-resizer::after {
+    content: "";
+    width: 4px;
+    height: 56px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.35);
+    transition: background 0.15s ease, height 0.15s ease, box-shadow 0.15s ease;
+}
+
+.trans-resizer:hover::after,
+.trans-resizer.dragging::after,
+.trans-resizer:focus-visible::after {
+    background: linear-gradient(180deg, #8B5CF6, #06B6D4);
+    height: 92px;
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.65);
+}
+
+.trans-pane-left::-webkit-scrollbar,
+.trans-pane-right::-webkit-scrollbar {
+    width: 6px;
+}
+
+.trans-pane-left::-webkit-scrollbar-thumb,
+.trans-pane-right::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.25);
+    border-radius: 999px;
+}
+
+@media (max-width: 1023px) {
+    .trans-split-container {
+        display: block;
+        height: auto;
+        max-height: none;
+        min-height: 0;
+    }
+
+    .trans-pane-left {
+        flex: none;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        height: auto;
+        max-height: 70vh;
+    }
+
+    .trans-pane-right {
+        flex: none;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        height: auto;
+        max-height: none;
+        overflow-y: visible;
+    }
+
+    .trans-resizer {
+        display: none;
+    }
+
+    .trans-mobile-hidden {
+        display: none !important;
+    }
+}

@@ -101,6 +101,7 @@ function navigateTo(page, subTab = null) {
         else filterReadingPassages();
     }
     if (page === "writing") {
+        if (typeof initTranslationWritingWorkspace === "function") initTranslationWritingWorkspace();
         if (typeof closeWritingEditor === "function") closeWritingEditor();
         else filterWritingTopics();
     }

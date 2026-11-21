@@ -1,6 +1,6 @@
 # QEnglish Cloud — Personal AI English Learning Platform
 
-Hệ thống học tiếng Anh cá nhân hóa toàn diện **5 nhóm kỹ năng** (**Listening**, **Speaking**, **Reading**, **Writing**, **Grammar & Vocabulary**) với **Tài khoản độc lập theo người dùng (Supabase Auth + PostgreSQL RLS)**, **Đồng bộ đa thiết bị**, và **Hệ thống AI Coach & Chấm Writing chuyên sâu** (Internal `/10` 4×2.5, **PEN301**, IELTS, CEFR, TOEFL & Rubric tự nhập).
+Hệ thống học tiếng Anh cá nhân hóa toàn diện **5 nhóm kỹ năng** (**Listening**, **Speaking**, **Reading**, **Writing**, **Grammar & Vocabulary**) với **Luyện Dịch Việt – Anh 80 bài (A1–C1)** chia đôi màn hình, **Tài khoản độc lập theo người dùng (Supabase Auth + PostgreSQL RLS)**, **Đồng bộ đa thiết bị**, và **Hệ thống AI Coach & Chấm Writing chuyên sâu** (Internal `/10` 4×2.5, **PEN301**, IELTS, CEFR, TOEFL & Rubric tự nhập).
 
 ---
 
@@ -16,11 +16,11 @@ Hệ thống học tiếng Anh cá nhân hóa toàn diện **5 nhóm kỹ năng*
 
 ```text
 QEnglish/
-├── index.html                              # Ứng dụng chính (gộp sẵn toàn bộ 18 module JS để chạy zero-404)
+├── index.html                              # Ứng dụng chính (gộp sẵn toàn bộ CSS + 20 module JS để chạy zero-404)
 ├── QEnglish - Học Từ Vựng Thông Minh.html  # Đồng bộ 100% với index.html để giữ tương thích tên file cũ
 ├── QEnglish-BACKUP-ORIGINAL.html           # Bản sao lưu nguyên trạng website v1 trước nâng cấp
 ├── css/
-│   └── styles.css                          # Dark Glassmorphism, 3D Flashcard, Split Reading/Writing, Highlight
+│   └── styles.css                          # Dark Glassmorphism, 3D Flashcard, Split Translation/Reading/Writing
 ├── js/
 │   ├── data/
 │   │   ├── default-deck.js                 # 20 từ gốc + 16 từ mẫu + từ điển học thuật & câu mở rộng
@@ -29,7 +29,8 @@ QEnglish/
 │   │   ├── reading-data.js                 # Kho bài đọc học thuật & đời sống đại học
 │   │   ├── writing-data.js                 # Đề luyện viết Paragraph, Email, Essay
 │   │   ├── speaking-data.js                # Chủ đề Speaking & câu hỏi hội thoại trực tiếp
-│   │   └── extra-levels-data.js            # Học liệu mở rộng A1, C1, C2, IELTS 6.0+ & nguồn quốc tế
+│   │   ├── extra-levels-data.js            # Học liệu mở rộng A1, C1, C2, IELTS 6.0+ & nguồn quốc tế
+│   │   └── translation-80-data.js          # Lộ trình 80 bài luyện dịch Việt – Anh (A1 1-12, A2 13-42, B1 43-70, B2 71-76, C1 77-80)
 │   ├── core/
 │   │   ├── supabase-client.js              # CloudClient: Auth, JWT refresh, Snapshot Sync, Material Storage upload
 │   │   ├── storage.js                      # Per-user scoped storage, SRS, Analytics thực, CMS & Safe Migration
@@ -39,13 +40,14 @@ QEnglish/
 │       ├── grammar.js                      # Học ngữ pháp 8 phần + chấm bài tập + 🤖 AI Grammar Coach
 │       ├── listening.js                    # Player 0.5x–1.5x, Dictation, Transcript + 🤖 AI Listening Coach
 │       ├── reading.js                      # Màn hình đôi, 4 màu Highlight + 🤖 Phân tích câu & Tóm tắt ý
-│       ├── writing.js                      # Chấm Internal /10 (4×2.5), PEN301, IELTS/CEFR, 3 bản viết lại & Kế hoạch 9 mục
+│       ├── writing.js                      # Writing Studio: Internal /10 (4×2.5), PEN301, IELTS/CEFR, 3 bản viết lại
+│       ├── translation-writing.js          # Luyện dịch Việt–Anh 80 bài chia đôi màn hình, chống lộ đáp án & 3 câu luyện lỗi
 │       ├── speaking.js                     # Hội thoại trực tiếp, Topic Speaking & đánh giá minh bạch STT
 │       ├── notebook-cms.js                 # Sổ tay 5 phân mục + Kho học liệu cá nhân
 │       └── dashboard-progress.js           # Auth Gate, Sync Cloud, Dashboard KPI, Progress Analytics & Materials CRUD
 ├── api/
 │   ├── config.js                           # Trả cờ cấu hình công khai (/api/config) — tuyệt đối không lộ secret
-│   └── ai.js                               # Vercel Serverless AI API (Writing Eval, 6 AI Coaches, Auth JWT check)
+│   └── ai.js                               # Vercel Serverless AI API (Translation Eval, Writing Eval, 6 AI Coaches, JWT check)
 ├── server.js                               # Node.js HTTP Server chạy nội bộ hỗ trợ /api/config & /api/ai/*
 ├── supabase-schema.sql                     # Schema PostgreSQL + RLS (auth.uid() = user_id) & Storage Bucket
 ├── vercel.json                             # Định tuyến /api/config và /api/ai/:task trên Vercel
