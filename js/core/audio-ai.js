@@ -558,6 +558,8 @@ function analyzeEnglishTextLocal(rawText, options = {}) {
 }
 
 /* ==================== HONEST BACKEND AI CLIENT (PHẦN 3.5.D, 9.3, 10) ==================== */
+const DEFAULT_CLOUD_AI_BASE = "https://q-english.vercel.app/api/ai";
+
 const AIClient = {
     status: {
         checked: false,
@@ -565,43 +567,50 @@ const AIClient = {
         provider: null,
         message: "Chưa kiểm tra kết nối Backend AI."
     },
+    _resolvedBase: null,
 
     getEndpointBase() {
-        const cfg = (typeof appSettings !== "undefined" && appSettings && appSettings.backendApiUrl)
+        const rawCfg = (typeof appSettings !== "undefined" && appSettings && appSettings.backendApiUrl)
             ? appSettings.backendApiUrl.trim()
-            : "/api/ai";
-        return cfg.replace(/\/+$/, "");
+            : "";
+        if (rawCfg && rawCfg !== "/api/ai") {
+            return rawCfg.replace(/\/+$/, "");
+        }
+        if (this._resolvedBase) return this._resolvedBase;
+        const host = window.location.hostname || "";
+        // Static hosts (GitHub Pages or local file://) cannot serve POST /api/ai/* -> route to QEnglish Vercel AI Backend
+        if (window.location.protocol === "file:" || /github\.io$/i.test(host)) {
+            return DEFAULT_CLOUD_AI_BASE;
+        }
+        return "/api/ai";
     },
 
     async checkStatus() {
-        const base = this.getEndpointBase();
-        const host = window.location.hostname || "";
-        if (window.location.protocol === "file:" && base.startsWith("/")) {
-            this.status = {
-                checked: true,
-                connected: false,
-                provider: null,
-                message: "Đang mở qua file:// tĩnh (Offline). Hãy chạy node server.js hoặc mở URL Vercel để kết nối AI Backend."
-            };
-            this.syncStatusBadges();
-            return this.status;
-        }
-        if (/github\.io$/i.test(host) && base.startsWith("/")) {
-            this.status = {
-                checked: true,
-                connected: false,
-                provider: null,
-                message: "Đang chạy trên GitHub Pages (chỉ hỗ trợ web tĩnh, không chạy được API Backend). Hãy triển khai trên Vercel và đặt GEMINI_API_KEY / OPENAI_API_KEY."
-            };
-            this.syncStatusBadges();
-            return this.status;
-        }
+        let base = this.getEndpointBase();
 
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 5000);
+        const probe = async (targetBase) => {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 6000);
+            try {
+                const res = await fetch(`${targetBase}/status`, { method: "GET", cache: "no-store", signal: ctrl.signal });
+                clearTimeout(timer);
+                return res;
+            } catch (err) {
+                clearTimeout(timer);
+                throw err;
+            }
+        };
+
         try {
-            const res = await fetch(`${base}/status`, { method: "GET", cache: "no-store", signal: ctrl.signal });
-            clearTimeout(timer);
+            let res = await probe(base);
+            // If a static local dev server (e.g., Live Server / http.server) returns 404/405/501, fall back to Vercel AI Backend
+            if (!res.ok && base === "/api/ai" && (res.status === 404 || res.status === 405 || res.status === 501)) {
+                res = await probe(DEFAULT_CLOUD_AI_BASE);
+                if (res.ok) {
+                    base = DEFAULT_CLOUD_AI_BASE;
+                    this._resolvedBase = DEFAULT_CLOUD_AI_BASE;
+                }
+            }
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             this.status = {
@@ -613,7 +622,6 @@ const AIClient = {
                     : (data.message || "Backend đang chạy nhưng chưa cấu hình GEMINI_API_KEY hoặc OPENAI_API_KEY trong Environment Variables.")
             };
         } catch (err) {
-            clearTimeout(timer);
             this.status = {
                 checked: true,
                 connected: false,
@@ -665,10 +673,7 @@ const AIClient = {
                 error: "Vui lòng bật mục \"Tôi đồng ý gửi văn bản tới Backend AI\" trong Settings trước khi chấm bằng AI."
             };
         }
-        const base = this.getEndpointBase();
-        if (window.location.protocol === "file:" && base.startsWith("/")) {
-            return { ok: false, notConnected: true, error: "Chưa kết nối Backend Server (đang chạy file tĩnh cục bộ)." };
-        }
+        let base = this.getEndpointBase();
         const headers = { "Content-Type": "application/json" };
         if (typeof CloudClient !== "undefined" && CloudClient.getAccessToken()) {
             headers["Authorization"] = `Bearer ${CloudClient.getAccessToken()}`;
@@ -677,12 +682,23 @@ const AIClient = {
         const timeoutMs = (task === "writing-eval" || task === "translation-eval") ? 48000 : 28000;
         const timer = setTimeout(() => ctrl.abort(), timeoutMs);
         try {
-            const res = await fetch(`${base}/${task}`, {
+            let res = await fetch(`${base}/${task}`, {
                 method: "POST",
                 headers,
                 body: JSON.stringify(payload),
                 signal: ctrl.signal
             });
+            // If static server (GitHub Pages / Live Server / file host) rejects POST with 404/405/501, retry against Vercel AI Backend
+            if (!res.ok && base === "/api/ai" && (res.status === 404 || res.status === 405 || res.status === 501)) {
+                this._resolvedBase = DEFAULT_CLOUD_AI_BASE;
+                base = DEFAULT_CLOUD_AI_BASE;
+                res = await fetch(`${base}/${task}`, {
+                    method: "POST",
+                    headers,
+                    body: JSON.stringify(payload),
+                    signal: ctrl.signal
+                });
+            }
             clearTimeout(timer);
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.ok) {
