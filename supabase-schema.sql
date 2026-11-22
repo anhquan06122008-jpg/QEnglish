@@ -221,3 +221,81 @@ using (
     bucket_id = 'qenglish-materials'
     and (storage.foldername(name))[1] = auth.uid()::text
 );
+
+-- 7. Multi-Device Active Sessions Registry (concurrent logins + remote device sign-out)
+create table if not exists public.user_devices (
+    user_id uuid not null references auth.users(id) on delete cascade,
+    device_id text not null,
+    device_name text not null default 'Web Browser',
+    platform text not null default 'web',
+    user_agent text not null default '',
+    is_revoked boolean not null default false,
+    last_seen_at timestamptz not null default now(),
+    created_at timestamptz not null default now(),
+    primary key (user_id, device_id)
+);
+
+create index if not exists idx_user_devices_user_last_seen
+    on public.user_devices (user_id, last_seen_at desc);
+
+alter table public.user_devices enable row level security;
+
+drop policy if exists "Users manage own devices" on public.user_devices;
+create policy "Users manage own devices"
+on public.user_devices for all
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+-- 8. Normalized Writing Drafts with Conflict Backup & Revision Tracking
+create table if not exists public.user_writing_drafts (
+    user_id uuid not null references auth.users(id) on delete cascade,
+    lesson_key text not null,
+    draft_text text not null default '',
+    previous_text text not null default '',
+    conflict_backup text not null default '',
+    revision bigint not null default 1,
+    device_id text not null default '',
+    updated_at timestamptz not null default now(),
+    created_at timestamptz not null default now(),
+    primary key (user_id, lesson_key)
+);
+
+create index if not exists idx_writing_drafts_user_updated
+    on public.user_writing_drafts (user_id, updated_at desc);
+
+alter table public.user_writing_drafts enable row level security;
+
+drop policy if exists "Users manage own writing drafts" on public.user_writing_drafts;
+create policy "Users manage own writing drafts"
+on public.user_writing_drafts for all
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+-- 9. Enable Supabase Realtime (CDC Push) ONLY on multi-device sync tables
+alter table public.user_study_snapshots replica identity full;
+alter table public.user_devices replica identity full;
+alter table public.user_writing_drafts replica identity full;
+
+do $$
+begin
+    if not exists (
+        select 1 from pg_publication_tables
+        where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'user_study_snapshots'
+    ) then
+        alter publication supabase_realtime add table public.user_study_snapshots;
+    end if;
+
+    if not exists (
+        select 1 from pg_publication_tables
+        where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'user_devices'
+    ) then
+        alter publication supabase_realtime add table public.user_devices;
+    end if;
+
+    if not exists (
+        select 1 from pg_publication_tables
+        where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'user_writing_drafts'
+    ) then
+        alter publication supabase_realtime add table public.user_writing_drafts;
+    end if;
+end $$;

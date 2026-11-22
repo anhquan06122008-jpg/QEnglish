@@ -1093,8 +1093,10 @@ function syncCurrentAccountSnapshot() {
     saveAccountsStore();
 }
 
-function reloadAllActiveAccountStates() {
-    if (typeof resetTranslationWorkspaceMemory === "function") resetTranslationWorkspaceMemory();
+function reloadAllActiveAccountStates(options = {}) {
+    if (!options.preserveTranslationState && typeof resetTranslationWorkspaceMemory === "function") {
+        resetTranslationWorkspaceMemory();
+    }
     loadSettings();
     loadDeckFromStorage();
     loadSRSState();
@@ -1311,7 +1313,7 @@ function collectCurrentWorkspaceSnapshot() {
     };
 }
 
-function applyWorkspaceSnapshotToLocal(snapshot) {
+function applyWorkspaceSnapshotToLocal(snapshot, options = {}) {
     if (!snapshot || typeof snapshot !== "object") return;
     window.__QENGLISH_SUPPRESS_SYNC = true;
     try {
@@ -1351,7 +1353,7 @@ function applyWorkspaceSnapshotToLocal(snapshot) {
         if (Array.isArray(snapshot.cms_items)) {
             safeWriteJSON(STORAGE_KEYS.CMS, snapshot.cms_items);
         }
-        reloadAllActiveAccountStates();
+        reloadAllActiveAccountStates({ preserveTranslationState: Boolean(options.preserveFocusedEditor) });
     } finally {
         window.__QENGLISH_SUPPRESS_SYNC = false;
     }

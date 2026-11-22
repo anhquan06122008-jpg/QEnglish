@@ -1864,6 +1864,7 @@ select optgroup {
                                     <span id="trans-en-stats" class="text-[11px] text-slate-400 font-semibold">0 từ • 0 câu</span>
                                 </div>
                                 <label for="trans-english-textarea" class="text-[11px] font-bold uppercase tracking-wide text-slate-400 block">Nhập bản dịch của bạn</label>
+                                <div id="trans-conflict-banner" class="hidden"></div>
                                 <textarea id="trans-english-textarea" oninput="handleTranslationDraftInput()" placeholder="Write your English translation here..." class="w-full flex-1 min-h-[250px] bg-slate-900/80 border border-white/15 rounded-2xl p-4 text-sm sm:text-[15px] text-white leading-7 focus:outline-none focus:border-emerald-400 resize-none"></textarea>
 
                                 <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
@@ -2560,6 +2561,15 @@ select optgroup {
                     <span class="text-[11px] text-slate-400">💡 Mỗi tài khoản có kho từ vựng, SRS, điểm số và sổ tay hoàn toàn riêng biệt.</span>
                     <button onclick="handleSaveActiveAccountProfile()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold">💾 Lưu Hồ Sơ Của Tôi</button>
                 </div>
+            </div>
+
+            <!-- Active Connected Devices & Multi-Device Session Control -->
+            <div class="p-4 rounded-2xl bg-slate-950/85 border border-cyan-500/25 space-y-2.5 text-xs">
+                <div class="flex items-center justify-between gap-2">
+                    <h4 class="text-sm font-extrabold text-cyan-300">📱 Thiết Bị Đang Đăng Nhập (Đồng bộ Real-Time)</h4>
+                    <button type="button" onclick="renderActiveDevicesUI()" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-white/10 text-[11px] text-slate-300 font-bold">↻ Làm mới</button>
+                </div>
+                <div id="account-devices-list" class="space-y-2 max-h-40 overflow-y-auto pr-1"></div>
             </div>
 
             <!-- Group Leaderboard & Account Switcher List -->
@@ -8136,6 +8146,29 @@ function getOrCreateDeviceId() {
     return id;
 }
 
+function detectCurrentDeviceMeta() {
+    const ua = String(navigator.userAgent || "");
+    let platform = "PC / Laptop";
+    if (/Android/i.test(ua)) platform = "Android";
+    else if (/iPad/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1)) platform = "iPad / Tablet";
+    else if (/iPhone|iPod/i.test(ua)) platform = "iPhone";
+    else if (/Macintosh/i.test(ua)) platform = "Mac";
+    else if (/Windows/i.test(ua)) platform = "Windows";
+    else if (/Linux/i.test(ua)) platform = "Linux";
+
+    let browser = "Browser";
+    if (/Edg\//i.test(ua)) browser = "Edge";
+    else if (/Chrome\//i.test(ua) && !/Edg/i.test(ua)) browser = "Chrome";
+    else if (/Safari\//i.test(ua) && !/Chrome/i.test(ua)) browser = "Safari";
+    else if (/Firefox\//i.test(ua)) browser = "Firefox";
+
+    return {
+        deviceName: `${platform} • ${browser}`,
+        platform,
+        userAgent: ua.slice(0, 240)
+    };
+}
+
 async function hashPasswordWithSalt(password, saltHex) {
     const input = `${saltHex}:${String(password || "")}`;
     if (window.crypto && window.crypto.subtle && typeof TextEncoder !== "undefined") {
@@ -8176,15 +8209,23 @@ const CloudClient = {
     },
     session: null, // { access_token, refresh_token, expires_at, user }
     syncStatus: {
-        state: "idle", // idle | syncing | synced | offline | conflict | error
+        state: "idle", // idle | syncing | synced | offline | error
         message: "Chưa đồng bộ",
         lastSyncedAt: null,
-        revision: 0
+        revision: 0,
+        realtimeConnected: false
     },
     _syncTimer: null,
     _syncInFlight: false,
     _pendingSyncAfterFlight: false,
     _recoveryAccessToken: null,
+    _ws: null,
+    _wsHeartbeatTimer: null,
+    _wsReconnectTimer: null,
+    _wsReconnectAttempts: 0,
+    _wsRefCounter: 0,
+    _wsManualClose: false,
+    _fallbackPollTimer: null,
 
     async initConfig() {
         if (window.location.protocol === "file:") {
@@ -8374,6 +8415,7 @@ const CloudClient = {
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) return { ok: false, error: "Email không đúng định dạng." };
         if (String(password || "").length < 6) return { ok: false, error: "Mật khẩu phải có ít nhất 6 ký tự." };
         if (!termsAccepted) return { ok: false, error: "Bạn cần đồng ý với Điều khoản sử dụng để đăng ký." };
+        if (!this.config.loaded) await this.initConfig();
 
         if (this.isCloudMode()) {
             try {
@@ -8451,6 +8493,7 @@ const CloudClient = {
     async signIn({ email, password }) {
         const cleanEmail = String(email || "").trim().toLowerCase();
         if (!cleanEmail || !password) return { ok: false, error: "Vui lòng nhập đầy đủ Email và Mật khẩu." };
+        if (!this.config.loaded) await this.initConfig();
 
         if (this.isCloudMode()) {
             try {
@@ -8574,22 +8617,292 @@ const CloudClient = {
         }
     },
 
-    async signOut() {
+    async signOut({ localOnly = false } = {}) {
         clearTimeout(this._syncTimer);
         this._pendingSyncAfterFlight = false;
-        if (this.isCloudMode() && this.session?.access_token) {
+        this.disconnectRealtime();
+        if (!localOnly && this.isCloudMode() && this.session?.access_token) {
             try {
-                await fetch(`${this.config.supabaseUrl}/auth/v1/logout`, {
+                // scope=local guarantees signing out 1 device NEVER signs out other active devices!
+                await fetch(`${this.config.supabaseUrl}/auth/v1/logout?scope=local`, {
                     method: "POST",
                     headers: this.getHeaders(true)
                 });
             } catch {}
-            this.saveSessionToStorage(null);
         }
+        this.saveSessionToStorage(null);
         localStorage.removeItem(LOCAL_AUTH_SESSION_KEY);
         window.__QENGLISH_ACTIVE_UID = null;
         window.__QENGLISH_AUTH_USER = null;
-        this.syncStatus = { state: "idle", message: "Đã đăng xuất", lastSyncedAt: null, revision: 0 };
+        this.syncStatus = { state: "idle", message: "Đã đăng xuất", lastSyncedAt: null, revision: 0, realtimeConnected: false };
+    },
+
+    /* -------------------- MULTI-DEVICE SESSION REGISTRY -------------------- */
+    async registerCurrentDevice(forceReactivate = false) {
+        const uid = window.__QENGLISH_ACTIVE_UID;
+        if (!this.isCloudMode() || !uid || !this.session?.access_token) return { ok: false };
+        const devId = getOrCreateDeviceId();
+        const meta = detectCurrentDeviceMeta();
+        try {
+            if (!forceReactivate) {
+                const chk = await fetch(`${this.config.supabaseUrl}/rest/v1/user_devices?user_id=eq.${encodeURIComponent(uid)}&device_id=eq.${encodeURIComponent(devId)}&select=is_revoked`, {
+                    method: "GET",
+                    headers: this.getHeaders(true)
+                });
+                if (chk.ok) {
+                    const existing = await chk.json().catch(() => []);
+                    if (Array.isArray(existing) && existing[0]?.is_revoked === true) {
+                        return { ok: true, revoked: true };
+                    }
+                }
+            }
+            const res = await fetch(`${this.config.supabaseUrl}/rest/v1/user_devices?on_conflict=user_id,device_id`, {
+                method: "POST",
+                headers: { ...this.getHeaders(true), "Prefer": "resolution=merge-duplicates,return=representation" },
+                body: JSON.stringify({
+                    user_id: uid,
+                    device_id: devId,
+                    device_name: meta.deviceName,
+                    platform: meta.platform,
+                    user_agent: meta.userAgent,
+                    is_revoked: false,
+                    last_seen_at: new Date().toISOString()
+                })
+            });
+            if (!res.ok) return { ok: false, status: res.status };
+            const rows = await res.json().catch(() => []);
+            return { ok: true, device: rows[0] || null };
+        } catch {
+            return { ok: false };
+        }
+    },
+
+    async ensureValidSession() {
+        if (!this.isCloudMode() || !this.session?.access_token) return false;
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (this.session.expires_at && this.session.expires_at - 90 < nowSec && this.session.refresh_token) {
+            const res = await this.refreshToken(this.session.refresh_token);
+            return res.ok;
+        }
+        return true;
+    },
+
+    async listActiveDevices() {
+        const uid = window.__QENGLISH_ACTIVE_UID;
+        if (!this.isCloudMode() || !uid || !this.session?.access_token) {
+            const meta = detectCurrentDeviceMeta();
+            return [{
+                device_id: getOrCreateDeviceId(),
+                device_name: meta.deviceName,
+                platform: meta.platform,
+                is_revoked: false,
+                last_seen_at: new Date().toISOString(),
+                isCurrent: true
+            }];
+        }
+        try {
+            const url = `${this.config.supabaseUrl}/rest/v1/user_devices?user_id=eq.${encodeURIComponent(uid)}&is_revoked=eq.false&order=last_seen_at.desc`;
+            const res = await fetch(url, { method: "GET", headers: this.getHeaders(true) });
+            if (!res.ok) return [];
+            const rows = await res.json();
+            const curId = getOrCreateDeviceId();
+            return (Array.isArray(rows) ? rows : []).map(r => ({
+                ...r,
+                isCurrent: r.device_id === curId
+            }));
+        } catch {
+            return [];
+        }
+    },
+
+    async revokeDeviceSession(targetDeviceId) {
+        const uid = window.__QENGLISH_ACTIVE_UID;
+        if (!this.isCloudMode() || !uid || !this.session?.access_token || !targetDeviceId) return { ok: false };
+        try {
+            const url = `${this.config.supabaseUrl}/rest/v1/user_devices?user_id=eq.${encodeURIComponent(uid)}&device_id=eq.${encodeURIComponent(targetDeviceId)}`;
+            const res = await fetch(url, {
+                method: "PATCH",
+                headers: { ...this.getHeaders(true), "Prefer": "return=minimal" },
+                body: JSON.stringify({ is_revoked: true, last_seen_at: new Date().toISOString() })
+            });
+            return { ok: res.ok };
+        } catch (err) {
+            return { ok: false, error: err.message };
+        }
+    },
+
+    /* -------------------- REAL-TIME WEBSOCKET SYNC (SUPABASE PHOENIX) -------------------- */
+    connectRealtime() {
+        const uid = window.__QENGLISH_ACTIVE_UID;
+        if (!this.isCloudMode() || !uid || !this.session?.access_token || typeof WebSocket === "undefined") return;
+        if (this._ws && (this._ws.readyState === WebSocket.OPEN || this._ws.readyState === WebSocket.CONNECTING)) return;
+
+        this._wsManualClose = false;
+        const wsBase = this.config.supabaseUrl.replace(/^http/i, "ws");
+        const wsUrl = `${wsBase}/realtime/v1/websocket?apikey=${encodeURIComponent(this.config.supabaseAnonKey)}&vsn=1.0.0`;
+
+        try {
+            const ws = new WebSocket(wsUrl);
+            this._ws = ws;
+            const topic = `realtime:public:qenglish_${uid}`;
+
+            ws.onopen = () => {
+                this._wsReconnectAttempts = 0;
+                this.syncStatus.realtimeConnected = true;
+                updateCloudSyncBadgeUI();
+
+                const ref = String(++this._wsRefCounter);
+                ws.send(JSON.stringify({
+                    topic,
+                    event: "phx_join",
+                    payload: {
+                        config: {
+                            broadcast: { self: false },
+                            presence: { key: getOrCreateDeviceId() },
+                            postgres_changes: [
+                                { event: "*", schema: "public", table: "user_study_snapshots", filter: `user_id=eq.${uid}` },
+                                { event: "*", schema: "public", table: "user_devices", filter: `user_id=eq.${uid}` }
+                            ]
+                        },
+                        access_token: this.session.access_token
+                    },
+                    ref
+                }));
+
+                clearInterval(this._wsHeartbeatTimer);
+                this._wsHeartbeatTimer = setInterval(() => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ topic: "phoenix", event: "heartbeat", payload: {}, ref: String(++this._wsRefCounter) }));
+                    }
+                }, 25000);
+            };
+
+            ws.onmessage = (evt) => {
+                try {
+                    const msg = JSON.parse(evt.data);
+                    this.handleRealtimeMessage(msg);
+                } catch {}
+            };
+
+            ws.onclose = () => {
+                clearInterval(this._wsHeartbeatTimer);
+                this._wsHeartbeatTimer = null;
+                this.syncStatus.realtimeConnected = false;
+                if (!this._wsManualClose && window.__QENGLISH_ACTIVE_UID === uid) {
+                    const delay = Math.min(20000, 1500 * Math.pow(2, this._wsReconnectAttempts++));
+                    clearTimeout(this._wsReconnectTimer);
+                    this._wsReconnectTimer = setTimeout(() => {
+                        if (navigator.onLine) this.connectRealtime();
+                    }, delay);
+                }
+                updateCloudSyncBadgeUI();
+            };
+
+            ws.onerror = () => {
+                try { ws.close(); } catch {}
+            };
+
+            // Lightweight safety poll (45s) only while tab is visible as resilience backup
+            clearInterval(this._fallbackPollTimer);
+            this._fallbackPollTimer = setInterval(() => {
+                if (!document.hidden && navigator.onLine && window.__QENGLISH_ACTIVE_UID === uid) {
+                    this.pullLatestIfNewer().catch(() => {});
+                }
+            }, 45000);
+        } catch {
+            // Non-blocking fallback to polling
+        }
+    },
+
+    disconnectRealtime() {
+        this._wsManualClose = true;
+        clearInterval(this._wsHeartbeatTimer);
+        clearTimeout(this._wsReconnectTimer);
+        clearInterval(this._fallbackPollTimer);
+        this._wsHeartbeatTimer = null;
+        this._wsReconnectTimer = null;
+        this._fallbackPollTimer = null;
+        this.syncStatus.realtimeConnected = false;
+        if (this._ws) {
+            try { this._ws.close(); } catch {}
+            this._ws = null;
+        }
+    },
+
+    handleRealtimeMessage(msg) {
+        if (!msg || msg.event !== "postgres_changes") return;
+        const data = msg.payload?.data;
+        if (!data) return;
+        const table = data.table;
+        const record = data.record || data.new;
+        if (!record) return;
+
+        if (table === "user_devices") {
+            if (record.device_id === getOrCreateDeviceId() && record.is_revoked === true) {
+                if (typeof handleAppLogout === "function") {
+                    handleAppLogout({ localOnly: true, reason: "Thiết bị này đã bị đăng xuất từ xa." });
+                }
+            } else if (typeof renderActiveDevicesUI === "function") {
+                renderActiveDevicesUI();
+            }
+            return;
+        }
+
+        if (table === "user_study_snapshots") {
+            this.handleIncomingRemoteSnapshot(record);
+        }
+    },
+
+    async pullLatestIfNewer() {
+        const uid = window.__QENGLISH_ACTIVE_UID;
+        if (!this.isCloudMode() || !uid || !this.session?.access_token) return;
+        await this.ensureValidSession();
+        // Also check whether this device was remotely revoked while WS was asleep
+        try {
+            const devChk = await fetch(`${this.config.supabaseUrl}/rest/v1/user_devices?user_id=eq.${encodeURIComponent(uid)}&device_id=eq.${encodeURIComponent(getOrCreateDeviceId())}&select=is_revoked`, {
+                method: "GET",
+                headers: this.getHeaders(true)
+            });
+            if (devChk.ok) {
+                const rows = await devChk.json().catch(() => []);
+                if (Array.isArray(rows) && rows[0]?.is_revoked === true && typeof handleAppLogout === "function") {
+                    await handleAppLogout({ localOnly: true, reason: "Phiên thiết bị này đã bị đăng xuất từ xa." });
+                    return;
+                }
+            }
+        } catch {}
+        const res = await this.fetchCloudWorkspace(uid);
+        if (res.ok && res.snapshot) {
+            this.handleIncomingRemoteSnapshot(res.snapshot);
+        }
+    },
+
+    handleIncomingRemoteSnapshot(remoteRow) {
+        const uid = window.__QENGLISH_ACTIVE_UID;
+        if (!uid || !remoteRow || remoteRow.user_id !== uid) return;
+        if (remoteRow.device_id === getOrCreateDeviceId()) return;
+        const remoteRev = Number(remoteRow.revision) || 1;
+        if (remoteRev <= (this.syncStatus.revision || 0)) return;
+
+        const buildFn = typeof collectCurrentWorkspaceSnapshot === "function" ? collectCurrentWorkspaceSnapshot : null;
+        const localSnap = buildFn ? buildFn() : {};
+        const merged = this.mergeSnapshotData(localSnap, remoteRow);
+
+        if (typeof applyWorkspaceSnapshotToLocal === "function") {
+            applyWorkspaceSnapshotToLocal(merged, { preserveFocusedEditor: true });
+        }
+        this.syncStatus = {
+            ...this.syncStatus,
+            state: "synced",
+            message: "Đã đồng bộ Realtime",
+            lastSyncedAt: remoteRow.updated_at || new Date().toISOString(),
+            revision: remoteRev
+        };
+        updateCloudSyncBadgeUI();
+
+        if (typeof refreshUIAfterRemoteSync === "function") {
+            refreshUIAfterRemoteSync(merged);
+        }
     },
 
     translateAuthError(raw) {
@@ -8637,6 +8950,7 @@ const CloudClient = {
             const rows = await res.json();
             if (Array.isArray(rows) && rows.length > 0) {
                 this.syncStatus = {
+                    ...this.syncStatus,
                     state: "synced",
                     message: "Đã đồng bộ Cloud",
                     lastSyncedAt: rows[0].updated_at || new Date().toISOString(),
@@ -8653,10 +8967,10 @@ const CloudClient = {
                     return { ok: true, snapshot: legRows[0], isLegacyTable: true };
                 }
             }
-            this.syncStatus = { state: "synced", message: "Tài khoản Cloud mới", lastSyncedAt: null, revision: 0 };
+            this.syncStatus = { ...this.syncStatus, state: "synced", message: "Tài khoản Cloud mới", lastSyncedAt: null, revision: 0 };
             return { ok: true, snapshot: null };
         } catch (err) {
-            this.syncStatus = { state: "error", message: "Mất kết nối đồng bộ Cloud", lastSyncedAt: this.syncStatus.lastSyncedAt, revision: this.syncStatus.revision };
+            this.syncStatus = { ...this.syncStatus, state: "error", message: "Mất kết nối đồng bộ Cloud" };
             return { ok: false, error: err.message };
         }
     },
@@ -8721,14 +9035,66 @@ const CloudClient = {
             }
         });
 
+        const localDraftMeta = (localT.draftUpdatedAt && typeof localT.draftUpdatedAt === "object") ? localT.draftUpdatedAt : {};
+        const remoteDraftMeta = (remoteT.draftUpdatedAt && typeof remoteT.draftUpdatedAt === "object") ? remoteT.draftUpdatedAt : {};
+        const mergedDraftMeta = { ...remoteDraftMeta, ...localDraftMeta };
+
+        const mergedConflicts = { ...(remoteT.conflicts || {}), ...(localT.conflicts || {}) };
+        const mergedRevisions = { ...(remoteT.revisions || {}) };
+        Object.entries(localT.revisions || {}).forEach(([lid, arr]) => {
+            const combined = [...(Array.isArray(mergedRevisions[lid]) ? mergedRevisions[lid] : []), ...(Array.isArray(arr) ? arr : [])];
+            const seen = new Set();
+            mergedRevisions[lid] = combined
+                .filter(r => r && r.text && !seen.has(r.text) && seen.add(r.text))
+                .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
+                .slice(0, 5);
+        });
+
         const mergedTransDrafts = { ...(remoteT.drafts || {}) };
         Object.entries(localT.drafts || {}).forEach(([lid, txt]) => {
             const localStr = typeof txt === "string" ? txt : "";
             const remoteStr = typeof mergedTransDrafts[lid] === "string" ? mergedTransDrafts[lid] : "";
-            // Do not let an empty local draft silently erase a non-empty remote draft during conflict merge
-            if (localStr.trim() || !remoteStr.trim()) {
-                mergedTransDrafts[lid] = localStr;
+            const localTrim = localStr.trim();
+            const remoteTrim = remoteStr.trim();
+
+            if (!remoteTrim) {
+                if (localTrim) mergedTransDrafts[lid] = localStr;
+                return;
             }
+            if (!localTrim) {
+                // Keep non-empty remote draft unless explicitly cleared later
+                return;
+            }
+            if (localTrim === remoteTrim) {
+                mergedTransDrafts[lid] = localStr;
+                return;
+            }
+
+            // Both local and remote have different non-empty paragraphs for the same lesson!
+            const lTime = new Date(localDraftMeta[lid] || 0).getTime();
+            const rTime = new Date(remoteDraftMeta[lid] || 0).getTime();
+
+            // Preserve the other version in revisions + record conflict if edited closely in time (< 10 mins or unknown timestamps)
+            const prevRevArr = Array.isArray(mergedRevisions[lid]) ? mergedRevisions[lid] : [];
+            const backupText = lTime >= rTime ? remoteStr : localStr;
+            if (!prevRevArr.some(r => r.text === backupText)) {
+                mergedRevisions[lid] = [
+                    { text: backupText, at: new Date(Math.max(lTime, rTime) || Date.now()).toISOString(), source: lTime >= rTime ? "other-device" : "this-device" },
+                    ...prevRevArr
+                ].slice(0, 5);
+            }
+
+            const nearConcurrent = (!lTime || !rTime) || Math.abs(lTime - rTime) < 10 * 60 * 1000;
+            if (nearConcurrent) {
+                mergedConflicts[lid] = {
+                    localText: localStr,
+                    remoteText: remoteStr,
+                    detectedAt: new Date().toISOString()
+                };
+            }
+
+            mergedTransDrafts[lid] = lTime >= rTime ? localStr : remoteStr;
+            mergedDraftMeta[lid] = new Date(Math.max(lTime, rTime) || Date.now()).toISOString();
         });
 
         const mergedWriting = {
@@ -8738,13 +9104,16 @@ const CloudClient = {
                 .slice(0, 60),
             translation: {
                 drafts: mergedTransDrafts,
+                draftUpdatedAt: mergedDraftMeta,
+                conflicts: mergedConflicts,
+                revisions: mergedRevisions,
                 completedIds: mergedCompletedIds,
                 scores: mergedTransScores,
                 history: mergeByKey(localT.history, remoteT.history, h => String(h.id || h.at))
                     .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
                     .slice(0, 120),
                 lastLessonId: (localT.lastLessonId && localT.lastLessonId !== 1) ? localT.lastLessonId : (remoteT.lastLessonId || localT.lastLessonId || 1),
-                splitRatio: (localT.splitRatio && localT.splitRatio !== 48) ? localT.splitRatio : (remoteT.splitRatio || localT.splitRatio || 48)
+                splitRatio: (localT.splitRatio && localT.splitRatio !== 50) ? localT.splitRatio : (remoteT.splitRatio || localT.splitRatio || 50)
             }
         };
 
@@ -8794,19 +9163,71 @@ const CloudClient = {
         };
     },
 
+    _getQueueStorageKey(uid) {
+        return `qenglish_u_${uid || window.__QENGLISH_ACTIVE_UID || "anon"}::sync_queue_v1`;
+    },
+
+    _readSyncQueue(uid) {
+        return safeParseJSON(localStorage.getItem(this._getQueueStorageKey(uid)), { pendingSnapshot: false, submissions: [] });
+    },
+
+    _writeSyncQueue(q, uid) {
+        try {
+            localStorage.setItem(this._getQueueStorageKey(uid), JSON.stringify(q));
+        } catch {}
+    },
+
+    async flushOfflineSyncQueue() {
+        const uid = window.__QENGLISH_ACTIVE_UID;
+        if (!this.isCloudMode() || !uid || !this.session?.access_token || !navigator.onLine) return;
+        const q = this._readSyncQueue(uid);
+        if (Array.isArray(q.submissions) && q.submissions.length > 0) {
+            const remaining = [];
+            for (const sub of q.submissions) {
+                const ok = await this._postWritingSubmissionRecord(sub);
+                if (!ok) remaining.push(sub);
+            }
+            q.submissions = remaining;
+            this._writeSyncQueue(q, uid);
+        }
+        if (q.pendingSnapshot) {
+            await this.syncNow();
+        }
+    },
+
     scheduleCloudSync() {
         if (!this.isCloudMode() || !window.__QENGLISH_ACTIVE_UID || !this.session?.access_token) return;
+        const uid = window.__QENGLISH_ACTIVE_UID;
+        const q = this._readSyncQueue(uid);
+        q.pendingSnapshot = true;
+        this._writeSyncQueue(q, uid);
+
         clearTimeout(this._syncTimer);
+        if (!navigator.onLine) {
+            this.syncStatus.state = "offline";
+            this.syncStatus.message = "Mất kết nối (Đã xếp hàng chờ đồng bộ)";
+            updateCloudSyncBadgeUI();
+            return;
+        }
         this.syncStatus.state = "syncing";
         updateCloudSyncBadgeUI();
         this._syncTimer = setTimeout(() => {
             this.syncNow().catch(() => {});
-        }, 1200);
+        }, 900);
     },
 
     async syncNow(localSnapshotBuilder = null) {
         if (!this.isCloudMode() || !window.__QENGLISH_ACTIVE_UID || !this.session?.access_token) {
             return { ok: false, offline: true };
+        }
+        const uid = window.__QENGLISH_ACTIVE_UID;
+        if (!navigator.onLine) {
+            const q = this._readSyncQueue(uid);
+            q.pendingSnapshot = true;
+            this._writeSyncQueue(q, uid);
+            this.syncStatus = { ...this.syncStatus, state: "offline", message: "Mất kết nối — Đã lưu cục bộ & chờ đồng bộ" };
+            updateCloudSyncBadgeUI();
+            return { ok: false, offline: true, queued: true };
         }
         if (this._syncInFlight) {
             this._pendingSyncAfterFlight = true;
@@ -8817,7 +9238,7 @@ const CloudClient = {
         updateCloudSyncBadgeUI();
 
         try {
-            const uid = window.__QENGLISH_ACTIVE_UID;
+            await this.ensureValidSession();
             const buildFn = localSnapshotBuilder || (typeof collectCurrentWorkspaceSnapshot === "function" ? collectCurrentWorkspaceSnapshot : null);
             if (!buildFn) return { ok: false };
             let localSnap = buildFn();
@@ -8836,7 +9257,7 @@ const CloudClient = {
                     if (remoteRev > (this.syncStatus.revision || 0) && remoteRow.device_id !== getOrCreateDeviceId()) {
                         localSnap = this.mergeSnapshotData(localSnap, remoteRow);
                         if (window.__QENGLISH_ACTIVE_UID === uid && typeof applyWorkspaceSnapshotToLocal === "function") {
-                            applyWorkspaceSnapshotToLocal(localSnap);
+                            applyWorkspaceSnapshotToLocal(localSnap, { preserveFocusedEditor: true });
                         }
                     }
                     nextRevision = remoteRev + 1;
@@ -8868,7 +9289,12 @@ const CloudClient = {
                 throw new Error(`HTTP ${res.status}`);
             }
 
+            const q = this._readSyncQueue(uid);
+            q.pendingSnapshot = false;
+            this._writeSyncQueue(q, uid);
+
             this.syncStatus = {
+                ...this.syncStatus,
                 state: "synced",
                 message: "Đã đồng bộ Cloud",
                 lastSyncedAt: payload.updated_at,
@@ -8877,11 +9303,14 @@ const CloudClient = {
             updateCloudSyncBadgeUI();
             return { ok: true, revision: nextRevision };
         } catch (err) {
+            const q = this._readSyncQueue(uid);
+            q.pendingSnapshot = true;
+            this._writeSyncQueue(q, uid);
+
             this.syncStatus = {
-                state: "error",
-                message: "Lỗi đồng bộ: " + (err.message || "Mạng"),
-                lastSyncedAt: this.syncStatus.lastSyncedAt,
-                revision: this.syncStatus.revision
+                ...this.syncStatus,
+                state: navigator.onLine ? "error" : "offline",
+                message: navigator.onLine ? ("Đồng bộ thất bại: " + (err.message || "Mạng")) : "Mất kết nối — Đã xếp hàng chờ đồng bộ"
             };
             updateCloudSyncBadgeUI();
             return { ok: false, error: err.message };
@@ -8894,12 +9323,13 @@ const CloudClient = {
         }
     },
 
-    async syncWritingSubmissionRecord(sub) {
-        if (!this.isCloudMode() || !window.__QENGLISH_ACTIVE_UID || !this.session?.access_token || !sub) return;
+    async _postWritingSubmissionRecord(sub) {
+        const uid = window.__QENGLISH_ACTIVE_UID;
+        if (!this.isCloudMode() || !uid || !this.session?.access_token || !sub) return false;
         try {
             const record = {
                 id: String(sub.id),
-                user_id: window.__QENGLISH_ACTIVE_UID,
+                user_id: uid,
                 topic_id: String(sub.topicId || ""),
                 title: String(sub.title || "Writing"),
                 grading_mode: String(sub.gradingMode || "internal_10"),
@@ -8915,13 +9345,29 @@ const CloudClient = {
                 created_at: sub.at || new Date().toISOString(),
                 updated_at: new Date().toISOString()
             };
-            await fetch(`${this.config.supabaseUrl}/rest/v1/user_writing_submissions?on_conflict=user_id,id`, {
+            const res = await fetch(`${this.config.supabaseUrl}/rest/v1/user_writing_submissions?on_conflict=user_id,id`, {
                 method: "POST",
                 headers: { ...this.getHeaders(true), "Prefer": "resolution=merge-duplicates,return=minimal" },
                 body: JSON.stringify(record)
             });
-        } catch (err) {
-            console.warn("[QEnglish Cloud] syncWritingSubmissionRecord skipped:", err);
+            return res.ok;
+        } catch {
+            return false;
+        }
+    },
+
+    async syncWritingSubmissionRecord(sub) {
+        const uid = window.__QENGLISH_ACTIVE_UID;
+        if (!this.isCloudMode() || !uid || !this.session?.access_token || !sub) return;
+        const ok = navigator.onLine ? await this._postWritingSubmissionRecord(sub) : false;
+        if (!ok) {
+            const q = this._readSyncQueue(uid);
+            const list = Array.isArray(q.submissions) ? q.submissions : [];
+            if (!list.some(s => String(s.id) === String(sub.id))) {
+                list.push(sub);
+                q.submissions = list.slice(-30);
+                this._writeSyncQueue(q, uid);
+            }
         }
     },
 
@@ -8989,10 +9435,12 @@ function updateCloudSyncBadgeUI() {
         return;
     }
     const st = CloudClient.syncStatus.state;
+    const rtLive = CloudClient.syncStatus.realtimeConnected;
     const map = {
-        synced: ["bg-emerald-500/10 text-emerald-300 border-emerald-500/30", "☁️", "Đã đồng bộ Cloud"],
-        syncing: ["bg-cyan-500/10 text-cyan-300 border-cyan-500/30 animate-pulse", "⏳", "Đang đồng bộ..."],
-        error: ["bg-rose-500/15 text-rose-300 border-rose-500/30", "⚠️", "Lỗi đồng bộ"],
+        synced: ["bg-emerald-500/10 text-emerald-300 border-emerald-500/30", rtLive ? "🟢" : "☁️", rtLive ? "Đã đồng bộ Realtime" : "Đã đồng bộ"],
+        syncing: ["bg-cyan-500/10 text-cyan-300 border-cyan-500/30 animate-pulse", "⏳", "Đang lưu..."],
+        offline: ["bg-amber-500/15 text-amber-300 border-amber-500/35", "📡", "Mất kết nối"],
+        error: ["bg-rose-500/15 text-rose-300 border-rose-500/30", "⚠️", "Đồng bộ thất bại"],
         idle: ["bg-slate-900 text-slate-300 border-white/10", "☁️", "Cloud Sẵn sàng"]
     };
     const [cls, icon, label] = map[st] || map.idle;
@@ -10109,8 +10557,10 @@ function syncCurrentAccountSnapshot() {
     saveAccountsStore();
 }
 
-function reloadAllActiveAccountStates() {
-    if (typeof resetTranslationWorkspaceMemory === "function") resetTranslationWorkspaceMemory();
+function reloadAllActiveAccountStates(options = {}) {
+    if (!options.preserveTranslationState && typeof resetTranslationWorkspaceMemory === "function") {
+        resetTranslationWorkspaceMemory();
+    }
     loadSettings();
     loadDeckFromStorage();
     loadSRSState();
@@ -10327,7 +10777,7 @@ function collectCurrentWorkspaceSnapshot() {
     };
 }
 
-function applyWorkspaceSnapshotToLocal(snapshot) {
+function applyWorkspaceSnapshotToLocal(snapshot, options = {}) {
     if (!snapshot || typeof snapshot !== "object") return;
     window.__QENGLISH_SUPPRESS_SYNC = true;
     try {
@@ -10367,7 +10817,7 @@ function applyWorkspaceSnapshotToLocal(snapshot) {
         if (Array.isArray(snapshot.cms_items)) {
             safeWriteJSON(STORAGE_KEYS.CMS, snapshot.cms_items);
         }
-        reloadAllActiveAccountStates();
+        reloadAllActiveAccountStates({ preserveTranslationState: Boolean(options.preserveFocusedEditor) });
     } finally {
         window.__QENGLISH_SUPPRESS_SYNC = false;
     }
@@ -15790,6 +16240,7 @@ function selectTranslationLesson(lessonId, options = {}) {
     }
 
     updateTranslationStatusBadges(lesson.id, savedDraft, tState);
+    renderTranslationConflictBanner(lesson.id, tState);
 
     const autosaveEl = document.getElementById("trans-autosave-indicator");
     if (autosaveEl) {
@@ -15870,8 +16321,124 @@ function flushPendingTranslationDraft() {
 
     const tState = getTranslationState();
     tState.drafts[String(lid)] = txt;
+    if (!tState.draftUpdatedAt || typeof tState.draftUpdatedAt !== "object") tState.draftUpdatedAt = {};
+    tState.draftUpdatedAt[String(lid)] = new Date().toISOString();
     tState.lastLessonId = lid;
     saveTranslationState(tState);
+}
+
+function renderTranslationConflictBanner(lessonId, tStateObj) {
+    const banner = document.getElementById("trans-conflict-banner");
+    if (!banner) return;
+    const tState = tStateObj || getTranslationState();
+    const lid = String(lessonId);
+    const conflict = tState.conflicts && tState.conflicts[lid];
+    const revs = Array.isArray(tState.revisions?.[lid]) ? tState.revisions[lid] : [];
+
+    if (!conflict) {
+        if (revs.length > 0) {
+            banner.classList.remove("hidden");
+            banner.innerHTML = `
+                <div class="p-2.5 rounded-xl bg-slate-900/90 border border-white/10 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                    <span class="text-slate-300">🕒 Có <strong>${revs.length}</strong> phiên bản nháp cũ được sao lưu an toàn.</span>
+                    <button type="button" onclick="restorePreviousTranslationRevision(${Number(lessonId)}, 0)" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold">↺ Khôi phục bản gần nhất</button>
+                </div>
+            `;
+        } else {
+            banner.innerHTML = "";
+            banner.classList.add("hidden");
+        }
+        return;
+    }
+
+    banner.classList.remove("hidden");
+    banner.innerHTML = `
+        <div class="p-3 rounded-2xl bg-amber-500/15 border border-amber-400/40 space-y-2 text-[11px]">
+            <p class="font-extrabold text-amber-200">⚠️ Phát hiện 2 thiết bị cùng sửa bản nháp này — Đã giữ lại cả 2 đoạn văn để không mất dữ liệu!</p>
+            <div class="p-2 rounded-xl bg-slate-950/80 border border-white/10 text-slate-200 max-h-20 overflow-y-auto">
+                <span class="text-[10px] font-bold text-cyan-300 block">Bản từ thiết bị khác:</span>
+                ${escHtml(conflict.remoteText || "")}
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+                <button type="button" onclick="resolveTranslationDraftConflict(${Number(lessonId)}, 'local')" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-white/15 text-white font-bold">Giữ bản máy này</button>
+                <button type="button" onclick="resolveTranslationDraftConflict(${Number(lessonId)}, 'remote')" class="px-2.5 py-1 rounded-lg bg-cyan-600/30 hover:bg-cyan-600/45 border border-cyan-400/35 text-cyan-200 font-bold">Dùng bản thiết bị kia</button>
+                <button type="button" onclick="resolveTranslationDraftConflict(${Number(lessonId)}, 'merge')" class="px-2.5 py-1 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/45 border border-emerald-400/35 text-emerald-200 font-bold">Gộp cả 2 đoạn</button>
+            </div>
+        </div>
+    `;
+}
+
+function resolveTranslationDraftConflict(lessonId, choice) {
+    const tState = getTranslationState();
+    const lid = String(lessonId);
+    const conflict = tState.conflicts?.[lid];
+    if (!conflict) return;
+
+    const curText = document.getElementById("trans-english-textarea")?.value || tState.drafts[lid] || "";
+    let chosen = curText;
+    if (choice === "remote") chosen = conflict.remoteText || "";
+    else if (choice === "merge") {
+        const l = String(conflict.localText || curText).trim();
+        const r = String(conflict.remoteText || "").trim();
+        chosen = l === r ? l : `${l}\n\n---\n${r}`;
+    } else {
+        chosen = conflict.localText || curText;
+    }
+
+    // Save replaced text into revisions history before overwriting
+    if (!tState.revisions || typeof tState.revisions !== "object") tState.revisions = {};
+    const prevArr = Array.isArray(tState.revisions[lid]) ? tState.revisions[lid] : [];
+    const other = choice === "remote" ? conflict.localText : conflict.remoteText;
+    if (other && !prevArr.some(x => x.text === other)) {
+        tState.revisions[lid] = [{ text: other, at: new Date().toISOString(), source: "conflict-backup" }, ...prevArr].slice(0, 5);
+    }
+
+    delete tState.conflicts[lid];
+    tState.drafts[lid] = chosen;
+    if (!tState.draftUpdatedAt || typeof tState.draftUpdatedAt !== "object") tState.draftUpdatedAt = {};
+    tState.draftUpdatedAt[lid] = new Date().toISOString();
+    saveTranslationState(tState);
+
+    const area = document.getElementById("trans-english-textarea");
+    if (area && Number(currentTranslationLessonId) === Number(lessonId)) {
+        area.value = chosen;
+        updateTranslationEditorStats(chosen);
+    }
+    renderTranslationConflictBanner(lessonId, tState);
+    showToast("✅ Đã xử lý xung đột bản nháp an toàn (bản cũ vẫn được giữ trong lịch sử)!");
+}
+
+function restorePreviousTranslationRevision(lessonId, revIdx) {
+    const tState = getTranslationState();
+    const lid = String(lessonId);
+    const rev = tState.revisions?.[lid]?.[Number(revIdx)];
+    if (!rev || !rev.text) return;
+    const area = document.getElementById("trans-english-textarea");
+    if (area && Number(currentTranslationLessonId) === Number(lessonId)) {
+        area.value = rev.text;
+        handleTranslationDraftInput(true);
+        showToast("↺ Đã khôi phục phiên bản nháp trước đó!");
+    }
+}
+
+function refreshTranslationUIFromRemote() {
+    if (!document.getElementById("writing-mode-translation")) return;
+    const tState = getTranslationState();
+    const lid = Number(currentTranslationLessonId || tState.lastLessonId || 1);
+    const lesson = getTranslationLessonById(lid);
+    if (!lesson) return;
+
+    const area = document.getElementById("trans-english-textarea");
+    const remoteDraft = tState.drafts[String(lesson.id)] || "";
+    if (area && document.activeElement !== area) {
+        area.value = remoteDraft;
+        updateTranslationEditorStats(remoteDraft);
+    }
+    updateTranslationStatusBadges(lesson.id, area ? area.value : remoteDraft, tState);
+    renderTranslationConflictBanner(lesson.id, tState);
+    renderTranslationProgressSummary();
+    renderTranslationHistoryList();
+    populateTranslationLessonSelect(lesson.id);
 }
 
 function handleTranslationDraftInput(immediate = false) {
@@ -18731,7 +19298,41 @@ function syncAccountBadgesUI() {
 function openAccountModal() {
     syncCurrentAccountSnapshot();
     renderAccountModalUI();
+    if (typeof renderActiveDevicesUI === "function") renderActiveDevicesUI();
     document.getElementById("account-modal")?.classList.remove("hidden");
+}
+
+async function renderActiveDevicesUI() {
+    const el = document.getElementById("account-devices-list");
+    if (!el || typeof CloudClient === "undefined") return;
+    const devices = await CloudClient.listActiveDevices();
+    if (!devices.length) {
+        el.innerHTML = `<p class="text-[11px] text-slate-400">Chưa ghi nhận thiết bị nào.</p>`;
+        return;
+    }
+    el.innerHTML = devices.map(d => `
+        <div class="p-3 rounded-xl border ${d.isCurrent ? "bg-emerald-500/10 border-emerald-500/35" : "bg-slate-900/80 border-white/10"} flex items-center justify-between gap-2 text-xs">
+            <div class="space-y-0.5">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="font-extrabold text-white">${escHtml(d.device_name || "Thiết bị")}</span>
+                    ${d.isCurrent ? `<span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold">Thiết bị này</span>` : ""}
+                </div>
+                <p class="text-[11px] text-slate-400">Hoạt động gần nhất: ${d.last_seen_at ? new Date(d.last_seen_at).toLocaleString("vi-VN") : "Vừa xong"}</p>
+            </div>
+            ${!d.isCurrent ? `<button type="button" data-dev-id="${escHtml(d.device_id)}" onclick="handleRevokeRemoteDevice(this.dataset.devId)" class="px-2.5 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/30 text-rose-200 text-[11px] font-bold">🚪 Đăng xuất</button>` : ""}
+        </div>
+    `).join("");
+}
+
+async function handleRevokeRemoteDevice(deviceId) {
+    if (!deviceId || typeof CloudClient === "undefined") return;
+    const res = await CloudClient.revokeDeviceSession(deviceId);
+    if (res.ok) {
+        showToast("Đã thu hồi phiên đăng nhập của thiết bị đó!");
+        renderActiveDevicesUI();
+    } else {
+        showToast("Không thể thu hồi thiết bị lúc này.", "error");
+    }
 }
 
 function closeAccountModal() {
@@ -18953,7 +19554,7 @@ async function handleAuthLoginSubmit(e) {
             if (resendWrap) resendWrap.classList.toggle("hidden", !res.unconfirmed);
             return;
         }
-        await bootAuthenticatedWorkspace(res.user);
+        await bootAuthenticatedWorkspace(res.user, { freshSignIn: true });
     } finally {
         setAuthLoading("auth-login-submit", false, "🔐 Đăng Nhập Vào QEnglish");
     }
@@ -18993,7 +19594,7 @@ async function handleAuthSignUpSubmit(e) {
             showAuthScreen({ tab: "login", notice: res.message });
             return;
         }
-        await bootAuthenticatedWorkspace(res.user);
+        await bootAuthenticatedWorkspace(res.user, { freshSignIn: true });
     } finally {
         setAuthLoading("auth-signup-submit", false, "🚀 Tạo Tài Khoản Học Tập Riêng");
     }
@@ -19046,16 +19647,19 @@ async function handleContinueWithExistingLocalDevice() {
     await bootAuthenticatedWorkspace(fallbackUser, { useLegacyNamespace: true });
 }
 
-async function handleAppLogout() {
+async function handleAppLogout({ localOnly = false, reason = "" } = {}) {
     if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) {
-        await CloudClient.syncNow();
-        await CloudClient.signOut();
+        if (!localOnly) await CloudClient.syncNow();
+        await CloudClient.signOut({ localOnly });
     } else if (typeof CloudClient !== "undefined") {
-        await CloudClient.signOut();
+        await CloudClient.signOut({ localOnly: true });
     }
     resetInMemoryWorkspaceState();
     closeAccountModal();
-    showAuthScreen({ tab: "login", notice: "Bạn đã đăng xuất an toàn. Dữ liệu tài khoản đã được bảo vệ riêng tư." });
+    showAuthScreen({
+        tab: "login",
+        notice: reason || "Bạn đã đăng xuất thiết bị này an toàn. Các thiết bị khác vẫn giữ nguyên phiên đăng nhập."
+    });
 }
 
 async function bootAuthenticatedWorkspace(user, options = {}) {
@@ -19068,13 +19672,27 @@ async function bootAuthenticatedWorkspace(user, options = {}) {
     // Pull cloud data if authenticated against Supabase Cloud
     if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode() && user.id) {
         await CloudClient.upsertProfile(user);
+        const devReg = await CloudClient.registerCurrentDevice(Boolean(options.freshSignIn));
+        if (devReg?.revoked) {
+            await handleAppLogout({ localOnly: true, reason: "Phiên thiết bị này đã bị đăng xuất từ xa." });
+            return;
+        }
         const cloud = await CloudClient.fetchCloudWorkspace(user.id);
         if (cloud.ok && cloud.snapshot) {
-            applyWorkspaceSnapshotToLocal(cloud.snapshot);
+            const q = CloudClient._readSyncQueue(user.id);
+            if (q && q.pendingSnapshot) {
+                const localSnap = collectCurrentWorkspaceSnapshot();
+                const merged = CloudClient.mergeSnapshotData(localSnap, cloud.snapshot);
+                applyWorkspaceSnapshotToLocal(merged);
+            } else {
+                applyWorkspaceSnapshotToLocal(cloud.snapshot);
+            }
             if (cloud.isLegacyTable) {
                 CloudClient.scheduleCloudSync();
             }
         }
+        CloudClient.connectRealtime();
+        CloudClient.flushOfflineSyncQueue();
     }
 
     loadAccountsStore();
@@ -19202,6 +19820,19 @@ async function runAILearningAssistant() {
     `;
 }
 
+window.refreshUIAfterRemoteSync = function () {
+    syncAccountBadgesUI();
+    refreshDashboardUI();
+    if (typeof applyStudyFilter === "function") applyStudyFilter();
+    if (typeof renderWordList === "function") renderWordList();
+    if (typeof refreshTranslationUIFromRemote === "function") refreshTranslationUIFromRemote();
+    if (typeof filterWritingTopics === "function") filterWritingTopics();
+    if (typeof renderProgressAnalyticsPage === "function") renderProgressAnalyticsPage();
+    if (typeof renderNotebook === "function") renderNotebook();
+    if (typeof renderMaterialsPageTable === "function") renderMaterialsPageTable();
+    if (typeof renderActiveDevicesUI === "function") renderActiveDevicesUI();
+};
+
 window.addEventListener("DOMContentLoaded", async () => {
     setupVocabularyKeyboardShortcuts();
     const readingTextEl = document.getElementById("reading-passage-text");
@@ -19212,11 +19843,22 @@ window.addEventListener("DOMContentLoaded", async () => {
     window.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden" && typeof CloudClient !== "undefined" && CloudClient.isCloudMode() && window.__QENGLISH_ACTIVE_UID) {
             CloudClient.syncNow();
+        } else if (document.visibilityState === "visible" && typeof CloudClient !== "undefined" && CloudClient.isCloudMode() && window.__QENGLISH_ACTIVE_UID) {
+            CloudClient.pullLatestIfNewer();
+            CloudClient.connectRealtime();
+        }
+    });
+    window.addEventListener("offline", () => {
+        if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) {
+            CloudClient.syncStatus.state = "offline";
+            CloudClient.syncStatus.message = "Mất kết nối — Dữ liệu mới sẽ tự động xếp hàng đồng bộ";
+            updateCloudSyncBadgeUI();
         }
     });
     window.addEventListener("online", () => {
         if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode() && window.__QENGLISH_ACTIVE_UID) {
-            CloudClient.syncNow();
+            CloudClient.connectRealtime();
+            CloudClient.flushOfflineSyncQueue();
         }
     });
 

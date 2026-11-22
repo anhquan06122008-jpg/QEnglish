@@ -453,6 +453,7 @@ function selectTranslationLesson(lessonId, options = {}) {
     }
 
     updateTranslationStatusBadges(lesson.id, savedDraft, tState);
+    renderTranslationConflictBanner(lesson.id, tState);
 
     const autosaveEl = document.getElementById("trans-autosave-indicator");
     if (autosaveEl) {
@@ -533,8 +534,124 @@ function flushPendingTranslationDraft() {
 
     const tState = getTranslationState();
     tState.drafts[String(lid)] = txt;
+    if (!tState.draftUpdatedAt || typeof tState.draftUpdatedAt !== "object") tState.draftUpdatedAt = {};
+    tState.draftUpdatedAt[String(lid)] = new Date().toISOString();
     tState.lastLessonId = lid;
     saveTranslationState(tState);
+}
+
+function renderTranslationConflictBanner(lessonId, tStateObj) {
+    const banner = document.getElementById("trans-conflict-banner");
+    if (!banner) return;
+    const tState = tStateObj || getTranslationState();
+    const lid = String(lessonId);
+    const conflict = tState.conflicts && tState.conflicts[lid];
+    const revs = Array.isArray(tState.revisions?.[lid]) ? tState.revisions[lid] : [];
+
+    if (!conflict) {
+        if (revs.length > 0) {
+            banner.classList.remove("hidden");
+            banner.innerHTML = `
+                <div class="p-2.5 rounded-xl bg-slate-900/90 border border-white/10 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                    <span class="text-slate-300">🕒 Có <strong>${revs.length}</strong> phiên bản nháp cũ được sao lưu an toàn.</span>
+                    <button type="button" onclick="restorePreviousTranslationRevision(${Number(lessonId)}, 0)" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold">↺ Khôi phục bản gần nhất</button>
+                </div>
+            `;
+        } else {
+            banner.innerHTML = "";
+            banner.classList.add("hidden");
+        }
+        return;
+    }
+
+    banner.classList.remove("hidden");
+    banner.innerHTML = `
+        <div class="p-3 rounded-2xl bg-amber-500/15 border border-amber-400/40 space-y-2 text-[11px]">
+            <p class="font-extrabold text-amber-200">⚠️ Phát hiện 2 thiết bị cùng sửa bản nháp này — Đã giữ lại cả 2 đoạn văn để không mất dữ liệu!</p>
+            <div class="p-2 rounded-xl bg-slate-950/80 border border-white/10 text-slate-200 max-h-20 overflow-y-auto">
+                <span class="text-[10px] font-bold text-cyan-300 block">Bản từ thiết bị khác:</span>
+                ${escHtml(conflict.remoteText || "")}
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+                <button type="button" onclick="resolveTranslationDraftConflict(${Number(lessonId)}, 'local')" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-white/15 text-white font-bold">Giữ bản máy này</button>
+                <button type="button" onclick="resolveTranslationDraftConflict(${Number(lessonId)}, 'remote')" class="px-2.5 py-1 rounded-lg bg-cyan-600/30 hover:bg-cyan-600/45 border border-cyan-400/35 text-cyan-200 font-bold">Dùng bản thiết bị kia</button>
+                <button type="button" onclick="resolveTranslationDraftConflict(${Number(lessonId)}, 'merge')" class="px-2.5 py-1 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/45 border border-emerald-400/35 text-emerald-200 font-bold">Gộp cả 2 đoạn</button>
+            </div>
+        </div>
+    `;
+}
+
+function resolveTranslationDraftConflict(lessonId, choice) {
+    const tState = getTranslationState();
+    const lid = String(lessonId);
+    const conflict = tState.conflicts?.[lid];
+    if (!conflict) return;
+
+    const curText = document.getElementById("trans-english-textarea")?.value || tState.drafts[lid] || "";
+    let chosen = curText;
+    if (choice === "remote") chosen = conflict.remoteText || "";
+    else if (choice === "merge") {
+        const l = String(conflict.localText || curText).trim();
+        const r = String(conflict.remoteText || "").trim();
+        chosen = l === r ? l : `${l}\n\n---\n${r}`;
+    } else {
+        chosen = conflict.localText || curText;
+    }
+
+    // Save replaced text into revisions history before overwriting
+    if (!tState.revisions || typeof tState.revisions !== "object") tState.revisions = {};
+    const prevArr = Array.isArray(tState.revisions[lid]) ? tState.revisions[lid] : [];
+    const other = choice === "remote" ? conflict.localText : conflict.remoteText;
+    if (other && !prevArr.some(x => x.text === other)) {
+        tState.revisions[lid] = [{ text: other, at: new Date().toISOString(), source: "conflict-backup" }, ...prevArr].slice(0, 5);
+    }
+
+    delete tState.conflicts[lid];
+    tState.drafts[lid] = chosen;
+    if (!tState.draftUpdatedAt || typeof tState.draftUpdatedAt !== "object") tState.draftUpdatedAt = {};
+    tState.draftUpdatedAt[lid] = new Date().toISOString();
+    saveTranslationState(tState);
+
+    const area = document.getElementById("trans-english-textarea");
+    if (area && Number(currentTranslationLessonId) === Number(lessonId)) {
+        area.value = chosen;
+        updateTranslationEditorStats(chosen);
+    }
+    renderTranslationConflictBanner(lessonId, tState);
+    showToast("✅ Đã xử lý xung đột bản nháp an toàn (bản cũ vẫn được giữ trong lịch sử)!");
+}
+
+function restorePreviousTranslationRevision(lessonId, revIdx) {
+    const tState = getTranslationState();
+    const lid = String(lessonId);
+    const rev = tState.revisions?.[lid]?.[Number(revIdx)];
+    if (!rev || !rev.text) return;
+    const area = document.getElementById("trans-english-textarea");
+    if (area && Number(currentTranslationLessonId) === Number(lessonId)) {
+        area.value = rev.text;
+        handleTranslationDraftInput(true);
+        showToast("↺ Đã khôi phục phiên bản nháp trước đó!");
+    }
+}
+
+function refreshTranslationUIFromRemote() {
+    if (!document.getElementById("writing-mode-translation")) return;
+    const tState = getTranslationState();
+    const lid = Number(currentTranslationLessonId || tState.lastLessonId || 1);
+    const lesson = getTranslationLessonById(lid);
+    if (!lesson) return;
+
+    const area = document.getElementById("trans-english-textarea");
+    const remoteDraft = tState.drafts[String(lesson.id)] || "";
+    if (area && document.activeElement !== area) {
+        area.value = remoteDraft;
+        updateTranslationEditorStats(remoteDraft);
+    }
+    updateTranslationStatusBadges(lesson.id, area ? area.value : remoteDraft, tState);
+    renderTranslationConflictBanner(lesson.id, tState);
+    renderTranslationProgressSummary();
+    renderTranslationHistoryList();
+    populateTranslationLessonSelect(lesson.id);
 }
 
 function handleTranslationDraftInput(immediate = false) {

@@ -641,7 +641,41 @@ function syncAccountBadgesUI() {
 function openAccountModal() {
     syncCurrentAccountSnapshot();
     renderAccountModalUI();
+    if (typeof renderActiveDevicesUI === "function") renderActiveDevicesUI();
     document.getElementById("account-modal")?.classList.remove("hidden");
+}
+
+async function renderActiveDevicesUI() {
+    const el = document.getElementById("account-devices-list");
+    if (!el || typeof CloudClient === "undefined") return;
+    const devices = await CloudClient.listActiveDevices();
+    if (!devices.length) {
+        el.innerHTML = `<p class="text-[11px] text-slate-400">Chưa ghi nhận thiết bị nào.</p>`;
+        return;
+    }
+    el.innerHTML = devices.map(d => `
+        <div class="p-3 rounded-xl border ${d.isCurrent ? "bg-emerald-500/10 border-emerald-500/35" : "bg-slate-900/80 border-white/10"} flex items-center justify-between gap-2 text-xs">
+            <div class="space-y-0.5">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="font-extrabold text-white">${escHtml(d.device_name || "Thiết bị")}</span>
+                    ${d.isCurrent ? `<span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold">Thiết bị này</span>` : ""}
+                </div>
+                <p class="text-[11px] text-slate-400">Hoạt động gần nhất: ${d.last_seen_at ? new Date(d.last_seen_at).toLocaleString("vi-VN") : "Vừa xong"}</p>
+            </div>
+            ${!d.isCurrent ? `<button type="button" data-dev-id="${escHtml(d.device_id)}" onclick="handleRevokeRemoteDevice(this.dataset.devId)" class="px-2.5 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/30 text-rose-200 text-[11px] font-bold">🚪 Đăng xuất</button>` : ""}
+        </div>
+    `).join("");
+}
+
+async function handleRevokeRemoteDevice(deviceId) {
+    if (!deviceId || typeof CloudClient === "undefined") return;
+    const res = await CloudClient.revokeDeviceSession(deviceId);
+    if (res.ok) {
+        showToast("Đã thu hồi phiên đăng nhập của thiết bị đó!");
+        renderActiveDevicesUI();
+    } else {
+        showToast("Không thể thu hồi thiết bị lúc này.", "error");
+    }
 }
 
 function closeAccountModal() {
@@ -863,7 +897,7 @@ async function handleAuthLoginSubmit(e) {
             if (resendWrap) resendWrap.classList.toggle("hidden", !res.unconfirmed);
             return;
         }
-        await bootAuthenticatedWorkspace(res.user);
+        await bootAuthenticatedWorkspace(res.user, { freshSignIn: true });
     } finally {
         setAuthLoading("auth-login-submit", false, "🔐 Đăng Nhập Vào QEnglish");
     }
@@ -903,7 +937,7 @@ async function handleAuthSignUpSubmit(e) {
             showAuthScreen({ tab: "login", notice: res.message });
             return;
         }
-        await bootAuthenticatedWorkspace(res.user);
+        await bootAuthenticatedWorkspace(res.user, { freshSignIn: true });
     } finally {
         setAuthLoading("auth-signup-submit", false, "🚀 Tạo Tài Khoản Học Tập Riêng");
     }
@@ -956,16 +990,19 @@ async function handleContinueWithExistingLocalDevice() {
     await bootAuthenticatedWorkspace(fallbackUser, { useLegacyNamespace: true });
 }
 
-async function handleAppLogout() {
+async function handleAppLogout({ localOnly = false, reason = "" } = {}) {
     if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) {
-        await CloudClient.syncNow();
-        await CloudClient.signOut();
+        if (!localOnly) await CloudClient.syncNow();
+        await CloudClient.signOut({ localOnly });
     } else if (typeof CloudClient !== "undefined") {
-        await CloudClient.signOut();
+        await CloudClient.signOut({ localOnly: true });
     }
     resetInMemoryWorkspaceState();
     closeAccountModal();
-    showAuthScreen({ tab: "login", notice: "Bạn đã đăng xuất an toàn. Dữ liệu tài khoản đã được bảo vệ riêng tư." });
+    showAuthScreen({
+        tab: "login",
+        notice: reason || "Bạn đã đăng xuất thiết bị này an toàn. Các thiết bị khác vẫn giữ nguyên phiên đăng nhập."
+    });
 }
 
 async function bootAuthenticatedWorkspace(user, options = {}) {
@@ -978,13 +1015,27 @@ async function bootAuthenticatedWorkspace(user, options = {}) {
     // Pull cloud data if authenticated against Supabase Cloud
     if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode() && user.id) {
         await CloudClient.upsertProfile(user);
+        const devReg = await CloudClient.registerCurrentDevice(Boolean(options.freshSignIn));
+        if (devReg?.revoked) {
+            await handleAppLogout({ localOnly: true, reason: "Phiên thiết bị này đã bị đăng xuất từ xa." });
+            return;
+        }
         const cloud = await CloudClient.fetchCloudWorkspace(user.id);
         if (cloud.ok && cloud.snapshot) {
-            applyWorkspaceSnapshotToLocal(cloud.snapshot);
+            const q = CloudClient._readSyncQueue(user.id);
+            if (q && q.pendingSnapshot) {
+                const localSnap = collectCurrentWorkspaceSnapshot();
+                const merged = CloudClient.mergeSnapshotData(localSnap, cloud.snapshot);
+                applyWorkspaceSnapshotToLocal(merged);
+            } else {
+                applyWorkspaceSnapshotToLocal(cloud.snapshot);
+            }
             if (cloud.isLegacyTable) {
                 CloudClient.scheduleCloudSync();
             }
         }
+        CloudClient.connectRealtime();
+        CloudClient.flushOfflineSyncQueue();
     }
 
     loadAccountsStore();
@@ -1112,6 +1163,19 @@ async function runAILearningAssistant() {
     `;
 }
 
+window.refreshUIAfterRemoteSync = function () {
+    syncAccountBadgesUI();
+    refreshDashboardUI();
+    if (typeof applyStudyFilter === "function") applyStudyFilter();
+    if (typeof renderWordList === "function") renderWordList();
+    if (typeof refreshTranslationUIFromRemote === "function") refreshTranslationUIFromRemote();
+    if (typeof filterWritingTopics === "function") filterWritingTopics();
+    if (typeof renderProgressAnalyticsPage === "function") renderProgressAnalyticsPage();
+    if (typeof renderNotebook === "function") renderNotebook();
+    if (typeof renderMaterialsPageTable === "function") renderMaterialsPageTable();
+    if (typeof renderActiveDevicesUI === "function") renderActiveDevicesUI();
+};
+
 window.addEventListener("DOMContentLoaded", async () => {
     setupVocabularyKeyboardShortcuts();
     const readingTextEl = document.getElementById("reading-passage-text");
@@ -1122,11 +1186,22 @@ window.addEventListener("DOMContentLoaded", async () => {
     window.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden" && typeof CloudClient !== "undefined" && CloudClient.isCloudMode() && window.__QENGLISH_ACTIVE_UID) {
             CloudClient.syncNow();
+        } else if (document.visibilityState === "visible" && typeof CloudClient !== "undefined" && CloudClient.isCloudMode() && window.__QENGLISH_ACTIVE_UID) {
+            CloudClient.pullLatestIfNewer();
+            CloudClient.connectRealtime();
+        }
+    });
+    window.addEventListener("offline", () => {
+        if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) {
+            CloudClient.syncStatus.state = "offline";
+            CloudClient.syncStatus.message = "Mất kết nối — Dữ liệu mới sẽ tự động xếp hàng đồng bộ";
+            updateCloudSyncBadgeUI();
         }
     });
     window.addEventListener("online", () => {
         if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode() && window.__QENGLISH_ACTIVE_UID) {
-            CloudClient.syncNow();
+            CloudClient.connectRealtime();
+            CloudClient.flushOfflineSyncQueue();
         }
     });
 

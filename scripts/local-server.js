@@ -31,6 +31,7 @@ const path = require("path");
 
 const { handleAIRequest, detectProvider } = require("../api/ai");
 const { getPublicConfig } = require("../api/config");
+const healthHandler = require("../api/health");
 
 const PORT = parseInt(process.env.PORT || "3000", 10) || 3000;
 const ROOT_DIR = path.resolve(__dirname, "..");
@@ -83,6 +84,22 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "OPTIONS") {
         res.writeHead(204);
         return res.end();
+    }
+
+    if (pathname === "/api/health") {
+        return healthHandler(req, {
+            setHeader: (k, v) => res.setHeader(k, v),
+            status: (code) => ({
+                json: (obj) => {
+                    res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" });
+                    res.end(JSON.stringify(obj));
+                },
+                end: () => {
+                    res.writeHead(code);
+                    res.end();
+                }
+            })
+        });
     }
 
     if (pathname === "/api/config") {
