@@ -8133,6 +8133,7 @@ const CLOUD_SESSION_KEY = "qenglish_cloud_session_v1";
 const LOCAL_AUTH_USERS_KEY = "qenglish_local_auth_users_v1";
 const LOCAL_AUTH_SESSION_KEY = "qenglish_local_auth_session_v1";
 const DEVICE_ID_KEY = "qenglish_device_id_v1";
+const DEFAULT_CLOUD_CONFIG_URL = "https://q-english.vercel.app/api/config";
 
 window.__QENGLISH_ACTIVE_UID = null;
 window.__QENGLISH_AUTH_USER = null;
@@ -8228,16 +8229,28 @@ const CloudClient = {
     _fallbackPollTimer: null,
 
     async initConfig() {
-        if (window.location.protocol === "file:") {
-            this.config.loaded = true;
-            this.config.authConfigured = false;
-            return this.config;
-        }
-        try {
+        const host = window.location.hostname || "";
+        const isStaticHost = window.location.protocol === "file:" || /github\.io$/i.test(host);
+
+        const fetchConfigFrom = async (url) => {
             const ctrl = new AbortController();
-            const timer = setTimeout(() => ctrl.abort(), 5000);
-            const res = await fetch("/api/config", { method: "GET", cache: "no-store", signal: ctrl.signal });
-            clearTimeout(timer);
+            const timer = setTimeout(() => ctrl.abort(), 6000);
+            try {
+                const res = await fetch(url, { method: "GET", cache: "no-store", signal: ctrl.signal });
+                clearTimeout(timer);
+                return res;
+            } catch (err) {
+                clearTimeout(timer);
+                throw err;
+            }
+        };
+
+        try {
+            let res = await fetchConfigFrom(isStaticHost ? DEFAULT_CLOUD_CONFIG_URL : "/api/config");
+            // Static local dev servers (e.g., Live Server / http.server) return 404/405/501 on /api/config -> fall back to Vercel Cloud config
+            if (!res.ok && !isStaticHost && (res.status === 404 || res.status === 405 || res.status === 501)) {
+                res = await fetchConfigFrom(DEFAULT_CLOUD_CONFIG_URL);
+            }
             if (res.ok) {
                 const data = await res.json();
                 if (data && data.ok) {
@@ -8246,7 +8259,7 @@ const CloudClient = {
                 }
             }
         } catch {
-            // Static host without serverless endpoints
+            // Offline or unreachable backend -> stay in transparent local fallback mode
         }
         this.config.loaded = true;
         return this.config;
