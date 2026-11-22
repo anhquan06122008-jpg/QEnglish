@@ -299,3 +299,15 @@ begin
         alter publication supabase_realtime add table public.user_writing_drafts;
     end if;
 end $$;
+
+-- 10. Explicit least-privilege table grants for authenticated users (RLS still isolates by auth.uid())
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on table
+    public.qenglish_user_snapshots,
+    public.user_profiles,
+    public.user_study_snapshots,
+    public.user_writing_submissions,
+    public.user_materials,
+    public.user_devices,
+    public.user_writing_drafts
+to authenticated;
