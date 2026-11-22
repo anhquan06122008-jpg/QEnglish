@@ -737,6 +737,9 @@ function renderAccountModalUI() {
                             </button>
                             <button onclick="handleDeleteAccount('${acc.id}')" class="p-2 rounded-xl bg-rose-500/15 text-rose-300 hover:bg-rose-500/30" title="Xóa tài khoản này">🗑️</button>
                         ` : `
+                            <button onclick="handleRecoverLocalBrowserDataToCloud()" class="px-3 py-2 rounded-xl bg-amber-500/15 border border-amber-500/35 text-amber-200 font-bold hover:bg-amber-500/25 transition" title="Tìm và gộp từ vựng/tiến độ cũ lưu trên trình duyệt này lên Cloud">
+                                🔄 Khôi phục dữ liệu cũ
+                            </button>
                             <button onclick="exportActiveAccountJSON()" class="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold">
                                 📥 Tải hồ sơ
                             </button>
@@ -1046,6 +1049,18 @@ async function bootAuthenticatedWorkspace(user, options = {}) {
     loadNotebook();
     loadCMSItems();
 
+    // Auto-migrate same-email Local Mode data (from before Cloud Sync was enabled) safely to Cloud
+    if (window.__QENGLISH_ACTIVE_UID && user?.email && typeof autoMigrateSameEmailLocalData === "function") {
+        const autoRes = autoMigrateSameEmailLocalData(window.__QENGLISH_ACTIVE_UID, user.email);
+        if (autoRes && autoRes.migrated) {
+            setTimeout(() => {
+                if (typeof showToast === "function") {
+                    showToast(`☁️ Đã tự động khôi phục dữ liệu cục bộ cũ lên Cloud (${autoRes.totalWords} từ vựng) và đồng bộ sang các thiết bị khác!`);
+                }
+            }, 600);
+        }
+    }
+
     // Prompt safe non-destructive migration ONLY if pre-upgrade anonymous browser data exists for first time
     if (window.__QENGLISH_ACTIVE_UID) {
         const legSummary = detectLegacyUnscopedDataSummary(window.__QENGLISH_ACTIVE_UID);
@@ -1089,13 +1104,32 @@ async function bootAuthenticatedWorkspace(user, options = {}) {
 function confirmMigrateLegacyToAccount() {
     const uid = window._pendingLegacyMigrationUid || window.__QENGLISH_ACTIVE_UID;
     if (uid) {
-        migrateLegacyUnscopedDataToCurrentUser(uid);
+        const res = migrateLegacyUnscopedDataToCurrentUser(uid, window.__QENGLISH_AUTH_USER?.email || "");
         applyStudyFilter();
         renderWordList();
         refreshDashboardUI();
-        showToast("✅ Đã gộp an toàn dữ liệu cũ vào tài khoản của bạn mà không mất dữ liệu nào!");
+        showToast(`✅ Đã gộp an toàn dữ liệu cũ vào tài khoản Cloud (${res?.totalWords || deck.length} từ vựng)!`);
     }
     document.getElementById("legacy-migration-modal")?.classList.add("hidden");
+}
+
+function handleRecoverLocalBrowserDataToCloud() {
+    const uid = window.__QENGLISH_ACTIVE_UID;
+    if (!uid) {
+        showToast("Vui lòng đăng nhập tài khoản trước khi khôi phục dữ liệu cũ.", "warning");
+        return;
+    }
+    const res = migrateLegacyUnscopedDataToCurrentUser(uid, window.__QENGLISH_AUTH_USER?.email || "");
+    applyStudyFilter();
+    renderWordList();
+    syncAccountBadgesUI();
+    refreshDashboardUI();
+    renderAccountModalUI();
+    if (res && res.addedWords > 0) {
+        showToast(`🎉 Đã khôi phục thêm ${res.addedWords} từ vựng cũ (tổng ${res.totalWords} từ) và đồng bộ lên Cloud!`);
+    } else {
+        showToast(`✅ Đã kiểm tra và đồng bộ mọi dữ liệu cục bộ trên trình duyệt này lên Cloud (hiện có ${res?.totalWords || deck.length} từ vựng).`);
+    }
 }
 
 function dismissLegacyMigrationModal() {

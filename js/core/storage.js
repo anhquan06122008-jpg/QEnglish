@@ -1359,62 +1359,201 @@ function applyWorkspaceSnapshotToLocal(snapshot, options = {}) {
     }
 }
 
+function readScopedNamespaceSnapshot(prefix = "") {
+    const k = (baseKey) => prefix ? `${prefix}${baseKey}` : baseKey;
+    const rawDeck = safeParseJSON(localStorage.getItem(k(BASE_STORAGE_KEYS.DECK_V2)), null);
+    return {
+        settings: safeParseJSON(localStorage.getItem(k(BASE_STORAGE_KEYS.SETTINGS)), null) || {},
+        deck_v2: Array.isArray(rawDeck) ? rawDeck : [],
+        srs_state: safeParseJSON(localStorage.getItem(k(BASE_STORAGE_KEYS.SRS)), {}) || {},
+        progress_state: safeParseJSON(localStorage.getItem(k(BASE_STORAGE_KEYS.PROGRESS)), { days: {}, activities: [], skillHistory: {} }) || { days: {}, activities: [], skillHistory: {} },
+        dashboard_state: safeParseJSON(localStorage.getItem(k(BASE_STORAGE_KEYS.DASHBOARD)), { tasksByDate: {} }) || { tasksByDate: {} },
+        grammar_state: safeParseJSON(localStorage.getItem(k(BASE_STORAGE_KEYS.GRAMMAR)), { completedIds: [], scores: {} }) || { completedIds: [], scores: {} },
+        listening_state: safeParseJSON(localStorage.getItem(k(BASE_STORAGE_KEYS.LISTENING)), { completedIds: [], scores: {}, history: [] }) || { completedIds: [], scores: {}, history: [] },
+        speaking_state: safeParseJSON(localStorage.getItem(k(BASE_STORAGE_KEYS.SPEAKING)), { history: [] }) || { history: [] },
+        reading_state: safeParseJSON(localStorage.getItem(k(BASE_STORAGE_KEYS.READING)), { completedIds: [], highlights: {}, notes: {}, scores: {} }) || { completedIds: [], highlights: {}, notes: {}, scores: {} },
+        writing_state: safeParseJSON(localStorage.getItem(k(BASE_STORAGE_KEYS.WRITING)), { drafts: {}, submissions: [] }) || { drafts: {}, submissions: [] },
+        notebook: safeParseJSON(localStorage.getItem(k(BASE_STORAGE_KEYS.NOTEBOOK)), []) || [],
+        cms_items: safeParseJSON(localStorage.getItem(k(BASE_STORAGE_KEYS.CMS)), []) || []
+    };
+}
+
+function collectLegacyUnscopedSnapshot() {
+    const base = readScopedNamespaceSnapshot("");
+    const deckCandidates = [
+        base.deck_v2,
+        safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.DECK_V1), null),
+        safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.FPT_V3), null)
+    ];
+
+    const legSnapObj = safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.LEGACY_SNAPSHOT), null);
+    if (legSnapObj && typeof legSnapObj === "object") {
+        deckCandidates.push(legSnapObj.qenglish_deck_v2, legSnapObj.qenglish_deck_v1, legSnapObj.fpt_eng_deck_v3);
+        if (Array.isArray(legSnapObj.qenglish_notebook_v1) && legSnapObj.qenglish_notebook_v1.length && !base.notebook.length) {
+            base.notebook = legSnapObj.qenglish_notebook_v1;
+        }
+        if (legSnapObj.qenglish_writing_v1 && typeof legSnapObj.qenglish_writing_v1 === "object" && (!base.writing_state?.submissions?.length)) {
+            base.writing_state = legSnapObj.qenglish_writing_v1;
+        }
+    }
+
+    // Also inspect legacy unscoped multi-profile store (qenglish_accounts_v1)
+    const oldAccounts = safeParseJSON(localStorage.getItem("qenglish_accounts_v1"), null);
+    if (oldAccounts && oldAccounts.accounts && typeof oldAccounts.accounts === "object") {
+        Object.values(oldAccounts.accounts).forEach(acc => {
+            if (!acc || !acc.data) return;
+            const dRaw = acc.data[BASE_STORAGE_KEYS.DECK_V2];
+            const parsedD = typeof dRaw === "string" ? safeParseJSON(dRaw, null) : dRaw;
+            if (Array.isArray(parsedD) && parsedD.length) deckCandidates.push(parsedD);
+        });
+    }
+
+    const deckMap = new Map();
+    deckCandidates.forEach(arr => {
+        if (!Array.isArray(arr)) return;
+        arr.forEach(w => {
+            if (!w || typeof w !== "object" || !w.term) return;
+            const key = String(w.term).trim().toLowerCase();
+            if (!key) return;
+            if (!deckMap.has(key)) deckMap.set(key, w);
+        });
+    });
+    base.deck_v2 = Array.from(deckMap.values());
+    return base;
+}
+
+function findSameEmailLocalAccountIds(userEmail, currentUid) {
+    const cleanEmail = String(userEmail || "").trim().toLowerCase();
+    if (!cleanEmail) return [];
+    const found = new Set();
+
+    // 1. Check registered local-mode auth accounts matching the exact email
+    const localUsers = safeParseJSON(localStorage.getItem("qenglish_local_auth_users_v1"), {});
+    Object.values(localUsers || {}).forEach(u => {
+        if (!u || !u.id || u.id === currentUid) return;
+        if (String(u.email || "").trim().toLowerCase() === cleanEmail) {
+            found.add(u.id);
+        }
+    });
+
+    // 2. Also scan localStorage keys matching qenglish_u_local-<sanitizedEmail>-*::qenglish_deck_v2
+    const sanitized = cleanEmail.replace(/[^a-z0-9]/g, "");
+    const localPrefix = `qenglish_u_local-${sanitized}-`;
+    try {
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i) || "";
+            if (key.startsWith(localPrefix) && key.endsWith(`::${BASE_STORAGE_KEYS.DECK_V2}`)) {
+                const uid = key.slice("qenglish_u_".length, key.indexOf("::"));
+                if (uid && uid !== currentUid) found.add(uid);
+            }
+        }
+    } catch {}
+
+    return Array.from(found);
+}
+
+function snapshotHasMeaningfulData(snap) {
+    if (!snap || typeof snap !== "object") return false;
+    const words = Array.isArray(snap.deck_v2) ? snap.deck_v2 : [];
+    const hasCustomWords = words.length > 50 || words.some(w => Number(w.id) > 50 || w.starred || w.source === "user-imported" || w.source === "local-browser");
+    const noteCount = Array.isArray(snap.notebook) ? snap.notebook.length : 0;
+    const materialCount = Array.isArray(snap.cms_items) ? snap.cms_items.length : 0;
+    const transHist = Array.isArray(snap.writing_state?.translation?.history) ? snap.writing_state.translation.history.length : 0;
+    const transDrafts = snap.writing_state?.translation?.drafts
+        ? Object.values(snap.writing_state.translation.drafts).filter(v => String(v || "").trim().length > 0).length
+        : 0;
+    const writingCount = (Array.isArray(snap.writing_state?.submissions) ? snap.writing_state.submissions.length : 0) + transHist + transDrafts;
+    const daysCount = snap.progress_state?.days ? Object.keys(snap.progress_state.days).length : 0;
+    const srsCount = snap.srs_state ? Object.keys(snap.srs_state).length : 0;
+    return hasCustomWords || noteCount > 0 || writingCount > 0 || materialCount > 0 || daysCount > 0 || srsCount > 0;
+}
+
+function autoMigrateSameEmailLocalData(userId, userEmail) {
+    if (!userId || String(userId).startsWith("local-")) return { migrated: false, addedWords: 0 };
+    const localIds = findSameEmailLocalAccountIds(userEmail, userId);
+    if (!localIds.length) return { migrated: false, addedWords: 0 };
+
+    const mergedFlagKey = `qenglish_local_merged_sources_${userId}`;
+    const alreadyMerged = new Set(safeParseJSON(localStorage.getItem(mergedFlagKey), []));
+    const pendingIds = localIds.filter(id => !alreadyMerged.has(id));
+    if (!pendingIds.length) return { migrated: false, addedWords: 0 };
+
+    let currentSnap = collectCurrentWorkspaceSnapshot();
+    const beforeWords = Array.isArray(currentSnap.deck_v2) ? currentSnap.deck_v2.length : 0;
+    let didMerge = false;
+
+    pendingIds.forEach(localUid => {
+        const localSnap = readScopedNamespaceSnapshot(`qenglish_u_${localUid}::`);
+        if (snapshotHasMeaningfulData(localSnap)) {
+            currentSnap = typeof CloudClient !== "undefined"
+                ? CloudClient.mergeSnapshotData(currentSnap, localSnap)
+                : localSnap;
+            didMerge = true;
+        }
+        alreadyMerged.add(localUid);
+    });
+
+    try {
+        localStorage.setItem(mergedFlagKey, JSON.stringify(Array.from(alreadyMerged)));
+    } catch {}
+
+    if (didMerge) {
+        applyWorkspaceSnapshotToLocal(currentSnap);
+        const afterWords = Array.isArray(currentSnap.deck_v2) ? currentSnap.deck_v2.length : 0;
+        if (typeof CloudClient !== "undefined") CloudClient.syncNow();
+        return { migrated: true, totalWords: afterWords, addedWords: Math.max(0, afterWords - beforeWords) };
+    }
+    return { migrated: false, addedWords: 0 };
+}
+
 function detectLegacyUnscopedDataSummary(userId) {
     if (!userId) return null;
     if (localStorage.getItem(`qenglish_legacy_prompted_${userId}`)) return null;
 
-    const legDeck = safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.DECK_V2), null)
-        || safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.DECK_V1), null)
-        || safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.FPT_V3), null);
-    const legNotebook = safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.NOTEBOOK), []);
-    const legWriting = safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.WRITING), { submissions: [], drafts: {} });
-    const legCms = safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.CMS), []);
-    const legProgress = safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.PROGRESS), null);
+    const legSnap = collectLegacyUnscopedSnapshot();
+    if (!snapshotHasMeaningfulData(legSnap)) return null;
 
-    const hasCustomWords = Array.isArray(legDeck) && legDeck.some(w => Number(w.id) > 50 || w.starred || w.source === "user-imported");
-    const wordCount = Array.isArray(legDeck) ? legDeck.length : 0;
-    const noteCount = Array.isArray(legNotebook) ? legNotebook.length : 0;
-    const transLegacyHist = Array.isArray(legWriting?.translation?.history) ? legWriting.translation.history.length : 0;
-    const transLegacyDrafts = legWriting?.translation?.drafts
-        ? Object.values(legWriting.translation.drafts).filter(v => String(v || "").trim().length > 0).length
+    const wordCount = Array.isArray(legSnap.deck_v2) ? legSnap.deck_v2.length : 0;
+    const noteCount = Array.isArray(legSnap.notebook) ? legSnap.notebook.length : 0;
+    const transLegacyHist = Array.isArray(legSnap.writing_state?.translation?.history) ? legSnap.writing_state.translation.history.length : 0;
+    const transLegacyDrafts = legSnap.writing_state?.translation?.drafts
+        ? Object.values(legSnap.writing_state.translation.drafts).filter(v => String(v || "").trim().length > 0).length
         : 0;
-    const writingCount = (Array.isArray(legWriting?.submissions) ? legWriting.submissions.length : 0) + transLegacyHist + transLegacyDrafts;
-    const materialCount = Array.isArray(legCms) ? legCms.length : 0;
-    const daysCount = legProgress?.days ? Object.keys(legProgress.days).length : 0;
+    const writingCount = (Array.isArray(legSnap.writing_state?.submissions) ? legSnap.writing_state.submissions.length : 0) + transLegacyHist + transLegacyDrafts;
+    const materialCount = Array.isArray(legSnap.cms_items) ? legSnap.cms_items.length : 0;
+    const daysCount = legSnap.progress_state?.days ? Object.keys(legSnap.progress_state.days).length : 0;
 
-    if (!hasCustomWords && noteCount === 0 && writingCount === 0 && materialCount === 0 && daysCount === 0) {
-        return null;
-    }
     return { wordCount, noteCount, writingCount, materialCount, daysCount };
 }
 
-function migrateLegacyUnscopedDataToCurrentUser(userId) {
+function migrateLegacyUnscopedDataToCurrentUser(userId, userEmail = "") {
     if (!userId) return { ok: false };
     ensureLegacyBackupSnapshot();
-    const legSnap = {
-        settings: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.SETTINGS), getDefaultSettings()),
-        deck_v2: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.DECK_V2), null)
-            || safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.DECK_V1), null)
-            || safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.FPT_V3), []) || [],
-        srs_state: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.SRS), {}),
-        progress_state: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.PROGRESS), { days: {}, activities: [], skillHistory: {} }),
-        dashboard_state: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.DASHBOARD), { tasksByDate: {} }),
-        grammar_state: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.GRAMMAR), { completedIds: [], scores: {} }),
-        listening_state: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.LISTENING), { completedIds: [], scores: {}, history: [] }),
-        speaking_state: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.SPEAKING), { history: [] }),
-        reading_state: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.READING), { completedIds: [], highlights: {}, notes: {}, scores: {} }),
-        writing_state: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.WRITING), { drafts: {}, submissions: [] }),
-        notebook: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.NOTEBOOK), []),
-        cms_items: safeParseJSON(localStorage.getItem(BASE_STORAGE_KEYS.CMS), [])
-    };
+    let currentSnap = collectCurrentWorkspaceSnapshot();
+    const beforeWords = Array.isArray(currentSnap.deck_v2) ? currentSnap.deck_v2.length : 0;
 
-    const currentSnap = collectCurrentWorkspaceSnapshot();
-    const merged = typeof CloudClient !== "undefined"
-        ? CloudClient.mergeSnapshotData(currentSnap, legSnap)
-        : legSnap;
+    // 1. Merge any same-email local-mode accounts
+    const localIds = findSameEmailLocalAccountIds(userEmail || window.__QENGLISH_AUTH_USER?.email || "", userId);
+    localIds.forEach(localUid => {
+        const localSnap = readScopedNamespaceSnapshot(`qenglish_u_${localUid}::`);
+        if (snapshotHasMeaningfulData(localSnap)) {
+            currentSnap = typeof CloudClient !== "undefined"
+                ? CloudClient.mergeSnapshotData(currentSnap, localSnap)
+                : localSnap;
+        }
+    });
 
-    applyWorkspaceSnapshotToLocal(merged);
+    // 2. Merge unscoped pre-auth legacy data (v2, v1, fpt_v3, legacy snapshot, old accounts store)
+    const legSnap = collectLegacyUnscopedSnapshot();
+    if (snapshotHasMeaningfulData(legSnap)) {
+        currentSnap = typeof CloudClient !== "undefined"
+            ? CloudClient.mergeSnapshotData(currentSnap, legSnap)
+            : legSnap;
+    }
+
+    const afterWords = Array.isArray(currentSnap.deck_v2) ? currentSnap.deck_v2.length : 0;
+    applyWorkspaceSnapshotToLocal(currentSnap);
     localStorage.setItem(`qenglish_legacy_prompted_${userId}`, "migrated");
     if (typeof CloudClient !== "undefined") CloudClient.syncNow();
-    return { ok: true };
+    return { ok: true, totalWords: afterWords, addedWords: Math.max(0, afterWords - beforeWords) };
 }

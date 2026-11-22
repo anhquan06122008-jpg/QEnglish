@@ -1032,6 +1032,24 @@ const CloudClient = {
             }
         });
 
+        const mergeCompletedObj = (lObj, rObj, extraKeys = []) => {
+            const a = (lObj && typeof lObj === "object") ? lObj : {};
+            const b = (rObj && typeof rObj === "object") ? rObj : {};
+            const out = { ...b, ...a };
+            out.completedIds = Array.from(new Set([
+                ...(Array.isArray(b.completedIds) ? b.completedIds : []),
+                ...(Array.isArray(a.completedIds) ? a.completedIds : [])
+            ]));
+            if (a.scores || b.scores) out.scores = { ...(b.scores || {}), ...(a.scores || {}) };
+            if (a.history || b.history) {
+                out.history = mergeByKey(a.history, b.history, h => String(h.id || h.at || JSON.stringify(h))).slice(0, 120);
+            }
+            extraKeys.forEach(k => {
+                if (a[k] || b[k]) out[k] = { ...(b[k] || {}), ...(a[k] || {}) };
+            });
+            return out;
+        };
+
         return {
             settings: { ...(remoteSnap.settings || {}), ...(localSnap.settings || {}) },
             deck_v2: mergedDeck,
@@ -1043,11 +1061,18 @@ const CloudClient = {
                     .slice(0, 120),
                 skillHistory: { ...(remoteP.skillHistory || {}), ...(localP.skillHistory || {}) }
             },
-            dashboard_state: { ...(remoteSnap.dashboard_state || {}), ...(localSnap.dashboard_state || {}) },
-            grammar_state: localSnap.grammar_state || remoteSnap.grammar_state || {},
-            listening_state: localSnap.listening_state || remoteSnap.listening_state || {},
-            speaking_state: localSnap.speaking_state || remoteSnap.speaking_state || {},
-            reading_state: localSnap.reading_state || remoteSnap.reading_state || {},
+            dashboard_state: {
+                ...(remoteSnap.dashboard_state || {}),
+                ...(localSnap.dashboard_state || {}),
+                tasksByDate: {
+                    ...((remoteSnap.dashboard_state && remoteSnap.dashboard_state.tasksByDate) || {}),
+                    ...((localSnap.dashboard_state && localSnap.dashboard_state.tasksByDate) || {})
+                }
+            },
+            grammar_state: mergeCompletedObj(localSnap.grammar_state, remoteSnap.grammar_state),
+            listening_state: mergeCompletedObj(localSnap.listening_state, remoteSnap.listening_state),
+            speaking_state: mergeCompletedObj(localSnap.speaking_state, remoteSnap.speaking_state),
+            reading_state: mergeCompletedObj(localSnap.reading_state, remoteSnap.reading_state, ["highlights", "notes"]),
             writing_state: mergedWriting,
             notebook: mergedNotebook,
             cms_items: mergedCms
