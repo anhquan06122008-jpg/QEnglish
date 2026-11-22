@@ -585,6 +585,7 @@ function loadSampleImport() {
     if (area) area.value = SAMPLE_IMPORT_TEXT;
     const dayInput = document.getElementById("import-day-input");
     if (dayInput) dayInput.value = "2";
+    updateBatchImportPreview();
     showToast("Đã dán danh sách mẫu 16 từ học thuật!");
 }
 
@@ -637,6 +638,116 @@ function addSingleVocabWord() {
     applyStudyFilter();
 }
 
+function parseBatchVocabLine(rawLine) {
+    let line = String(rawLine || "").trim();
+    if (!line) return null;
+
+    // Strip optional leading bullet or numbering (e.g. "1. ", "- ", "• ") without breaking compound words
+    line = line.replace(/^(?:[-•*●▪]\s+|\d+[.)]\s+)/, "").trim();
+    if (!line) return null;
+
+    let exampleStr = "";
+    let mainContent = line;
+    if (line.includes("|")) {
+        const pipeIdx = line.indexOf("|");
+        mainContent = line.slice(0, pipeIdx).trim();
+        exampleStr = line.slice(pipeIdx + 1).trim();
+    }
+
+    let term = "";
+    let rest = "";
+    let preExtractedIpa = "";
+
+    // Priority 1: Spaced separator (" - ", " – ", " — ", " : ") -> preserves hyphenated words like "Fair-weather friend"
+    const spacedSepMatch = mainContent.match(/^(.+?)\s+[-–—:]\s+(.+)$/);
+    if (spacedSepMatch) {
+        term = spacedSepMatch[1].trim();
+        rest = spacedSepMatch[2].trim();
+    } else {
+        // Priority 2: Direct IPA token separates term from meaning even without spaces around "-"
+        // e.g. "Fair-weather friend-(/ˌferˈweð.ər frend/) Nghĩa..." or "Fair-weather friend (/ipa/) Nghĩa..."
+        const ipaSplitMatch = mainContent.match(/^(.+?)\s*[-–—:]?\s*(\(\s*\/[^/]+\/[^)]*\)|\/[^/]+\/)\s*(.*)$/);
+        if (ipaSplitMatch) {
+            term = ipaSplitMatch[1].replace(/[-–—:]+\s*$/, "").trim();
+            preExtractedIpa = ipaSplitMatch[2].trim();
+            rest = ipaSplitMatch[3].trim();
+        } else if (mainContent.includes("\t")) {
+            // Priority 3: Tab-separated (pasted from Excel / Google Sheets / Quizlet)
+            const tabCols = mainContent.split("\t").map(s => s.trim()).filter(Boolean);
+            term = tabCols[0] || "";
+            rest = tabCols.slice(1).join(" ").trim();
+        } else {
+            // Priority 4: Colon separator ("Fair-weather friend: Nghĩa...")
+            const colonMatch = mainContent.match(/^([^:]+):\s*(.+)$/);
+            if (colonMatch) {
+                term = colonMatch[1].trim();
+                rest = colonMatch[2].trim();
+            } else if (mainContent.includes("-")) {
+                // Priority 5: Compact hyphen fallback ("Algorithm-Thuật toán") -> prefer last hyphen if compound word on left
+                const lastDash = mainContent.lastIndexOf("-");
+                term = mainContent.slice(0, lastDash).trim();
+                rest = mainContent.slice(lastDash + 1).trim();
+            } else {
+                term = mainContent.trim();
+            }
+        }
+    }
+
+    let ipa = preExtractedIpa;
+    let def = rest;
+
+    // Extract IPA (and optional inline POS tag) ONLY when it actually contains /.../ phonetics,
+    // so parenthetical Vietnamese notes like "(gặp khó thì bỏ đi)" are NEVER mistaken for IPA!
+    if (!ipa && rest) {
+        const ipaAtStart = rest.match(/^(?:(\((?:n|v|adj|adv|prep|conj|phr|idiom)\))\s*)?(\(\s*\/[^/]+\/[^)]*\)|\/[^/]+\/)(?:\s*(\((?:n|v|adj|adv|prep|conj|phr|idiom)\)))?\s*(.*)$/i);
+        if (ipaAtStart) {
+            const posPrefix = ipaAtStart[1] ? `${ipaAtStart[1]} ` : "";
+            const posSuffix = ipaAtStart[3] ? ` ${ipaAtStart[3]}` : "";
+            ipa = `${posPrefix}${ipaAtStart[2].trim()}${posSuffix}`.trim();
+            def = (ipaAtStart[4] || "").trim();
+        }
+    }
+
+    // Clean any leading separator left on definition
+    def = def.replace(/^[-–—:]+\s*/, "").trim();
+
+    if (!term) return null;
+    return { term, ipa, def, example: exampleStr };
+}
+
+function updateBatchImportPreview() {
+    const area = document.getElementById("import-textarea");
+    const box = document.getElementById("import-live-preview");
+    if (!area || !box) return;
+    const raw = (area.value || "").trim();
+    if (!raw) {
+        box.classList.add("hidden");
+        box.innerHTML = "";
+        return;
+    }
+    const parsed = raw.split("\n").map(parseBatchVocabLine).filter(Boolean);
+    if (!parsed.length) {
+        box.classList.add("hidden");
+        return;
+    }
+    const samples = parsed.slice(0, 3).map(item => `
+        <div class="flex flex-wrap items-baseline gap-1.5 text-[11px] leading-relaxed">
+            <span class="font-extrabold text-cyan-300">${escHtml(item.term)}</span>
+            ${item.ipa ? `<span class="text-violet-300 font-mono text-[10px]">${escHtml(item.ipa)}</span>` : ""}
+            <span class="text-slate-500">→</span>
+            <span class="text-slate-200">${escHtml(item.def || "(chưa có nghĩa)")}</span>
+        </div>
+    `).join("");
+    box.innerHTML = `
+        <div class="flex items-center justify-between text-[10px] font-extrabold text-emerald-300 mb-1">
+            <span>👁️ Xem trước nhận diện: ${parsed.length} từ hợp lệ</span>
+            ${parsed.length > 3 ? `<span class="text-slate-400">và ${parsed.length - 3} từ khác...</span>` : ""}
+        </div>
+        ${samples}
+    `;
+    box.classList.remove("hidden");
+}
+
 function processBatchImport() {
     const text = (document.getElementById("import-textarea")?.value || "").trim();
     const selectedDay = parseInt(document.getElementById("import-day-input")?.value || "1", 10) || 1;
@@ -653,32 +764,12 @@ function processBatchImport() {
     let skippedDup = 0;
 
     lines.forEach((line, index) => {
-        if (!line.trim()) return;
-        let exampleStr = "";
-        let mainContent = line;
-        if (line.includes("|")) {
-            const exParts = line.split("|");
-            mainContent = exParts[0].trim();
-            exampleStr = exParts.slice(1).join("|").trim();
-        }
+        const parsed = parseBatchVocabLine(line);
+        if (!parsed || !parsed.term) return;
 
-        let term = "", ipa = "", def = "";
-        if (mainContent.includes("-")) {
-            const parts = mainContent.split("-");
-            term = parts[0].trim();
-            const rest = parts.slice(1).join("-").trim();
-            const ipaMatch = rest.match(/\((.*?)\)/);
-            if (ipaMatch) {
-                ipa = ipaMatch[0];
-                def = rest.replace(ipaMatch[0], "").trim();
-            } else {
-                def = rest;
-            }
-        } else {
-            term = mainContent.trim();
-        }
+        const { term, ipa, def } = parsed;
+        let exampleStr = parsed.example;
 
-        if (!term) return;
         if (deck.some(d => d.term.toLowerCase() === term.toLowerCase() && (d.day || 1) === selectedDay)) {
             skippedDup++;
             return;
@@ -710,6 +801,7 @@ function processBatchImport() {
         if (studyDay) studyDay.value = selectedDay.toString();
         applyStudyFilter();
         document.getElementById("import-textarea").value = "";
+        updateBatchImportPreview();
         showToast(`Đã thêm ${addedCount} từ vào Ngày ${selectedDay}${skippedDup ? ` (bỏ qua ${skippedDup} từ trùng)` : ""}!`);
         switchVocabTab("flashcards");
     } else if (skippedDup > 0) {
