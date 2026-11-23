@@ -3085,6 +3085,10 @@ function openPdfCourseView(courseId) {
     pdfStudioUi.viewMode = "course";
     if (course.folderId) pdfStudioUi.openFolderId = course.folderId;
     pdfStudioUi.activeTab = course.progress?.lastTab || "overview";
+    if (typeof pdfLmsUi !== "undefined") {
+        pdfLmsUi.level = "units";
+        pdfLmsUi.showingResultAttemptId = null;
+    }
     savePdfStudioState();
     renderPdfStudioPage();
 }
@@ -3228,8 +3232,14 @@ function renderPdfStudioPage() {
     if (pdfStudioUi.viewMode === "folder" && !activeFolder) pdfStudioUi.viewMode = "library";
     if (pdfStudioUi.viewMode === "course" && !activeCourse) pdfStudioUi.viewMode = activeFolder ? "folder" : "library";
 
-    // ==================== VIEW 3: INSIDE INTERACTIVE COURSE ====================
+    // ==================== VIEW 3: INSIDE INTERACTIVE COURSE (UNIT-BASED LMS) ====================
     if (pdfStudioUi.viewMode === "course" && activeCourse) {
+        if (typeof renderLmsCourseWorkspace === "function") {
+            root.innerHTML = renderLmsCourseWorkspace(activeCourse, folders);
+            renderPdfPipelineBannerOnly();
+            hydratePdfCloudAudioPlayers();
+            return;
+        }
         const chapters = activeCourse?.knowledgeMap?.chapters || [];
         const courseFolder = activeCourse.folderId ? folders.find(f => f.id === activeCourse.folderId) : null;
         const courseTabs = [

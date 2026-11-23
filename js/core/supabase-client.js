@@ -1078,8 +1078,13 @@ const CloudClient = {
                     examHistory: mergeByKey(pA.examHistory, pB.examHistory, e => String(e.id || e.at)).slice(0, 30),
                     remedialHistory: mergeByKey(pA.remedialHistory, pB.remedialHistory, r => String(r.id || r.at)).slice(0, 20),
                     lastTab: pA.lastTab || pB.lastTab || "overview",
-                    lastChapter: pA.lastChapter || pB.lastChapter || "all"
+                    lastChapter: pA.lastChapter || pB.lastChapter || "all",
+                    lessonDrafts: { ...(pB.lessonDrafts || {}), ...(pA.lessonDrafts || {}) }
                 };
+                base.attempts = mergeByKey(c.attempts, prev.attempts, x => String(x.id || x.at))
+                    .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))
+                    .slice(0, 150);
+                base.writingDrafts = { ...(prev.writingDrafts || {}), ...(c.writingDrafts || {}) };
                 base.mindMaps = { ...(prev.mindMaps || {}), ...(c.mindMaps || {}) };
                 courseMap.set(c.id, base);
             });

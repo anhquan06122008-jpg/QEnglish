@@ -364,7 +364,240 @@ begin
     end if;
 end $$;
 
--- 11. Explicit least-privilege table grants for authenticated users (RLS still isolates by auth.uid())
+-- 11. Normalized Unit-Based LMS Schema (Course -> Unit -> Skill -> Lesson -> Exercise -> Question -> Attempt -> AI Practice)
+-- Migration-safe: adds full relational LMS tables with strict RLS (auth.uid() = user_id) without deleting any legacy tables.
+
+create table if not exists public.courses (
+    id text not null,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    doc_id text not null default '',
+    folder_id text not null default '',
+    title text not null,
+    description_vi text not null default '',
+    difficulty text not null default 'B1',
+    published boolean not null default false,
+    display_order integer not null default 0,
+    version integer not null default 1,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    primary key (user_id, id)
+);
+
+create table if not exists public.course_units (
+    id text not null,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    course_id text not null,
+    title text not null,
+    summary_vi text not null default '',
+    source_page integer not null default 1,
+    page_end integer not null default 1,
+    difficulty text not null default 'B1',
+    content_origin text not null default 'PDF_ORIGINAL' check (content_origin in ('PDF_ORIGINAL', 'AI_GENERATED')),
+    display_order integer not null default 0,
+    version integer not null default 1,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    primary key (user_id, id),
+    foreign key (user_id, course_id) references public.courses (user_id, id) on delete cascade
+);
+
+create table if not exists public.unit_skills (
+    id text not null,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    unit_id text not null,
+    skill_key text not null check (skill_key in ('reading', 'listening', 'writing', 'speaking', 'vocabulary', 'grammar')),
+    display_order integer not null default 0,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    primary key (user_id, id),
+    foreign key (user_id, unit_id) references public.course_units (user_id, id) on delete cascade
+);
+
+create table if not exists public.lessons (
+    id text not null,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    unit_id text not null,
+    primary_skill text not null check (primary_skill in ('reading', 'listening', 'writing', 'speaking', 'vocabulary', 'grammar')),
+    extra_skills jsonb not null default '[]'::jsonb,
+    title text not null,
+    source_page integer not null default 1,
+    content_origin text not null default 'PDF_ORIGINAL' check (content_origin in ('PDF_ORIGINAL', 'AI_GENERATED')),
+    difficulty text not null default 'B1',
+    display_order integer not null default 0,
+    version integer not null default 1,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    primary key (user_id, id),
+    foreign key (user_id, unit_id) references public.course_units (user_id, id) on delete cascade
+);
+
+create table if not exists public.lesson_contents (
+    id text not null,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    lesson_id text not null,
+    content_type text not null default 'passage',
+    body_text text not null default '',
+    media_storage_path text not null default '',
+    metadata jsonb not null default '{}'::jsonb,
+    source_page integer not null default 1,
+    content_origin text not null default 'PDF_ORIGINAL',
+    version integer not null default 1,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    primary key (user_id, id),
+    foreign key (user_id, lesson_id) references public.lessons (user_id, id) on delete cascade
+);
+
+create table if not exists public.exercises (
+    id text not null,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    lesson_id text not null,
+    parent_exercise_id text,
+    title text not null,
+    difficulty text not null default 'same',
+    focus_mode text not null default 'mixed',
+    content_origin text not null default 'PDF_ORIGINAL' check (content_origin in ('PDF_ORIGINAL', 'AI_GENERATED')),
+    source_page integer not null default 1,
+    display_order integer not null default 0,
+    version integer not null default 1,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    primary key (user_id, id),
+    foreign key (user_id, lesson_id) references public.lessons (user_id, id) on delete cascade
+);
+
+create table if not exists public.exercise_questions (
+    id text not null,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    exercise_id text not null,
+    question_type text not null default 'mcq',
+    prompt_text text not null,
+    correct_answer text not null default '',
+    acceptable_answers jsonb not null default '[]'::jsonb,
+    explanation_vi text not null default '',
+    evidence_quote text not null default '',
+    topic_tag text not null default '',
+    source_page integer not null default 1,
+    content_origin text not null default 'PDF_ORIGINAL' check (content_origin in ('PDF_ORIGINAL', 'AI_GENERATED')),
+    difficulty text not null default 'B1',
+    display_order integer not null default 0,
+    version integer not null default 1,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    primary key (user_id, id),
+    foreign key (user_id, exercise_id) references public.exercises (user_id, id) on delete cascade
+);
+
+create table if not exists public.answer_options (
+    id text not null,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    question_id text not null,
+    option_text text not null,
+    is_correct boolean not null default false,
+    display_order integer not null default 0,
+    created_at timestamptz not null default now(),
+    primary key (user_id, id),
+    foreign key (user_id, question_id) references public.exercise_questions (user_id, id) on delete cascade
+);
+
+create table if not exists public.exercise_attempts (
+    id text not null,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    course_id text not null,
+    unit_id text not null,
+    lesson_id text not null,
+    exercise_id text not null,
+    attempt_no integer not null default 1,
+    score_pct integer not null default 0,
+    score_10 numeric(4,2),
+    correct_count integer not null default 0,
+    total_count integer not null default 0,
+    duration_sec integer not null default 0,
+    summary_payload jsonb not null default '{}'::jsonb,
+    created_at timestamptz not null default now(),
+    primary key (user_id, id)
+);
+
+create table if not exists public.user_answers (
+    id text not null,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    attempt_id text not null,
+    question_id text not null,
+    user_answer text not null default '',
+    is_correct boolean not null default false,
+    ai_feedback jsonb not null default '{}'::jsonb,
+    created_at timestamptz not null default now(),
+    primary key (user_id, id),
+    foreign key (user_id, attempt_id) references public.exercise_attempts (user_id, id) on delete cascade
+);
+
+create table if not exists public.ai_generated_practice (
+    id text not null,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    parent_lesson_id text not null,
+    unit_id text not null,
+    skill_key text not null,
+    title text not null,
+    difficulty text not null default 'same',
+    focus_mode text not null default 'mixed',
+    payload jsonb not null default '{}'::jsonb,
+    source_page integer not null default 1,
+    content_origin text not null default 'AI_GENERATED',
+    version integer not null default 1,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    primary key (user_id, id),
+    foreign key (user_id, parent_lesson_id) references public.lessons (user_id, id) on delete cascade
+);
+
+create table if not exists public.learning_progress (
+    user_id uuid not null references auth.users(id) on delete cascade,
+    lesson_id text not null,
+    course_id text not null,
+    unit_id text not null,
+    skill_key text not null,
+    status text not null default 'not_started' check (status in ('not_started', 'in_progress', 'completed')),
+    best_score_pct integer not null default 0,
+    attempts_count integer not null default 0,
+    last_position jsonb not null default '{}'::jsonb,
+    updated_at timestamptz not null default now(),
+    created_at timestamptz not null default now(),
+    primary key (user_id, lesson_id)
+);
+
+create table if not exists public.source_references (
+    id text not null,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    doc_id text not null,
+    lesson_id text not null,
+    source_page integer not null default 1,
+    excerpt text not null default '',
+    created_at timestamptz not null default now(),
+    primary key (user_id, id)
+);
+
+create index if not exists idx_course_units_course on public.course_units (user_id, course_id, display_order);
+create index if not exists idx_lessons_unit_skill on public.lessons (user_id, unit_id, primary_skill, display_order);
+create index if not exists idx_attempts_lesson on public.exercise_attempts (user_id, lesson_id, created_at desc);
+create index if not exists idx_ai_practice_parent on public.ai_generated_practice (user_id, parent_lesson_id, created_at desc);
+create index if not exists idx_learning_progress_course on public.learning_progress (user_id, course_id, unit_id);
+
+do $$
+declare
+    tbl text;
+begin
+    foreach tbl in array array[
+        'courses','course_units','unit_skills','lessons','lesson_contents',
+        'exercises','exercise_questions','answer_options','exercise_attempts',
+        'user_answers','ai_generated_practice','learning_progress','source_references'
+    ] loop
+        execute format('alter table public.%I enable row level security', tbl);
+        execute format('drop policy if exists "Users manage own %s" on public.%I', tbl, tbl);
+        execute format('create policy "Users manage own %s" on public.%I for all using (auth.uid() = user_id) with check (auth.uid() = user_id)', tbl, tbl);
+    end loop;
+end $$;
+
+-- 12. Explicit least-privilege table grants for authenticated users (RLS still isolates by auth.uid())
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on table
     public.qenglish_user_snapshots,
@@ -375,5 +608,18 @@ grant select, insert, update, delete on table
     public.user_devices,
     public.user_writing_drafts,
     public.user_pdf_documents,
-    public.user_pdf_courses
+    public.user_pdf_courses,
+    public.courses,
+    public.course_units,
+    public.unit_skills,
+    public.lessons,
+    public.lesson_contents,
+    public.exercises,
+    public.exercise_questions,
+    public.answer_options,
+    public.exercise_attempts,
+    public.user_answers,
+    public.ai_generated_practice,
+    public.learning_progress,
+    public.source_references
 to authenticated;
