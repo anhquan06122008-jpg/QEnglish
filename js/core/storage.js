@@ -19,7 +19,8 @@ const BASE_STORAGE_KEYS = {
     WRITING: "qenglish_writing_v1",
     NOTEBOOK: "qenglish_notebook_v1",
     CMS: "qenglish_cms_v1",
-    SETTINGS: "qenglish_settings_v1"
+    SETTINGS: "qenglish_settings_v1",
+    PDF_STUDIO: "qenglish_pdf_studio_v1"
 };
 
 function getScopedStorageKey(baseKey) {
@@ -32,7 +33,7 @@ const STORAGE_KEYS = {};
 [
     "DECK_V2", "SRS", "PROGRESS", "DASHBOARD", "GRAMMAR",
     "LISTENING", "SPEAKING", "READING", "WRITING", "NOTEBOOK",
-    "CMS", "SETTINGS"
+    "CMS", "SETTINGS", "PDF_STUDIO"
 ].forEach(prop => {
     Object.defineProperty(STORAGE_KEYS, prop, {
         enumerable: true,
@@ -1017,7 +1018,8 @@ const USER_SCOPED_KEYS = [
     BASE_STORAGE_KEYS.WRITING,
     BASE_STORAGE_KEYS.NOTEBOOK,
     BASE_STORAGE_KEYS.CMS,
-    BASE_STORAGE_KEYS.SETTINGS
+    BASE_STORAGE_KEYS.SETTINGS,
+    BASE_STORAGE_KEYS.PDF_STUDIO
 ];
 
 let accountsStore = null;
@@ -1275,6 +1277,7 @@ function resetInMemoryWorkspaceState() {
     accountsStore = null;
     if (typeof activeWritingTopic !== "undefined") activeWritingTopic = null;
     if (typeof resetTranslationWorkspaceMemory === "function") resetTranslationWorkspaceMemory();
+    if (typeof resetPdfStudioMemory === "function") resetPdfStudioMemory();
     ["writing-evaluation", "writing-inline-check-box", "trans-feedback-panel", "speaking-eval-output", "grammar-coach-output", "listening-coach-output", "reading-coach-output", "vocab-coach-output", "dash-ai-assistant-output"].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -1296,13 +1299,37 @@ function resetInMemoryWorkspaceState() {
     if (typeof setTranslationSubmitLoading === "function") setTranslationSubmitLoading(false);
 }
 
+function compactPdfStudioForCloud(rawPdfState) {
+    if (!rawPdfState || typeof rawPdfState !== "object") return null;
+    const docs = Array.isArray(rawPdfState.documents) ? rawPdfState.documents.slice(0, 20).map(d => ({
+        ...d,
+        // Keep compact page excerpts for cross-device "Xem nguồn PDF" text view without bloating cloud JSON
+        pageExcerpts: d.pageExcerpts && typeof d.pageExcerpts === "object"
+            ? Object.fromEntries(Object.entries(d.pageExcerpts).slice(0, 80).map(([p, txt]) => [p, String(txt || "").slice(0, 900)]))
+            : {}
+    })) : [];
+    const courses = Array.isArray(rawPdfState.courses) ? rawPdfState.courses.slice(0, 20) : [];
+    return {
+        documents: docs,
+        courses,
+        activeCourseId: rawPdfState.activeCourseId || null,
+        lastPosition: rawPdfState.lastPosition || null,
+        updatedAt: rawPdfState.updatedAt || new Date().toISOString()
+    };
+}
+
 function collectCurrentWorkspaceSnapshot() {
+    const dashBase = safeParseJSON(localStorage.getItem(STORAGE_KEYS.DASHBOARD), { tasksByDate: {} }) || { tasksByDate: {} };
+    const pdfRaw = safeParseJSON(localStorage.getItem(STORAGE_KEYS.PDF_STUDIO), null);
+    const pdfCompact = compactPdfStudioForCloud(pdfRaw);
+    const dashboardStateMerged = pdfCompact ? { ...dashBase, pdfStudio: pdfCompact } : dashBase;
+
     return {
         settings: appSettings || safeParseJSON(localStorage.getItem(STORAGE_KEYS.SETTINGS), getDefaultSettings()),
         deck_v2: Array.isArray(deck) && deck.length ? deck : safeParseJSON(localStorage.getItem(STORAGE_KEYS.DECK_V2), []),
         srs_state: srsState || safeParseJSON(localStorage.getItem(STORAGE_KEYS.SRS), {}),
         progress_state: progressState || safeParseJSON(localStorage.getItem(STORAGE_KEYS.PROGRESS), {}),
-        dashboard_state: safeParseJSON(localStorage.getItem(STORAGE_KEYS.DASHBOARD), { tasksByDate: {} }),
+        dashboard_state: dashboardStateMerged,
         grammar_state: safeParseJSON(localStorage.getItem(STORAGE_KEYS.GRAMMAR), { completedIds: [], scores: {} }),
         listening_state: safeParseJSON(localStorage.getItem(STORAGE_KEYS.LISTENING), { completedIds: [], scores: {}, history: [] }),
         speaking_state: safeParseJSON(localStorage.getItem(STORAGE_KEYS.SPEAKING), { history: [] }),
@@ -1331,6 +1358,9 @@ function applyWorkspaceSnapshotToLocal(snapshot, options = {}) {
         }
         if (snapshot.dashboard_state && typeof snapshot.dashboard_state === "object") {
             safeWriteJSON(STORAGE_KEYS.DASHBOARD, snapshot.dashboard_state);
+            if (snapshot.dashboard_state.pdfStudio && typeof snapshot.dashboard_state.pdfStudio === "object") {
+                safeWriteJSON(STORAGE_KEYS.PDF_STUDIO, snapshot.dashboard_state.pdfStudio);
+            }
         }
         if (snapshot.grammar_state && typeof snapshot.grammar_state === "object") {
             safeWriteJSON(STORAGE_KEYS.GRAMMAR, snapshot.grammar_state);

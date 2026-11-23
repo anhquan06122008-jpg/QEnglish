@@ -1050,6 +1050,54 @@ const CloudClient = {
             return out;
         };
 
+        const mergePdfStudio = (lPdf, rPdf) => {
+            if (!lPdf && !rPdf) return undefined;
+            const a = (lPdf && typeof lPdf === "object") ? lPdf : {};
+            const b = (rPdf && typeof rPdf === "object") ? rPdf : {};
+            const docs = mergeByKey(a.documents, b.documents, d => String(d.id || d.sha256 || d.fileName));
+            const courseMap = new Map();
+            (Array.isArray(b.courses) ? b.courses : []).forEach(c => { if (c && c.id) courseMap.set(c.id, c); });
+            (Array.isArray(a.courses) ? a.courses : []).forEach(c => {
+                if (!c || !c.id) return;
+                const prev = courseMap.get(c.id);
+                if (!prev) {
+                    courseMap.set(c.id, c);
+                    return;
+                }
+                const tA = new Date(c.updatedAt || c.createdAt || 0).getTime();
+                const tB = new Date(prev.updatedAt || prev.createdAt || 0).getTime();
+                const base = tA >= tB ? { ...prev, ...c } : { ...c, ...prev };
+                const pA = c.progress || {};
+                const pB = prev.progress || {};
+                base.progress = {
+                    completedIds: Array.from(new Set([...(pB.completedIds || []), ...(pA.completedIds || [])])),
+                    answers: { ...(pB.answers || {}), ...(pA.answers || {}) },
+                    scores: { ...(pB.scores || {}), ...(pA.scores || {}) },
+                    mistakes: mergeByKey(pA.mistakes, pB.mistakes, m => String(m.id || `${m.topicTag}-${m.at}`)).slice(0, 120),
+                    examHistory: mergeByKey(pA.examHistory, pB.examHistory, e => String(e.id || e.at)).slice(0, 30),
+                    remedialHistory: mergeByKey(pA.remedialHistory, pB.remedialHistory, r => String(r.id || r.at)).slice(0, 20),
+                    lastTab: pA.lastTab || pB.lastTab || "overview",
+                    lastChapter: pA.lastChapter || pB.lastChapter || "all"
+                };
+                base.mindMaps = { ...(prev.mindMaps || {}), ...(c.mindMaps || {}) };
+                courseMap.set(c.id, base);
+            });
+            const mergedCourses = Array.from(courseMap.values())
+                .sort((x, y) => new Date(y.updatedAt || y.createdAt || 0) - new Date(x.updatedAt || x.createdAt || 0));
+            return {
+                documents: docs,
+                courses: mergedCourses,
+                activeCourseId: a.activeCourseId || b.activeCourseId || (mergedCourses[0]?.id || null),
+                lastPosition: a.lastPosition || b.lastPosition || null,
+                updatedAt: new Date(Math.max(new Date(a.updatedAt || 0).getTime(), new Date(b.updatedAt || 0).getTime()) || Date.now()).toISOString()
+            };
+        };
+
+        const mergedPdfStudio = mergePdfStudio(
+            localSnap.dashboard_state && localSnap.dashboard_state.pdfStudio,
+            remoteSnap.dashboard_state && remoteSnap.dashboard_state.pdfStudio
+        );
+
         return {
             settings: { ...(remoteSnap.settings || {}), ...(localSnap.settings || {}) },
             deck_v2: mergedDeck,
@@ -1067,7 +1115,8 @@ const CloudClient = {
                 tasksByDate: {
                     ...((remoteSnap.dashboard_state && remoteSnap.dashboard_state.tasksByDate) || {}),
                     ...((localSnap.dashboard_state && localSnap.dashboard_state.tasksByDate) || {})
-                }
+                },
+                ...(mergedPdfStudio ? { pdfStudio: mergedPdfStudio } : {})
             },
             grammar_state: mergeCompletedObj(localSnap.grammar_state, remoteSnap.grammar_state),
             listening_state: mergeCompletedObj(localSnap.listening_state, remoteSnap.listening_state),

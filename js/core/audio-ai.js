@@ -679,7 +679,9 @@ const AIClient = {
             headers["Authorization"] = `Bearer ${CloudClient.getAccessToken()}`;
         }
         const ctrl = new AbortController();
-        const timeoutMs = (task === "writing-eval" || task === "translation-eval") ? 48000 : 28000;
+        const timeoutMs = task.startsWith("pdf-")
+            ? 60000
+            : ((task === "writing-eval" || task === "translation-eval") ? 48000 : 28000);
         const timer = setTimeout(() => ctrl.abort(), timeoutMs);
         try {
             let res = await fetch(`${base}/${task}`, {

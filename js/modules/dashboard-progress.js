@@ -64,6 +64,7 @@ function navigateTo(page, subTab = null) {
         speaking: "Speaking — Hội thoại & Luyện nói",
         reading: "Reading — Đọc hiểu học thuật",
         writing: "Writing — Luyện viết",
+        "pdf-studio": "AI PDF Learning Studio — Biến PDF thành Khóa Học",
         notebook: "English Notebook — Sổ ghi chú cá nhân",
         progress: "Progress — Phân tích tiến độ & Adaptive Learning",
         materials: "My Learning Materials — Kho Học Liệu Của Tôi",
@@ -105,6 +106,7 @@ function navigateTo(page, subTab = null) {
         if (typeof closeWritingEditor === "function") closeWritingEditor();
         else filterWritingTopics();
     }
+    if (page === "pdf-studio" && typeof initPdfStudioPage === "function") initPdfStudioPage();
     if (page === "notebook") renderNotebook();
     if (page === "progress") renderProgressAnalyticsPage();
     if (page === "materials") renderMaterialsPageTable();
@@ -1208,6 +1210,10 @@ window.refreshUIAfterRemoteSync = function () {
     if (typeof renderNotebook === "function") renderNotebook();
     if (typeof renderMaterialsPageTable === "function") renderMaterialsPageTable();
     if (typeof renderActiveDevicesUI === "function") renderActiveDevicesUI();
+    if (typeof loadPdfStudioState === "function") {
+        loadPdfStudioState();
+        if (activeMainPage === "pdf-studio" && typeof renderPdfStudioPage === "function") renderPdfStudioPage();
+    }
 };
 
 window.addEventListener("DOMContentLoaded", async () => {

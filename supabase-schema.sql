@@ -300,7 +300,71 @@ begin
     end if;
 end $$;
 
--- 10. Explicit least-privilege table grants for authenticated users (RLS still isolates by auth.uid())
+-- 10. AI PDF Learning Studio — Uploaded PDF Documents & Generated Interactive Courses
+create table if not exists public.user_pdf_documents (
+    user_id uuid not null references auth.users(id) on delete cascade,
+    doc_id text not null,
+    file_name text not null,
+    file_size bigint not null default 0,
+    page_count integer not null default 0,
+    sha256_hash text not null default '',
+    storage_path text not null default '',
+    status text not null default 'uploaded',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    primary key (user_id, doc_id)
+);
+
+create index if not exists idx_user_pdf_docs_user_updated
+    on public.user_pdf_documents (user_id, updated_at desc);
+
+alter table public.user_pdf_documents enable row level security;
+
+drop policy if exists "Users manage own pdf documents" on public.user_pdf_documents;
+create policy "Users manage own pdf documents"
+on public.user_pdf_documents for all
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+create table if not exists public.user_pdf_courses (
+    user_id uuid not null references auth.users(id) on delete cascade,
+    course_id text not null,
+    doc_id text not null default '',
+    title text not null,
+    published boolean not null default false,
+    knowledge_map jsonb not null default '{}'::jsonb,
+    course_payload jsonb not null default '{}'::jsonb,
+    progress_payload jsonb not null default '{}'::jsonb,
+    mindmap_payload jsonb not null default '{}'::jsonb,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    primary key (user_id, course_id)
+);
+
+create index if not exists idx_user_pdf_courses_user_updated
+    on public.user_pdf_courses (user_id, updated_at desc);
+
+alter table public.user_pdf_courses enable row level security;
+
+drop policy if exists "Users manage own pdf courses" on public.user_pdf_courses;
+create policy "Users manage own pdf courses"
+on public.user_pdf_courses for all
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+alter table public.user_pdf_courses replica identity full;
+
+do $$
+begin
+    if not exists (
+        select 1 from pg_publication_tables
+        where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'user_pdf_courses'
+    ) then
+        alter publication supabase_realtime add table public.user_pdf_courses;
+    end if;
+end $$;
+
+-- 11. Explicit least-privilege table grants for authenticated users (RLS still isolates by auth.uid())
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on table
     public.qenglish_user_snapshots,
@@ -309,5 +373,7 @@ grant select, insert, update, delete on table
     public.user_writing_submissions,
     public.user_materials,
     public.user_devices,
-    public.user_writing_drafts
+    public.user_writing_drafts,
+    public.user_pdf_documents,
+    public.user_pdf_courses
 to authenticated;
