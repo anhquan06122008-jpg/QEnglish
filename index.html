@@ -9223,6 +9223,7 @@ const CloudClient = {
             if (!lPdf && !rPdf) return undefined;
             const a = (lPdf && typeof lPdf === "object") ? lPdf : {};
             const b = (rPdf && typeof rPdf === "object") ? rPdf : {};
+            const folders = mergeByKey(a.folders, b.folders, f => String(f.id || f.name));
             const docs = mergeByKey(a.documents, b.documents, d => String(d.id || d.sha256 || d.fileName));
             const courseMap = new Map();
             (Array.isArray(b.courses) ? b.courses : []).forEach(c => { if (c && c.id) courseMap.set(c.id, c); });
@@ -9254,6 +9255,7 @@ const CloudClient = {
             const mergedCourses = Array.from(courseMap.values())
                 .sort((x, y) => new Date(y.updatedAt || y.createdAt || 0) - new Date(x.updatedAt || x.createdAt || 0));
             return {
+                folders,
                 documents: docs,
                 courses: mergedCourses,
                 activeCourseId: a.activeCourseId || b.activeCourseId || (mergedCourses[0]?.id || null),
@@ -10899,7 +10901,9 @@ function compactPdfStudioForCloud(rawPdfState) {
             : {}
     })) : [];
     const courses = Array.isArray(rawPdfState.courses) ? rawPdfState.courses.slice(0, 20) : [];
+    const folders = Array.isArray(rawPdfState.folders) ? rawPdfState.folders.slice(0, 30) : [];
     return {
+        folders,
         documents: docs,
         courses,
         activeCourseId: rawPdfState.activeCourseId || null,
@@ -19087,6 +19091,8 @@ let pdfStudioPipeline = {
     errorMsg: ""
 };
 let pdfStudioUi = {
+    viewMode: "library", // library | folder | course
+    openFolderId: null,
     activeTab: "overview", // overview | vocabulary | grammar | reading | listening | writing | speaking | exam | mindmap | weakness
     filterChapter: "all",
     filterLevel: "all",
@@ -19102,11 +19108,12 @@ let pdfStudioUi = {
     drawerOpen: false,
     drawerDocId: null,
     drawerPage: 1,
-    drawerZoom: 1.15,
+    drawerZoom: 1.0,
     drawerShowText: false
 };
 const pdfCompanionAudioUrls = new Map(); // filename.toLowerCase() -> blob URL (session)
 const pdfSignedAudioUrlCache = new Map(); // storagePath -> { url, expiresAt }
+const pdfSignedPageUrlCache = new Map(); // storagePath -> { url, expiresAt }
 const pdfLoadedJsDocs = new Map(); // docId -> PDFDocumentProxy
 
 async function hydratePdfCloudAudioPlayers() {
@@ -19285,6 +19292,7 @@ async function ensurePdfJsLoaded() {
 /* ==================== 3. STATE PERSISTENCE & CLOUD SYNC ==================== */
 function getDefaultPdfStudioState() {
     return {
+        folders: [],
         documents: [],
         courses: [],
         activeCourseId: null,
@@ -19299,6 +19307,7 @@ function loadPdfStudioState() {
         pdfStudioState = {
             ...getDefaultPdfStudioState(),
             ...saved,
+            folders: Array.isArray(saved.folders) ? saved.folders : [],
             documents: Array.isArray(saved.documents) ? saved.documents : [],
             courses: Array.isArray(saved.courses) ? saved.courses : []
         };
@@ -19505,8 +19514,13 @@ async function handlePdfStudioFilesSelected(files) {
             }
 
             const defaultEnd = Math.min(pageCount, pageCount <= 20 ? pageCount : 12);
+            const activeFolderObj = pdfStudioUi.openFolderId
+                ? (pdfStudioState.folders || []).find(f => f.id === pdfStudioUi.openFolderId)
+                : null;
             const docRecord = {
                 id: docId,
+                folderId: activeFolderObj ? activeFolderObj.id : "",
+                folderName: activeFolderObj ? activeFolderObj.name : "",
                 fileName: file.name,
                 fileSize: file.size,
                 pageCount,
@@ -20070,6 +20084,8 @@ function validateAndAssemblePdfCourse(doc, rawChunks, meta = {}) {
     return {
         id: courseId,
         docId: doc.id,
+        folderId: doc.folderId || "",
+        folderName: doc.folderName || "",
         fileName: doc.fileName,
         title: title || doc.fileName.replace(/\.pdf$/i, ""),
         descriptionVi: `Khóa học tương tác tạo từ "${doc.fileName}" (Trang ${meta.rangeStart}–${meta.rangeEnd}/${doc.pageCount}).`,
@@ -20257,6 +20273,7 @@ async function runPdfToCoursePipeline(docId, options = {}) {
         savePdfStudioState();
 
         setPipelineState(10, "done", "Hoàn thành — Sẵn sàng xem trước & xuất bản!", `Đã tạo khóa học "${course.title}" (${course.knowledgeMap.chapters.length} chương, ${course.skills.vocabulary.length} từ vựng, ${course.skills.grammar.length} bài ngữ pháp, ${course.skills.reading.length} bài đọc).`, 100);
+        pdfStudioUi.viewMode = "course";
         pdfStudioUi.activeTab = "overview";
         pdfStudioUi.filterChapter = "all";
         pdfStudioUi.filterLevel = "all";
@@ -21119,26 +21136,53 @@ async function renderPdfSourceDrawerCanvas() {
 
     try {
         const pdfDoc = await getLoadedPdfJsDocument(pdfStudioUi.drawerDocId);
-        if (!pdfDoc) {
-            canvasWrap.innerHTML = `
-                <div class="p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 space-y-2">
-                    <p class="font-extrabold">📱 File PDF gốc chưa có trong bộ nhớ thiết bị này (file >10MB chỉ lưu cục bộ trên máy đã tải lên).</p>
-                    <p class="text-slate-300">Bạn vẫn có thể xem văn bản trích xuất của Trang ${pNum} ngay bên dưới hoặc tải lại file PDF trên thiết bị này để xem ảnh trang gốc:</p>
-                </div>
-                <div class="mt-3">${textWrap.innerHTML}</div>
-            `;
+        if (pdfDoc) {
+            const safeP = Math.max(1, Math.min(pdfDoc.numPages, pNum));
+            const page = await pdfDoc.getPage(safeP);
+            const vp = page.getViewport({ scale: Math.max(0.8, pdfStudioUi.drawerZoom * 1.15) });
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.round(vp.width);
+            canvas.height = Math.round(vp.height);
+            canvas.className = "mx-auto rounded-xl shadow-2xl bg-white max-w-full h-auto";
+            await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
+            canvasWrap.innerHTML = "";
+            canvasWrap.appendChild(canvas);
             return;
         }
-        const safeP = Math.max(1, Math.min(pdfDoc.numPages, pNum));
-        const page = await pdfDoc.getPage(safeP);
-        const vp = page.getViewport({ scale: pdfStudioUi.drawerZoom });
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.round(vp.width);
-        canvas.height = Math.round(vp.height);
-        canvas.className = "mx-auto rounded-xl shadow-2xl bg-white max-w-full h-auto";
-        await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
-        canvasWrap.innerHTML = "";
-        canvasWrap.appendChild(canvas);
+
+        // Cloud Rendered Page Image Fallback (works 24/7 on Laptop & Phone even for >100MB textbooks!)
+        if (doc && doc.cloudPagesPrefix && typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) {
+            const padded = String(pNum).padStart(3, "0");
+            const imgPath = `${doc.cloudPagesPrefix}/page-${padded}.jpg`;
+            const cached = pdfSignedPageUrlCache.get(imgPath);
+            let signedUrl = (cached && cached.expiresAt > Date.now()) ? cached.url : "";
+            if (!signedUrl) {
+                signedUrl = await CloudClient.getSignedStorageUrl(imgPath);
+                if (signedUrl) {
+                    pdfSignedPageUrlCache.set(imgPath, { url: signedUrl, expiresAt: Date.now() + 45 * 60 * 1000 });
+                }
+            }
+            if (signedUrl) {
+                const zoomPct = Math.round(Math.max(0.6, Math.min(2.0, pdfStudioUi.drawerZoom)) * 100);
+                canvasWrap.innerHTML = `
+                    <div class="flex flex-col items-center space-y-2">
+                        <span class="text-[11px] font-bold text-emerald-300">☁️ Trang sách gốc độ nét cao (Trang ${pNum}) — Đồng bộ Cloud</span>
+                        <div class="w-full overflow-x-auto flex justify-center">
+                            <img src="${signedUrl}" alt="Trang ${pNum} - ${escHtml(doc.fileName)}" style="width:${zoomPct}%; max-width:none;" class="rounded-xl shadow-2xl bg-white border border-white/10" onerror="this.parentElement.innerHTML='<p class=\\'text-xs text-amber-300 p-4\\'>Trang ${pNum} nằm ngoài phạm vi ảnh sách đã đồng bộ (Trang ${doc.cloudPagesStart || 15}–${doc.cloudPagesEnd || 134}). Bấm nút Text / Trang để xem văn bản.</p>'">
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+        }
+
+        canvasWrap.innerHTML = `
+            <div class="p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 space-y-2">
+                <p class="font-extrabold">📱 Chưa có ảnh trang ${pNum} trên thiết bị này.</p>
+                <p class="text-slate-300">Bạn vẫn có thể xem văn bản trích xuất của Trang ${pNum} bên dưới hoặc tải file PDF gốc lên thiết bị này.</p>
+            </div>
+            <div class="mt-3">${textWrap.innerHTML}</div>
+        `;
     } catch (err) {
         canvasWrap.innerHTML = `<div class="p-4 rounded-2xl bg-rose-500/15 border border-rose-500/35 text-xs text-rose-200">Không thể hiển thị trang PDF: ${escHtml(err.message)}</div><div class="mt-3">${textWrap.innerHTML}</div>`;
     }
@@ -22071,139 +22115,201 @@ function renderPdfOpenGradeReport(d, provider = "") {
     `;
 }
 
-function renderPdfStudioPage() {
-    const root = document.getElementById("pdf-studio-root");
-    if (!root) return;
+function openPdfLibraryRoot() {
+    pdfStudioUi.viewMode = "library";
+    pdfStudioUi.openFolderId = null;
+    renderPdfStudioPage();
+}
+
+function openPdfFolder(folderId) {
+    pdfStudioUi.viewMode = "folder";
+    pdfStudioUi.openFolderId = folderId;
+    renderPdfStudioPage();
+}
+
+function openPdfCourseView(courseId) {
     if (!pdfStudioState) loadPdfStudioState();
+    const course = pdfStudioState.courses.find(c => c.id === courseId) || getActivePdfCourse();
+    if (!course) return;
+    pdfStudioState.activeCourseId = course.id;
+    pdfStudioUi.viewMode = "course";
+    if (course.folderId) pdfStudioUi.openFolderId = course.folderId;
+    pdfStudioUi.activeTab = course.progress?.lastTab || "overview";
+    savePdfStudioState();
+    renderPdfStudioPage();
+}
 
-    const docs = pdfStudioState.documents || [];
-    const courses = pdfStudioState.courses || [];
-    const activeCourse = getActivePdfCourse();
-    const chapters = activeCourse?.knowledgeMap?.chapters || [];
+function createPdfStudioFolder() {
+    if (!pdfStudioState) loadPdfStudioState();
+    const name = (prompt("Nhập tên thư mục mới (VD: PEN-LV4, IELTS, TOEIC...):") || "").trim();
+    if (!name) return;
+    pdfStudioState.folders = pdfStudioState.folders || [];
+    if (pdfStudioState.folders.some(f => f.name.toLowerCase() === name.toLowerCase())) {
+        showToast(`Thư mục "${name}" đã tồn tại!`, "warning");
+        return;
+    }
+    const newFolder = {
+        id: `fld-${Date.now().toString(36)}`,
+        name,
+        descriptionVi: `Thư mục giáo trình & bài học ${name}`,
+        icon: "📁",
+        createdAt: new Date().toISOString()
+    };
+    pdfStudioState.folders.push(newFolder);
+    savePdfStudioState();
+    openPdfFolder(newFolder.id);
+    showToast(`📁 Đã tạo thư mục "${name}" và đồng bộ Cloud!`);
+}
 
-    const courseTabs = [
-        ["overview", "🧭 Tổng quan & Bản đồ"],
-        ["vocabulary", `📖 Vocabulary (${activeCourse?.skills?.vocabulary?.length || 0})`],
-        ["grammar", `📝 Grammar (${activeCourse?.skills?.grammar?.length || 0})`],
-        ["reading", `📄 Reading (${activeCourse?.skills?.reading?.length || 0})`],
-        ["listening", `🎧 Listening (${activeCourse?.skills?.listening?.length || 0})`],
-        ["writing", `✍️ Writing (${activeCourse?.skills?.writing?.length || 0})`],
-        ["speaking", `🎙️ Speaking (${activeCourse?.skills?.speaking?.length || 0})`],
-        ["exam", "🎓 Kiểm tra tổng hợp"],
-        ["mindmap", "🗺️ Sơ đồ tóm tắt"],
-        ["weakness", `🧠 Lỗ hổng (${computePdfWeaknessClusters(activeCourse).length})`]
-    ];
+function deletePdfStudioFolder(folderId) {
+    if (!pdfStudioState) loadPdfStudioState();
+    const f = (pdfStudioState.folders || []).find(x => x.id === folderId);
+    if (!f) return;
+    const hasItems = (pdfStudioState.documents || []).some(d => d.folderId === folderId) || (pdfStudioState.courses || []).some(c => c.folderId === folderId);
+    if (hasItems && !confirm(`Thư mục "${f.name}" đang có tài liệu/khóa học. Xóa thư mục sẽ chuyển tài liệu ra ngoài Thư viện chính (không mất dữ liệu). Tiếp tục?`)) {
+        return;
+    }
+    pdfStudioState.folders = (pdfStudioState.folders || []).filter(x => x.id !== folderId);
+    (pdfStudioState.documents || []).forEach(d => { if (d.folderId === folderId) { d.folderId = ""; d.folderName = ""; } });
+    (pdfStudioState.courses || []).forEach(c => { if (c.folderId === folderId) { c.folderId = ""; c.folderName = ""; } });
+    if (pdfStudioUi.openFolderId === folderId) {
+        pdfStudioUi.openFolderId = null;
+        pdfStudioUi.viewMode = "library";
+    }
+    savePdfStudioState();
+    renderPdfStudioPage();
+    showToast(`Đã xóa thư mục "${f.name}".`);
+}
 
-    root.innerHTML = `
-        <!-- 1. HERO UPLOAD PANEL (Matches User's AI PDF Learning Studio Concept) -->
-        <div class="glass-panel p-6 rounded-3xl border border-violet-500/25 space-y-5">
+function renderPdfUploadPanelHtml(targetFolderName = "") {
+    return `
+        <div class="glass-panel p-5 rounded-3xl border border-violet-500/20 space-y-4">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <div class="flex items-center gap-2">
-                        <h2 class="text-lg md:text-xl font-black text-white">📑 AI PDF Learning Studio</h2>
-                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-[10px] font-extrabold">AI Engine Live</span>
-                    </div>
-                    <p class="text-xs text-slate-400 mt-0.5">Tải sách hoặc bài học PDF (văn bản & PDF scan OCR) → AI xây Bản đồ Kiến thức → tự tạo Khóa học tương tác 6 kỹ năng + Xem nguồn PDF + Sơ đồ tóm tắt + Đồng bộ Cloud.</p>
+                    <p class="text-sm font-extrabold text-white">➕ Tải PDF mới ${targetFolderName ? `vào thư mục <span class="text-cyan-300">${escHtml(targetFolderName)}</span>` : "vào AI PDF Learning Studio"}</p>
+                    <p class="text-[11px] text-slate-400">Hỗ trợ PDF văn bản, PDF scan OCR (>100MB) và đính kèm file Audio MP3 bản xứ.</p>
                 </div>
                 <div class="flex flex-wrap gap-2 text-xs">
                     <label class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold cursor-pointer shadow-lg">
                         📄 Chọn file PDF
                         <input type="file" accept=".pdf,application/pdf" multiple onchange="handlePdfStudioFileInput(event)" class="hidden">
                     </label>
-                    <label class="px-3.5 py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 font-bold cursor-pointer" title="Tùy chọn: đính kèm file MP3 đi kèm sách giáo khoa (VD: Connectivity 2 Audios)">
+                    <label class="px-3.5 py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 font-bold cursor-pointer">
                         🎧 Đính kèm Audio MP3
                         <input type="file" accept="audio/*,.mp3,.wav,.m4a" multiple onchange="handlePdfCompanionAudioInput(event)" class="hidden">
                     </label>
                 </div>
             </div>
-
-            <!-- Drag & Drop Zone -->
-            <div ondragover="handlePdfStudioDragOver(event)" ondragleave="handlePdfStudioDragLeave(event)" ondrop="handlePdfStudioDrop(event)" onclick="document.getElementById('pdf-studio-hidden-picker')?.click()" class="cursor-pointer p-7 rounded-2xl border-2 border-dashed border-white/15 hover:border-violet-400/60 bg-slate-950/65 text-center space-y-2 transition">
+            <div ondragover="handlePdfStudioDragOver(event)" ondragleave="handlePdfStudioDragLeave(event)" ondrop="handlePdfStudioDrop(event)" onclick="document.getElementById('pdf-studio-hidden-picker')?.click()" class="cursor-pointer p-5 rounded-2xl border-2 border-dashed border-white/15 hover:border-violet-400/60 bg-slate-950/65 text-center space-y-1.5 transition">
                 <input id="pdf-studio-hidden-picker" type="file" accept=".pdf,application/pdf" multiple onchange="handlePdfStudioFileInput(event)" class="hidden">
-                <div class="w-11 h-11 mx-auto rounded-2xl bg-rose-500/20 border border-rose-500/35 flex items-center justify-center text-xl">📕</div>
-                <p class="text-sm font-extrabold text-white">Kéo thả file PDF bài học vào đây</p>
-                <p class="text-xs text-slate-400">Hoặc bấm để chọn nhiều file PDF từ thiết bị (hỗ trợ cả giáo trình lớn >100MB, PDF scan OCR & kèm MP3)</p>
+                <p class="text-xs md:text-sm font-extrabold text-white">📕 Kéo thả file PDF bài học vào đây hoặc bấm để chọn từ thiết bị</p>
+                <p class="text-[11px] text-slate-400">AI tự phân tích đủ 6 kỹ năng (Vocabulary • Grammar • Reading • Listening • Writing • Speaking) + Knowledge Map + Sơ đồ tóm tắt</p>
             </div>
-
-            <!-- Auto Skill Analysis Grid -->
-            <div>
-                <p class="text-xs font-extrabold text-slate-300 mb-2">AI sẽ tự động phân tích & xây Bản đồ Kiến thức cho 6 kỹ năng:</p>
-                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
-                    ${[
-                        ["📖", "Vocabulary"], ["🧩", "Grammar"], ["📄", "Reading"],
-                        ["🎧", "Listening"], ["✍️", "Writing"], ["🎙️", "Speaking"]
-                    ].map(([ic, nm]) => `
-                        <div class="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-950/85 border border-white/10">
-                            <span class="font-bold text-slate-200">${ic} ${nm}</span>
-                            <span class="px-1.5 py-0.5 rounded bg-white/5 text-[10px] font-bold text-cyan-300">Auto</span>
-                        </div>
-                    `).join("")}
-                </div>
-            </div>
-
-            <!-- Live 11-Stage Pipeline Monitor -->
             <div id="pdf-pipeline-live-box" class="${pdfStudioPipeline.running || pdfStudioPipeline.stageStatus !== "idle" ? "" : "hidden"} p-4 rounded-2xl bg-slate-950/95 border border-cyan-500/35"></div>
         </div>
+    `;
+}
 
-        <!-- 2. UPLOADED PDF DOCUMENTS LIBRARY -->
-        ${docs.length ? `
-            <div class="glass-panel p-5 rounded-3xl space-y-3">
-                <div class="flex items-center justify-between">
-                    <h3 class="text-sm font-extrabold text-white">📂 Tài Liệu PDF Đã Tải Lên (${docs.length})</h3>
-                    <span class="text-[11px] text-slate-400">Chọn phạm vi trang (từng chương hoặc toàn bộ) để AI tạo khóa học</span>
+function renderPdfDocumentCardHtml(d, courses) {
+    const linkedCourse = courses.find(c => c.docId === d.id);
+    const statusMap = {
+        uploaded: ["bg-slate-800 text-slate-300", "Sẵn sàng phân tích"],
+        analyzing: ["bg-cyan-500/20 text-cyan-300 animate-pulse", "Đang phân tích"],
+        building: ["bg-violet-500/20 text-violet-300 animate-pulse", "Đang tạo bài học"],
+        completed: ["bg-emerald-500/20 text-emerald-300", "Hoàn thành"],
+        error: ["bg-rose-500/20 text-rose-300", "Lỗi"]
+    };
+    const [sCls, sTxt] = statusMap[d.status] || statusMap.uploaded;
+    return `
+        <div class="p-4 rounded-2xl bg-slate-950/90 border border-white/10 hover:border-violet-500/40 transition space-y-3 text-xs">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0 flex-1 ${linkedCourse ? "cursor-pointer" : ""}" ${linkedCourse ? `onclick="openPdfCourseView('${linkedCourse.id}')"` : ""}>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-extrabold text-white text-sm md:text-base">📕 ${escHtml(d.fileName)}</span>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${sCls}">${sTxt}</span>
+                        ${d.cloudPagesPrefix ? `<span class="px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold">☁️ Trang sách gốc HD</span>` : ""}
+                    </div>
+                    <p class="text-[11px] text-slate-400 mt-1">
+                        ${formatFileSizeBytes(d.fileSize)} • <strong>${d.pageCount} trang</strong>
+                        ${linkedCourse ? ` • <span class="text-violet-300 font-bold">${linkedCourse.knowledgeMap?.chapters?.length || 0} Units • ${linkedCourse.skills?.vocabulary?.length || 0} từ vựng • ${linkedCourse.skills?.listening?.length || 0} bài nghe</span>` : ""}
+                        ${(d.companionAudioNames || []).length ? ` • <span class="text-emerald-300">🎧 ${d.companionAudioNames.length} MP3</span>` : ""}
+                    </p>
+                    ${d.statusNote ? `<p class="text-[10.5px] text-slate-400 mt-1">${escHtml(d.statusNote)}</p>` : ""}
                 </div>
-                <div class="space-y-2.5">
-                    ${docs.map(d => {
-                        const statusMap = {
-                            uploaded: ["bg-slate-800 text-slate-300", "Sẵn sàng phân tích"],
-                            analyzing: ["bg-cyan-500/20 text-cyan-300 animate-pulse", "Đang phân tích"],
-                            building: ["bg-violet-500/20 text-violet-300 animate-pulse", "Đang tạo bài học"],
-                            completed: ["bg-emerald-500/20 text-emerald-300", "Hoàn thành"],
-                            error: ["bg-rose-500/20 text-rose-300", "Lỗi"]
-                        };
-                        const [sCls, sTxt] = statusMap[d.status] || statusMap.uploaded;
-                        return `
-                            <div class="p-4 rounded-2xl bg-slate-950/85 border border-white/10 space-y-3 text-xs">
-                                <div class="flex flex-wrap items-start justify-between gap-3">
-                                    <div class="min-w-0">
-                                        <div class="flex items-center gap-2 flex-wrap">
-                                            <span class="font-extrabold text-white text-sm truncate">📕 ${escHtml(d.fileName)}</span>
-                                            <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${sCls}">${sTxt}</span>
-                                        </div>
-                                        <p class="text-[11px] text-slate-400 mt-0.5">
-                                            ${formatFileSizeBytes(d.fileSize)} • <strong>${d.pageCount} trang</strong> • SHA: <code>${escHtml((d.sha256 || "").slice(0, 8))}</code>
-                                            ${(d.companionAudioNames || []).length ? ` • <span class="text-emerald-300">🎧 ${d.companionAudioNames.length} MP3 đi kèm</span>` : ""}
-                                        </p>
-                                        ${d.statusNote ? `<p class="text-[10px] text-slate-500 mt-0.5">${escHtml(d.statusNote)}</p>` : ""}
-                                    </div>
-                                    <div class="flex flex-wrap items-center gap-1.5">
-                                        <button onclick="openPdfSourcePage('${d.id}', ${d.rangeStart || 1})" class="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-cyan-300 font-bold">👁️ Xem trước PDF</button>
-                                        <button onclick="runPdfToCoursePipeline('${d.id}')" ${pdfStudioPipeline.running ? "disabled" : ""} class="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 text-white font-extrabold shadow">✨ Phân Tích & Tạo Khóa Học</button>
-                                        <button onclick="deletePdfDocument('${d.id}')" class="p-1.5 rounded-xl bg-rose-500/15 text-rose-300 hover:bg-rose-500/25" title="Xóa tài liệu">🗑️</button>
-                                    </div>
-                                </div>
-                                <div class="flex flex-wrap items-center gap-3 pt-2 border-t border-white/5 text-[11px]">
-                                    <div class="flex items-center gap-1.5">
-                                        <span class="text-slate-400">Phạm vi trang:</span>
-                                        <input type="number" min="1" max="${d.pageCount || 1}" value="${d.rangeStart || 1}" onchange="updatePdfDocRange('${d.id}','rangeStart',this.value)" class="w-16 bg-slate-900 border border-white/15 rounded-lg px-2 py-1 text-white font-bold text-center">
-                                        <span class="text-slate-400">đến</span>
-                                        <input type="number" min="1" max="${d.pageCount || 1}" value="${d.rangeEnd || d.pageCount || 1}" onchange="updatePdfDocRange('${d.id}','rangeEnd',this.value)" class="w-16 bg-slate-900 border border-white/15 rounded-lg px-2 py-1 text-white font-bold text-center">
-                                        <button onclick="setPdfDocFullRange('${d.id}')" class="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-cyan-300 font-bold">Toàn bộ (${d.pageCount})</button>
-                                    </div>
-                                    <label class="flex items-center gap-1.5 cursor-pointer text-slate-300">
-                                        <input type="checkbox" ${d.enableOcr !== false ? "checked" : ""} onchange="updatePdfDocRange('${d.id}','enableOcr',this.checked)" class="accent-violet-500">
-                                        <span>Bật OCR tự động cho trang scan/hình ảnh</span>
-                                    </label>
-                                </div>
-                            </div>
-                        `;
-                    }).join("")}
+                <div class="flex flex-wrap items-center gap-1.5">
+                    ${linkedCourse ? `<button onclick="openPdfCourseView('${linkedCourse.id}')" class="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold shadow-lg">▶ Mở Khóa Học</button>` : ""}
+                    <button onclick="openPdfSourcePage('${d.id}', ${d.rangeStart || 1})" class="px-3 py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 font-bold">📖 Xem Sách PDF</button>
+                    <button onclick="runPdfToCoursePipeline('${d.id}')" ${pdfStudioPipeline.running ? "disabled" : ""} class="px-3 py-2 rounded-xl bg-violet-600/25 hover:bg-violet-600/40 border border-violet-500/35 text-violet-200 font-bold">✨ Phân Tích</button>
+                    <button onclick="deletePdfDocument('${d.id}')" class="p-2 rounded-xl bg-rose-500/15 text-rose-300 hover:bg-rose-500/25" title="Xóa tài liệu">🗑️</button>
                 </div>
             </div>
-        ` : ""}
+            <details class="pt-2 border-t border-white/5 text-[11px]">
+                <summary class="cursor-pointer text-slate-400 hover:text-slate-200 font-bold">⚙️ Tùy chọn phạm vi trang & OCR (Trang ${d.rangeStart || 1}–${d.rangeEnd || d.pageCount || 1})</summary>
+                <div class="flex flex-wrap items-center gap-3 pt-2">
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-slate-400">Phạm vi trang:</span>
+                        <input type="number" min="1" max="${d.pageCount || 1}" value="${d.rangeStart || 1}" onchange="updatePdfDocRange('${d.id}','rangeStart',this.value)" class="w-16 bg-slate-900 border border-white/15 rounded-lg px-2 py-1 text-white font-bold text-center">
+                        <span class="text-slate-400">đến</span>
+                        <input type="number" min="1" max="${d.pageCount || 1}" value="${d.rangeEnd || d.pageCount || 1}" onchange="updatePdfDocRange('${d.id}','rangeEnd',this.value)" class="w-16 bg-slate-900 border border-white/15 rounded-lg px-2 py-1 text-white font-bold text-center">
+                        <button onclick="setPdfDocFullRange('${d.id}')" class="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-cyan-300 font-bold">Toàn bộ (${d.pageCount})</button>
+                    </div>
+                    <label class="flex items-center gap-1.5 cursor-pointer text-slate-300">
+                        <input type="checkbox" ${d.enableOcr !== false ? "checked" : ""} onchange="updatePdfDocRange('${d.id}','enableOcr',this.checked)" class="accent-violet-500">
+                        <span>Bật OCR tự động cho trang scan</span>
+                    </label>
+                </div>
+            </details>
+        </div>
+    `;
+}
 
-        <!-- 3. GENERATED COURSES SWITCHER & INTERACTIVE COURSE WORKSPACE -->
-        ${courses.length && activeCourse ? `
+function renderPdfStudioPage() {
+    const root = document.getElementById("pdf-studio-root");
+    if (!root) return;
+    if (!pdfStudioState) loadPdfStudioState();
+
+    const folders = pdfStudioState.folders || [];
+    const docs = pdfStudioState.documents || [];
+    const courses = pdfStudioState.courses || [];
+    const activeCourse = getActivePdfCourse();
+    const activeFolder = pdfStudioUi.openFolderId ? folders.find(f => f.id === pdfStudioUi.openFolderId) : null;
+
+    // Fallback gracefully if viewMode is folder/course but item no longer exists
+    if (pdfStudioUi.viewMode === "folder" && !activeFolder) pdfStudioUi.viewMode = "library";
+    if (pdfStudioUi.viewMode === "course" && !activeCourse) pdfStudioUi.viewMode = activeFolder ? "folder" : "library";
+
+    // ==================== VIEW 3: INSIDE INTERACTIVE COURSE ====================
+    if (pdfStudioUi.viewMode === "course" && activeCourse) {
+        const chapters = activeCourse?.knowledgeMap?.chapters || [];
+        const courseFolder = activeCourse.folderId ? folders.find(f => f.id === activeCourse.folderId) : null;
+        const courseTabs = [
+            ["overview", "🧭 Tổng quan & Bản đồ"],
+            ["vocabulary", `📖 Vocabulary (${activeCourse?.skills?.vocabulary?.length || 0})`],
+            ["grammar", `📝 Grammar (${activeCourse?.skills?.grammar?.length || 0})`],
+            ["reading", `📄 Reading (${activeCourse?.skills?.reading?.length || 0})`],
+            ["listening", `🎧 Listening (${activeCourse?.skills?.listening?.length || 0})`],
+            ["writing", `✍️ Writing (${activeCourse?.skills?.writing?.length || 0})`],
+            ["speaking", `🎙️ Speaking (${activeCourse?.skills?.speaking?.length || 0})`],
+            ["exam", "🎓 Kiểm tra tổng hợp"],
+            ["mindmap", "🗺️ Sơ đồ tóm tắt"],
+            ["weakness", `🧠 Lỗ hổng (${computePdfWeaknessClusters(activeCourse).length})`]
+        ];
+
+        root.innerHTML = `
+            <!-- Breadcrumb Navigation Bar -->
+            <div class="glass-panel px-4 py-3 rounded-2xl border border-white/10 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div class="flex items-center gap-1.5 flex-wrap font-bold">
+                    <button onclick="openPdfLibraryRoot()" class="text-cyan-300 hover:underline">📁 Thư Mục Giáo Trình PDF</button>
+                    ${courseFolder ? `<span class="text-slate-500">›</span><button onclick="openPdfFolder('${courseFolder.id}')" class="text-violet-300 hover:underline">${escHtml(courseFolder.icon || "📘")} ${escHtml(courseFolder.name)}</button>` : ""}
+                    <span class="text-slate-500">›</span>
+                    <span class="text-white truncate">📕 ${escHtml(activeCourse.fileName || activeCourse.title)}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="openPdfSourcePage('${escHtml(activeCourse.docId)}', ${activeCourse.analyzedRange?.start || 15})" class="px-3 py-1.5 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-bold">📖 Mở Sách PDF Gốc</button>
+                    <button onclick="${courseFolder ? `openPdfFolder('${courseFolder.id}')` : "openPdfLibraryRoot()"}" class="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 font-bold">← Quay lại ${courseFolder ? escHtml(courseFolder.name) : "Thư mục"}</button>
+                </div>
+            </div>
+
             <div class="glass-panel p-5 rounded-3xl space-y-5">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <div class="min-w-0">
@@ -22211,8 +22317,8 @@ function renderPdfStudioPage() {
                         <h3 class="text-lg font-black text-white truncate">${escHtml(activeCourse.title)}</h3>
                     </div>
                     ${courses.length > 1 ? `
-                        <select onchange="selectPdfCourse(this.value)" class="bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-xs font-bold text-violet-300 max-w-xs">
-                            ${courses.map(c => `<option value="${c.id}" ${c.id === activeCourse.id ? "selected" : ""}>📘 ${escHtml(c.title)} (${c.analyzedRange?.start || 1}–${c.analyzedRange?.end || "?"})</option>`).join("")}
+                        <select onchange="openPdfCourseView(this.value)" class="bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-xs font-bold text-violet-300 max-w-xs">
+                            ${courses.map(c => `<option value="${c.id}" ${c.id === activeCourse.id ? "selected" : ""}>📘 ${escHtml(c.title)}</option>`).join("")}
                         </select>
                     ` : ""}
                 </div>
@@ -22247,16 +22353,108 @@ function renderPdfStudioPage() {
                 <!-- Active Course Tab Body -->
                 <div>${renderPdfCourseTabContent(activeCourse)}</div>
             </div>
-        ` : `
-            <div class="glass-panel p-8 rounded-3xl text-center space-y-2 border border-white/10">
-                <p class="text-base font-extrabold text-white">🚀 Sẵn sàng biến bất kỳ giáo trình PDF nào thành khóa học cá nhân hóa!</p>
-                <p class="text-xs text-slate-400 max-w-xl mx-auto">Tải file PDF (ví dụ <code>Connectivity_2_students_book.pdf</code> hoặc bài giảng tiếng Anh bất kỳ) ở khung phía trên. AI sẽ xây <strong>Knowledge Map</strong>, phân loại đủ 6 kỹ năng, tạo bài tập + đáp án + nút <strong>Xem nguồn PDF</strong> và <strong>Sơ đồ tóm tắt bài học</strong>.</p>
+        `;
+        renderPdfPipelineBannerOnly();
+        hydratePdfCloudAudioPlayers();
+        return;
+    }
+
+    // ==================== VIEW 2: INSIDE A SPECIFIC FOLDER (e.g., PEN-LV3) ====================
+    if (pdfStudioUi.viewMode === "folder" && activeFolder) {
+        const folderDocs = docs.filter(d => d.folderId === activeFolder.id);
+        root.innerHTML = `
+            <div class="glass-panel p-5 rounded-3xl border border-violet-500/25 space-y-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="space-y-1">
+                        <div class="flex items-center gap-1.5 text-xs font-bold">
+                            <button onclick="openPdfLibraryRoot()" class="text-cyan-300 hover:underline">📁 Thư Mục Giáo Trình PDF</button>
+                            <span class="text-slate-500">›</span>
+                            <span class="text-white">${escHtml(activeFolder.icon || "📘")} ${escHtml(activeFolder.name)}</span>
+                        </div>
+                        <h2 class="text-xl font-black text-white">${escHtml(activeFolder.icon || "📘")} Thư mục ${escHtml(activeFolder.name)}</h2>
+                        <p class="text-xs text-slate-400">${escHtml(activeFolder.descriptionVi || "")}</p>
+                    </div>
+                    <button onclick="openPdfLibraryRoot()" class="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-slate-200">← Quay lại Thư mục lớn</button>
+                </div>
+
+                ${folderDocs.length ? `
+                    <div class="space-y-3">
+                        ${folderDocs.map(d => renderPdfDocumentCardHtml(d, courses)).join("")}
+                    </div>
+                ` : `
+                    <div class="p-6 rounded-2xl bg-slate-950/75 border border-white/10 text-center text-xs text-slate-400">
+                        Thư mục <strong>${escHtml(activeFolder.name)}</strong> chưa có file PDF nào. Kéo thả file PDF ở khung bên dưới để thêm vào thư mục này!
+                    </div>
+                `}
             </div>
-        `}
+
+            ${renderPdfUploadPanelHtml(activeFolder.name)}
+        `;
+        renderPdfPipelineBannerOnly();
+        return;
+    }
+
+    // ==================== VIEW 1: ROOT BIG FOLDER LIBRARY ====================
+    const rootDocs = docs.filter(d => !d.folderId || !folders.some(f => f.id === d.folderId));
+    root.innerHTML = `
+        <!-- 1. BIG MASTER FOLDER LIBRARY ("THƯ MỤC LỚN") -->
+        <div class="glass-panel p-6 rounded-3xl border border-violet-500/25 space-y-5">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-lg md:text-xl font-black text-white">📁 Thư Mục Giáo Trình & Khóa Học PDF</h2>
+                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-[10px] font-extrabold">AI PDF Studio</span>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-0.5">Chọn thư mục giáo trình của bạn để mở sách PDF & khóa học tương tác, hoặc tạo thư mục mới để lưu thêm tài liệu.</p>
+                </div>
+                <button onclick="createPdfStudioFolder()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 text-white text-xs font-extrabold shadow-lg">➕ Tạo Thư Mục Mới</button>
+            </div>
+
+            ${folders.length ? `
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    ${folders.map(f => {
+                        const fDocs = docs.filter(d => d.folderId === f.id);
+                        const fCourses = courses.filter(c => c.folderId === f.id);
+                        return `
+                            <div onclick="openPdfFolder('${f.id}')" class="group cursor-pointer p-5 rounded-3xl bg-gradient-to-br from-slate-900/95 via-slate-950 to-indigo-950/60 border border-violet-500/30 hover:border-cyan-400/70 transition shadow-xl space-y-3">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div class="w-12 h-12 rounded-2xl bg-violet-600/25 border border-violet-400/40 flex items-center justify-center text-2xl group-hover:scale-105 transition">
+                                        ${escHtml(f.icon || "📁")}
+                                    </div>
+                                    <button onclick="event.stopPropagation(); deletePdfStudioFolder('${f.id}')" class="p-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 text-xs" title="Xóa thư mục">🗑️</button>
+                                </div>
+                                <div>
+                                    <h3 class="text-base font-black text-white group-hover:text-cyan-300 transition">${escHtml(f.name)}</h3>
+                                    <p class="text-[11px] text-slate-400 mt-0.5 line-clamp-2">${escHtml(f.descriptionVi || "Nhấn để mở thư mục tài liệu PDF")}</p>
+                                </div>
+                                <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10 text-[11px]">
+                                    <span class="text-cyan-300 font-bold">📕 ${fDocs.length} sách PDF • 🎓 ${fCourses.length} khóa học</span>
+                                    <span class="text-emerald-300 font-extrabold group-hover:translate-x-0.5 transition">Mở →</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join("")}
+                </div>
+            ` : `
+                <div class="p-6 rounded-2xl bg-slate-950/70 border border-white/10 text-center space-y-2">
+                    <p class="text-sm font-extrabold text-white">📂 Chưa có thư mục giáo trình nào</p>
+                    <p class="text-xs text-slate-400">Bấm <strong>➕ Tạo Thư Mục Mới</strong> hoặc tải trực tiếp file PDF bài học ở khung bên dưới để AI tự tạo khóa học cho riêng bạn.</p>
+                </div>
+            `}
+
+            ${rootDocs.length ? `
+                <div class="space-y-2.5 pt-2 border-t border-white/10">
+                    <p class="text-xs font-extrabold text-slate-300">📄 Tài liệu PDF ngoài thư mục (${rootDocs.length})</p>
+                    ${rootDocs.map(d => renderPdfDocumentCardHtml(d, courses)).join("")}
+                </div>
+            ` : ""}
+        </div>
+
+        <!-- 2. UPLOAD NEW PDF PANEL -->
+        ${renderPdfUploadPanelHtml("")}
     `;
 
     renderPdfPipelineBannerOnly();
-    hydratePdfCloudAudioPlayers();
 }
 
 function initPdfStudioPage() {

@@ -1054,6 +1054,7 @@ const CloudClient = {
             if (!lPdf && !rPdf) return undefined;
             const a = (lPdf && typeof lPdf === "object") ? lPdf : {};
             const b = (rPdf && typeof rPdf === "object") ? rPdf : {};
+            const folders = mergeByKey(a.folders, b.folders, f => String(f.id || f.name));
             const docs = mergeByKey(a.documents, b.documents, d => String(d.id || d.sha256 || d.fileName));
             const courseMap = new Map();
             (Array.isArray(b.courses) ? b.courses : []).forEach(c => { if (c && c.id) courseMap.set(c.id, c); });
@@ -1085,6 +1086,7 @@ const CloudClient = {
             const mergedCourses = Array.from(courseMap.values())
                 .sort((x, y) => new Date(y.updatedAt || y.createdAt || 0) - new Date(x.updatedAt || x.createdAt || 0));
             return {
+                folders,
                 documents: docs,
                 courses: mergedCourses,
                 activeCourseId: a.activeCourseId || b.activeCourseId || (mergedCourses[0]?.id || null),

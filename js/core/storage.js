@@ -1301,7 +1301,9 @@ function compactPdfStudioForCloud(rawPdfState) {
             : {}
     })) : [];
     const courses = Array.isArray(rawPdfState.courses) ? rawPdfState.courses.slice(0, 20) : [];
+    const folders = Array.isArray(rawPdfState.folders) ? rawPdfState.folders.slice(0, 30) : [];
     return {
+        folders,
         documents: docs,
         courses,
         activeCourseId: rawPdfState.activeCourseId || null,
