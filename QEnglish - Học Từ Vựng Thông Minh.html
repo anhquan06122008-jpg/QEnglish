@@ -19106,7 +19106,74 @@ let pdfStudioUi = {
     drawerShowText: false
 };
 const pdfCompanionAudioUrls = new Map(); // filename.toLowerCase() -> blob URL (session)
+const pdfSignedAudioUrlCache = new Map(); // storagePath -> { url, expiresAt }
 const pdfLoadedJsDocs = new Map(); // docId -> PDFDocumentProxy
+
+async function hydratePdfCloudAudioPlayers() {
+    const els = document.querySelectorAll("audio[data-audio-storage-path]");
+    if (!els.length || typeof CloudClient === "undefined") return;
+    for (const el of els) {
+        const storagePath = el.getAttribute("data-audio-storage-path") || "";
+        if (!storagePath || el.getAttribute("src")) continue;
+        const cached = pdfSignedAudioUrlCache.get(storagePath);
+        let url = (cached && cached.expiresAt > Date.now()) ? cached.url : "";
+        if (!url && CloudClient.isCloudMode()) {
+            url = await CloudClient.getSignedStorageUrl(storagePath);
+            if (url) {
+                pdfSignedAudioUrlCache.set(storagePath, { url, expiresAt: Date.now() + 45 * 60 * 1000 });
+            }
+        }
+        if (url) {
+            el.setAttribute("src", url);
+            const statusEl = el.parentElement?.querySelector(".pdf-audio-status");
+            if (statusEl) statusEl.textContent = "✅ Sẵn sàng phát giọng bản xứ";
+        }
+    }
+}
+
+function setPdfAudioRate(audioId, rate) {
+    const el = document.getElementById(audioId);
+    if (el) {
+        el.playbackRate = Number(rate) || 1.0;
+        showToast(`🎧 Tốc độ phát: ${el.playbackRate}x`);
+    }
+}
+
+function rewindPdfAudio(audioId, deltaSec = -5) {
+    const el = document.getElementById(audioId);
+    if (el) {
+        el.currentTime = Math.max(0, (el.currentTime || 0) + deltaSec);
+        el.play?.().catch(() => {});
+    }
+}
+
+function speakPdfDialogueMultiVoice(btn) {
+    const raw = btn?.getAttribute("data-speak") || "";
+    if (!raw || !("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const lines = raw.split(/\n+/).map(s => s.trim()).filter(Boolean);
+    const voices = (window.speechSynthesis.getVoices() || []).filter(v => /^en/i.test(v.lang));
+    const speakerMap = new Map();
+    let idx = 0;
+
+    const speakNext = () => {
+        if (idx >= lines.length) return;
+        const ln = lines[idx++];
+        const m = ln.match(/^([A-Za-z0-9\s]{1,22}):\s*(.+)$/);
+        const speaker = m ? m[1].trim().toLowerCase() : `line_${idx % 2}`;
+        const content = m ? m[2].trim() : ln;
+        if (!speakerMap.has(speaker)) speakerMap.set(speaker, speakerMap.size);
+        const sIdx = speakerMap.get(speaker);
+        const u = new SpeechSynthesisUtterance(content);
+        u.lang = "en-US";
+        u.rate = (typeof speechRate === "number" ? speechRate : 1.0);
+        u.pitch = sIdx % 2 === 0 ? 1.12 : 0.86;
+        if (voices.length > 1) u.voice = voices[sIdx % voices.length];
+        u.onend = speakNext;
+        window.speechSynthesis.speak(u);
+    };
+    speakNext();
+}
 
 /* ==================== 1. LOCAL INDEXEDDB VAULT FOR PDF & AUDIO BINARIES ==================== */
 const PdfBinaryVault = {
@@ -19526,6 +19593,7 @@ function setPipelineState(stageIndex, stageStatus, statusLabel, detailText, prog
     pdfStudioPipeline.progressPct = Math.max(0, Math.min(100, Math.round(progressPct || 0)));
     pdfStudioPipeline.errorMsg = errorMsg;
     renderPdfPipelineBannerOnly();
+    hydratePdfCloudAudioPlayers();
 }
 
 function renderPdfPipelineBannerOnly() {
@@ -21600,7 +21668,7 @@ function renderPdfCourseTabContent(course) {
         `;
     }
 
-    // 5. LISTENING TAB (Strict honesty: real audio vs transcript-only!)
+    // 5. LISTENING TAB (Strict honesty: real Cloud/local MP3 audio vs transcript-only!)
     if (tab === "listening") {
         const list = (course.skills.listening || []).filter(l => itemPassesPdfFilters(l, course));
         if (!(course.skills.listening || []).length) return renderPdfMissingSkillNotice("Listening");
@@ -21610,6 +21678,9 @@ function renderPdfCourseTabContent(course) {
                 ${list.map((l, li) => {
                     const audioKey = (l.suggestedAudioFile || "").toLowerCase();
                     const blobUrl = audioKey ? pdfCompanionAudioUrls.get(audioKey) : null;
+                    const cloudPath = String(l.audioStoragePath || "").trim();
+                    const hasRealAudio = Boolean(blobUrl || cloudPath);
+                    const audioElId = `pdf-audio-${l.id}`;
                     return `
                         <div class="p-5 rounded-3xl bg-slate-900/80 border border-white/10 space-y-4">
                             <div class="flex flex-wrap items-center justify-between gap-2">
@@ -21620,18 +21691,27 @@ function renderPdfCourseTabContent(course) {
                                 <button onclick="openPdfSourcePage('${escHtml(course.docId)}', ${l.sourcePage || 1})" class="px-3 py-1 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[11px] font-bold">📖 Xem nguồn PDF (Trang ${l.sourcePage || 1})</button>
                             </div>
 
-                            ${blobUrl ? `
-                                <div class="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-2">
-                                    <p class="text-xs font-extrabold text-emerald-300">🎧 Audio thật đi kèm: ${escHtml(l.suggestedAudioFile)}</p>
-                                    <audio controls src="${blobUrl}" class="w-full h-10"></audio>
+                            ${hasRealAudio ? `
+                                <div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/35 space-y-2.5">
+                                    <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                        <span class="font-extrabold text-emerald-300">🎧 Audio bản xứ gốc: <code class="text-white">${escHtml(l.suggestedAudioFile || "Audio MP3")}</code></span>
+                                        <span class="pdf-audio-status text-[11px] font-bold text-cyan-300">${blobUrl ? "✅ Sẵn sàng phát giọng bản xứ" : "⏳ Đang nạp audio từ Cloud..."}</span>
+                                    </div>
+                                    <audio id="${audioElId}" controls preload="metadata" ${blobUrl ? `src="${blobUrl}"` : `data-audio-storage-path="${escHtml(cloudPath)}"`} class="w-full h-10"></audio>
+                                    <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
+                                        <button type="button" onclick="rewindPdfAudio('${audioElId}', -5)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 hover:bg-slate-800 border border-white/10 text-slate-200 font-bold">⏪ -5 giây</button>
+                                        <button type="button" onclick="setPdfAudioRate('${audioElId}', 0.75)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 hover:bg-slate-800 border border-white/10 text-cyan-300 font-bold">0.75x (Chậm)</button>
+                                        <button type="button" onclick="setPdfAudioRate('${audioElId}', 1.0)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 hover:bg-slate-800 border border-white/10 text-emerald-300 font-bold">1.0x (Chuẩn)</button>
+                                        <button type="button" onclick="setPdfAudioRate('${audioElId}', 1.25)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 hover:bg-slate-800 border border-white/10 text-violet-300 font-bold">1.25x (Nhanh)</button>
+                                    </div>
                                 </div>
                             ` : `
                                 <div class="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">
                                     <div>
-                                        <p class="font-extrabold text-amber-300">📝 Bài tập dựa trên Transcript trong PDF (không giả vờ có file audio gốc)</p>
-                                        <p class="text-slate-300 mt-0.5">Bạn có thể nghe bằng giọng đọc TTS trình duyệt hoặc đính kèm file .MP3 thật (VD: thư mục Connectivity 2 Audios) ở phần Tài liệu.</p>
+                                        <p class="font-extrabold text-amber-300">📝 Bài tập dựa trên Transcript trong PDF (chưa đính kèm file MP3)</p>
+                                        <p class="text-slate-300 mt-0.5">Hỗ trợ đọc tách giọng từng nhân vật bằng TTS hoặc bấm <strong>🎧 Đính kèm Audio MP3</strong> ở trên để nghe file gốc.</p>
                                     </div>
-                                    <button data-speak="${escHtml((l.transcript || "").slice(0, 900))}" onclick="handlePdfSpeakBtn(this)" class="px-3.5 py-2 rounded-xl bg-cyan-600 text-white font-extrabold shrink-0">🔊 Nghe bằng TTS</button>
+                                    <button data-speak="${escHtml((l.transcript || "").slice(0, 1400))}" onclick="speakPdfDialogueMultiVoice(this)" class="px-3.5 py-2 rounded-xl bg-cyan-600 text-white font-extrabold shrink-0">🔊 Nghe tách giọng TTS</button>
                                 </div>
                             `}
 
@@ -22176,6 +22256,7 @@ function renderPdfStudioPage() {
     `;
 
     renderPdfPipelineBannerOnly();
+    hydratePdfCloudAudioPlayers();
 }
 
 function initPdfStudioPage() {
