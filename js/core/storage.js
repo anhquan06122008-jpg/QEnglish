@@ -179,21 +179,13 @@ function loadDeckFromStorage() {
     }
 
     if (loaded === null) {
-        loaded = DEFAULT_DECK.map((d, idx) => normalizeWordItem({ ...d }, idx));
+        // Brand-new isolated accounts ALWAYS start cleanly with 0 vocabulary words (never auto-seeded with 50+ built-in words).
+        // Existing accounts (e.g., anhquan06122008@gmail.com with 229 words) load their saved Cloud/local deck intact.
+        loaded = [];
         try { localStorage.setItem(syncFlagKey, "1"); } catch (e) {}
     } else {
         loaded = loaded.map((d, idx) => normalizeWordItem(d, idx));
-        if (loaded.length > 0 && !localStorage.getItem(syncFlagKey)) {
-            const existingTerms = new Set(loaded.map(w => String(w.term || "").trim().toLowerCase()));
-            DEFAULT_DECK.forEach((d, idx) => {
-                const key = String(d.term || "").trim().toLowerCase();
-                if (key && !existingTerms.has(key)) {
-                    existingTerms.add(key);
-                    loaded.push(normalizeWordItem({ ...d, source: "built-in" }, idx));
-                }
-            });
-            try { localStorage.setItem(syncFlagKey, "1"); } catch (e) {}
-        }
+        try { localStorage.setItem(syncFlagKey, "1"); } catch (e) {}
     }
 
     deck = loaded;
@@ -1120,7 +1112,7 @@ function createNewUserAccount({ name, username, avatar = "🌟", goal = "Giao ti
     }
 
     const newId = "acc-" + Date.now();
-    const freshDeck = DEFAULT_DECK.map(item => normalizeWordItem(item, 0));
+    const freshDeck = [];
 
     // Clear user-scoped keys and initialize fresh default deck for the new member
     USER_SCOPED_KEYS.forEach(k => localStorage.removeItem(getScopedStorageKey(k)));
@@ -1179,9 +1171,9 @@ function switchToUserAccount(targetAccountId, enteredPin = null) {
         }
     });
 
-    // Ensure target has a valid v2 deck if empty
+    // Ensure target has a valid v2 deck array (starts empty 0 words for new accounts)
     if (!localStorage.getItem(STORAGE_KEYS.DECK_V2)) {
-        safeWriteJSON(STORAGE_KEYS.DECK_V2, DEFAULT_DECK.map(item => normalizeWordItem(item, 0)));
+        safeWriteJSON(STORAGE_KEYS.DECK_V2, []);
     }
 
     accountsStore.activeAccountId = targetAccountId;
