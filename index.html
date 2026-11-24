@@ -628,14 +628,14 @@ select optgroup {
                 <button onclick="toggleSidebar(true)" class="lg:hidden p-2 rounded-lg text-slate-400 hover:text-white">✕</button>
             </div>
 
-            <!-- Global Level Selector (PHẦN 4: CEFR & IELTS Tách Biệt) -->
+            <!-- Global Level Selector (Chuẩn CEFR A1 – C2) -->
             <div class="p-3 rounded-2xl bg-slate-950/90 border border-white/10 space-y-1.5">
                 <div class="flex items-center justify-between">
                     <label for="global-level" class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">🎯 Trình Độ Học Tập</label>
-                    <span class="text-[10px] text-violet-300 font-bold">CEFR / IELTS</span>
+                    <span class="text-[10px] text-violet-300 font-bold">CEFR A1–C2</span>
                 </div>
                 <select id="global-level" onchange="onLevelChange(this.value)" class="w-full bg-slate-900 border border-white/10 rounded-xl px-2.5 py-2 text-xs font-bold text-cyan-300 focus:outline-none focus:border-violet-500 cursor-pointer">
-                    <option value="all">🌐 Tất cả trình độ (Mặc định)</option>
+                    <option value="all">🌐 Tất cả trình độ (A1 – C2)</option>
                     <optgroup label="Chuẩn CEFR (A1 – C2)">
                         <option value="A1">CEFR A1 — Beginner</option>
                         <option value="A2">CEFR A2 — Elementary</option>
@@ -643,14 +643,6 @@ select optgroup {
                         <option value="B2">CEFR B2 — Upper-Intermediate</option>
                         <option value="C1">CEFR C1 — Advanced</option>
                         <option value="C2">CEFR C2 — Proficiency</option>
-                    </optgroup>
-                    <optgroup label="Mục tiêu IELTS (3.0 – 9.0, Độc lập)">
-                        <option value="IELTS 3.0">IELTS 3.0 – 3.5</option>
-                        <option value="IELTS 4.0">IELTS 4.0 – 4.5</option>
-                        <option value="IELTS 5.0">IELTS 5.0 – 5.5</option>
-                        <option value="IELTS 6.0">IELTS 6.0 – 6.5</option>
-                        <option value="IELTS 7.0">IELTS 7.0 – 7.5</option>
-                        <option value="IELTS 8.0">IELTS 8.0 – 9.0</option>
                     </optgroup>
                 </select>
             </div>
@@ -1527,21 +1519,13 @@ select optgroup {
                 <div id="listening-filter-bar" class="glass-panel p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3">
                     <div class="flex flex-wrap items-center gap-2.5">
                         <select id="listening-level-filter" onchange="filterListeningExercises()" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-bold text-cyan-300 focus:outline-none">
-                            <option value="all">Tất cả trình độ (CEFR & IELTS)</option>
-                            <optgroup label="CEFR">
-                                <option value="A1">CEFR A1</option>
-                                <option value="A2">CEFR A2</option>
-                                <option value="B1">CEFR B1</option>
-                                <option value="B2">CEFR B2</option>
-                                <option value="C1">CEFR C1</option>
-                                <option value="C2">CEFR C2</option>
-                            </optgroup>
-                            <optgroup label="IELTS">
-                                <option value="IELTS 4.0">IELTS 4.0 – 5.0</option>
-                                <option value="IELTS 5.5">IELTS 5.5</option>
-                                <option value="IELTS 6.0">IELTS 6.0 – 6.5</option>
-                                <option value="IELTS 7.0">IELTS 7.0+</option>
-                            </optgroup>
+                            <option value="all">Tất cả trình độ (A1–C2)</option>
+                            <option value="A1">CEFR A1</option>
+                            <option value="A2">CEFR A2</option>
+                            <option value="B1">CEFR B1</option>
+                            <option value="B2">CEFR B2</option>
+                            <option value="C1">CEFR C1</option>
+                            <option value="C2">CEFR C2</option>
                         </select>
                         <select id="listening-mode-filter" onchange="filterListeningExercises()" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-bold text-violet-300 focus:outline-none">
                             <option value="all">Tất cả 4 chế độ luyện nghe</option>
@@ -1641,13 +1625,13 @@ select optgroup {
                     <div class="flex flex-wrap items-center justify-between gap-3">
                         <button onclick="closeSpeakingTopics()" class="px-4 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs font-bold text-slate-200">← Chọn lại chế độ Speaking</button>
                         <select id="speaking-level-filter" onchange="renderSpeakingTopicsGrid()" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2 text-xs font-bold text-cyan-300">
-                            <option value="all">Tất cả trình độ</option>
-                            <option value="A1">A1</option>
-                            <option value="A2">A2</option>
-                            <option value="B1">B1 (Intermediate)</option>
-                            <option value="B2">B2</option>
-                            <option value="C1">C1</option>
-                            <option value="IELTS 6.0">IELTS Cue Cards</option>
+                            <option value="all">Tất cả trình độ (A1–C2)</option>
+                            <option value="A1">CEFR A1</option>
+                            <option value="A2">CEFR A2</option>
+                            <option value="B1">CEFR B1</option>
+                            <option value="B2">CEFR B2</option>
+                            <option value="C1">CEFR C1</option>
+                            <option value="C2">CEFR C2</option>
                         </select>
                     </div>
                     <div id="speaking-custom-panel" class="glass-panel p-5 rounded-2xl space-y-3">
@@ -1682,14 +1666,13 @@ select optgroup {
                     <div class="flex items-center gap-2.5">
                         <span class="text-xs font-bold text-slate-400">Lọc bài đọc:</span>
                         <select id="reading-level-filter" onchange="filterReadingPassages()" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2 text-xs font-bold text-cyan-300 focus:outline-none">
-                            <option value="all">Tất cả trình độ (A1–C2 & IELTS)</option>
+                            <option value="all">Tất cả trình độ (A1–C2)</option>
                             <option value="A1">CEFR A1</option>
                             <option value="A2">CEFR A2</option>
                             <option value="B1">CEFR B1 (Intermediate)</option>
                             <option value="B2">CEFR B2</option>
                             <option value="C1">CEFR C1</option>
                             <option value="C2">CEFR C2</option>
-                            <option value="IELTS 6.0">IELTS Academic 6.0+</option>
                         </select>
                     </div>
                     <span class="text-xs text-slate-400">💡 Bôi đen từ bất kỳ hoặc nhấp đúp chuột trong bài đọc để tra nghĩa & lưu vào Vocabulary Bank</span>
@@ -1944,14 +1927,13 @@ select optgroup {
                 <div id="writing-filter-bar" class="glass-panel p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3">
                     <div class="flex flex-wrap items-center gap-2.5">
                         <select id="writing-level-filter" onchange="filterWritingTopics()" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-bold text-cyan-300 focus:outline-none">
-                            <option value="all">Tất cả trình độ (A1–C2 & IELTS)</option>
+                            <option value="all">Tất cả trình độ (A1–C2)</option>
                             <option value="A1">CEFR A1</option>
                             <option value="A2">CEFR A2</option>
                             <option value="B1">CEFR B1 (Intermediate)</option>
                             <option value="B2">CEFR B2</option>
                             <option value="C1">CEFR C1</option>
                             <option value="C2">CEFR C2</option>
-                            <option value="IELTS 6.0">IELTS Writing</option>
                         </select>
                         <select id="writing-type-filter" onchange="filterWritingTopics()" class="bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-bold text-violet-300 focus:outline-none">
                             <option value="all">Mọi dạng bài viết</option>
@@ -2266,7 +2248,6 @@ select optgroup {
                                     <option value="B2">CEFR B2</option>
                                     <option value="C1">CEFR C1</option>
                                     <option value="C2">CEFR C2</option>
-                                    <option value="IELTS 6.0">IELTS Academic</option>
                                 </select>
                             </div>
                             <button onclick="extractContentFromUrlChannel()" class="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold transition">
@@ -2304,8 +2285,6 @@ select optgroup {
                                     <option value="B2">CEFR B2</option>
                                     <option value="C1">CEFR C1</option>
                                     <option value="C2">CEFR C2</option>
-                                    <option value="IELTS 6.0">IELTS Practice</option>
-                                    <option value="TOEIC Practice">TOEIC Practice</option>
                                 </select>
                                 <input id="mat-manual-folder" type="text" placeholder="Thư mục (VD: Bài tập trên lớp, IELTS...)" class="bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-slate-300">
                             </div>
@@ -2461,7 +2440,6 @@ select optgroup {
                                     <option value="B2">CEFR B2</option>
                                     <option value="C1">CEFR C1</option>
                                     <option value="C2">CEFR C2</option>
-                                    <option value="IELTS 6.0">IELTS 6.0</option>
                                 </select>
                             </div>
                             <input id="cms-title" type="text" placeholder="Tiêu đề bài học *" class="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-white">
@@ -2484,11 +2462,12 @@ select optgroup {
                                     <option value="grammar">Grammar</option>
                                 </select>
                                 <select id="ai-gen-level" class="bg-slate-900 border border-white/10 rounded-xl px-2.5 py-2 font-bold text-violet-300">
+                                    <option value="A1">A1</option>
                                     <option value="A2">A2</option>
                                     <option value="B1" selected>B1</option>
                                     <option value="B2">B2</option>
                                     <option value="C1">C1</option>
-                                    <option value="IELTS 6.0">IELTS 6.0</option>
+                                    <option value="C2">C2</option>
                                 </select>
                                 <input id="ai-gen-count" type="number" value="3" min="1" max="6" title="Số câu hỏi" class="bg-slate-900 border border-white/10 rounded-xl px-2.5 py-2 text-white font-bold">
                             </div>
@@ -2742,8 +2721,6 @@ select optgroup {
                         <option value="B2">B2</option>
                         <option value="C1">C1</option>
                         <option value="C2">C2</option>
-                        <option value="IELTS 6.0">IELTS 6.0</option>
-                        <option value="IELTS 7.0+">IELTS 7.0+</option>
                     </select>
                 </div>
             </div>
