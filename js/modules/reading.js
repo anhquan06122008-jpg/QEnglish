@@ -9,7 +9,7 @@ let currentHighlightColor = "highlight-yellow";
 let flaggedQuestions = new Set();
 
 function getReadingState() {
-    return safeParseJSON(localStorage.getItem(STORAGE_KEYS.READING), {
+    return safeReadJSON(STORAGE_KEYS.READING, {
         completedIds: [],
         scoresById: {},
         highlightsById: {},

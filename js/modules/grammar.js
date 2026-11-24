@@ -5,7 +5,7 @@
 let activeGrammarLesson = null;
 
 function getGrammarSavedState() {
-    return safeParseJSON(localStorage.getItem(STORAGE_KEYS.GRAMMAR), { completedIds: [], scoresById: {} });
+    return safeReadJSON(STORAGE_KEYS.GRAMMAR, { completedIds: [], scoresById: {} });
 }
 
 function saveGrammarSavedState(st) {

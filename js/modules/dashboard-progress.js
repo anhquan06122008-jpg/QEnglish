@@ -16,7 +16,7 @@ const DEFAULT_DAILY_PLAN = [
 ];
 
 function getDashboardSaved() {
-    return safeParseJSON(localStorage.getItem(STORAGE_KEYS.DASHBOARD), { tasksByDate: {} });
+    return safeReadJSON(STORAGE_KEYS.DASHBOARD, { tasksByDate: {} });
 }
 
 function saveDashboardSaved(st) {
@@ -426,7 +426,7 @@ function renderProgressAnalyticsPage() {
     if (extraProgBox) {
         const wc = stats.writingCriteriaAvg || {};
         const fmtCrit = v => (typeof v === "number" ? `${v}/2.5` : "—");
-        const wSaved = safeParseJSON(localStorage.getItem(STORAGE_KEYS.WRITING), { submissions: [] });
+        const wSaved = safeReadJSON(STORAGE_KEYS.WRITING, { submissions: [] });
         const recentScored = (wSaved.submissions || []).filter(s => typeof s.totalScore10 === "number").slice(0, 5);
         extraProgBox.innerHTML = `
             <div class="grid md:grid-cols-2 gap-4 text-xs">
@@ -554,6 +554,159 @@ function renderSettingsAndCMSPage() {
 
     AIClient.syncStatusBadges();
     renderCMSContentTable();
+    renderStorageManagerWidget();
+}
+
+function formatStorageBytesPretty(bytes) {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+    return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+async function renderStorageManagerWidget() {
+    const box = document.getElementById("settings-storage-manager-body");
+    if (!box || typeof computeStorageDiagnosticsReport !== "function") return;
+    box.innerHTML = `<div class="p-4 rounded-2xl bg-slate-950/70 border border-white/10 text-xs text-slate-400 animate-pulse">⏳ Đang đo dung lượng bộ nhớ IndexedDB, trình duyệt và Supabase Cloud...</div>`;
+
+    const rep = await computeStorageDiagnosticsReport();
+    const est = rep.estimate || {};
+    const idbUsage = est.usage || 0;
+    const idbQuota = est.quota || 0;
+    const idbPct = idbQuota > 0 ? Math.min(100, Math.max(0.1, (idbUsage / idbQuota) * 100)) : 0;
+
+    const lsPct = Math.min(100, (rep.localStorageBytes / rep.localStorageLimitBytes) * 100);
+    const lsHealthy = lsPct < 50;
+
+    const cloudDbPct = Math.min(100, (rep.cloud.dbBytes / rep.cloud.dbLimitBytes) * 100);
+    const cloudMediaPct = Math.min(100, (rep.cloud.mediaEstimatedBytes / rep.cloud.mediaLimitBytes) * 100);
+
+    const mod = rep.modules;
+    const totalPdfLocal = mod.pdfCourseJsonBytes + mod.localVaultBinariesBytes;
+
+    box.innerHTML = `
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
+            <!-- LOCAL INDEXEDDB (MULTI-GB) & LOCALSTORAGE -->
+            <div class="p-5 rounded-2xl bg-slate-950/80 border border-emerald-500/25 space-y-4">
+                <div class="flex items-start justify-between gap-2 flex-wrap">
+                    <div>
+                        <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400">Kho Cục Bộ Mở Rộng (IndexedDB Engine)</span>
+                        <h4 class="text-sm font-extrabold text-white mt-0.5">💾 Bộ Nhớ Máy: ${est.supported && idbQuota > 0 ? `${formatStorageBytesPretty(idbUsage)} / ${formatStorageBytesPretty(idbQuota)}` : `${formatStorageBytesPretty(mod.vocabBytes + mod.writingBytes + totalPdfLocal + mod.materialsBytes + mod.otherSkillsBytes)} (Hàng chục GB)`}</h4>
+                    </div>
+                    <span class="px-2.5 py-1 rounded-full text-[10px] font-bold border ${est.persisted ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" : "bg-amber-500/15 text-amber-300 border-amber-500/30"}">
+                        ${est.persisted ? "🛡️ Đã bảo vệ bền vững" : "⚡ Sẵn sàng mở rộng"}
+                    </span>
+                </div>
+
+                ${est.supported && idbQuota > 0 ? `
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-[11px] text-slate-400">
+                            <span>Hạn mức trình duyệt cấp cho QEnglish (IndexedDB)</span>
+                            <strong class="text-emerald-300">${idbPct < 1 ? "< 1%" : idbPct.toFixed(1) + "%"} đã dùng</strong>
+                        </div>
+                        <div class="h-2 rounded-full bg-slate-800 overflow-hidden">
+                            <div class="h-full bg-gradient-to-r from-emerald-500 to-cyan-400 rounded-full" style="width:${Math.max(1.5, idbPct)}%"></div>
+                        </div>
+                    </div>
+                ` : ""}
+
+                <div class="space-y-1.5 pt-1">
+                    <div class="flex justify-between text-[11px] text-slate-400">
+                        <span>Bộ đệm <code class="text-cyan-300">localStorage</code> (tự động giữ nhẹ dưới 5 MB)</span>
+                        <strong class="${lsHealthy ? "text-emerald-300" : "text-amber-300"}">${formatStorageBytesPretty(rep.localStorageBytes)} / 5 MB (${lsPct.toFixed(1)}%)</strong>
+                    </div>
+                    <div class="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                        <div class="h-full ${lsHealthy ? "bg-cyan-400" : "bg-amber-400"} rounded-full" style="width:${Math.max(1, lsPct)}%"></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 pt-1">
+                    <div class="p-2.5 rounded-xl bg-slate-900/90 border border-white/5">
+                        <span class="text-[10px] text-slate-400 block">📄 AI PDF Studio & Audio/PDF máy</span>
+                        <strong class="text-violet-300">${formatStorageBytesPretty(totalPdfLocal)}</strong>
+                        <span class="text-[10px] text-slate-500 block">${mod.localVaultFilesCount} file cục bộ</span>
+                    </div>
+                    <div class="p-2.5 rounded-xl bg-slate-900/90 border border-white/5">
+                        <span class="text-[10px] text-slate-400 block">✍️ Writing & Dịch thuật</span>
+                        <strong class="text-cyan-300">${formatStorageBytesPretty(mod.writingBytes)}</strong>
+                        <span class="text-[10px] text-slate-500 block">Lưu tự động trong IndexedDB</span>
+                    </div>
+                    <div class="p-2.5 rounded-xl bg-slate-900/90 border border-white/5">
+                        <span class="text-[10px] text-slate-400 block">📖 Từ vựng & SRS</span>
+                        <strong class="text-emerald-300">${formatStorageBytesPretty(mod.vocabBytes)}</strong>
+                        <span class="text-[10px] text-slate-500 block">${deck.length} từ vựng cá nhân</span>
+                    </div>
+                    <div class="p-2.5 rounded-xl bg-slate-900/90 border border-white/5">
+                        <span class="text-[10px] text-slate-400 block">📚 Học liệu & Sổ tay</span>
+                        <strong class="text-amber-300">${formatStorageBytesPretty(mod.materialsBytes + mod.otherSkillsBytes)}</strong>
+                        <span class="text-[10px] text-slate-500 block">Ảnh/Audio tới 10 MB/file</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUPABASE CLOUD STORAGE & DB QUOTA -->
+            <div class="p-5 rounded-2xl bg-slate-950/80 border border-violet-500/25 space-y-4">
+                <div class="flex items-start justify-between gap-2 flex-wrap">
+                    <div>
+                        <span class="text-[10px] font-extrabold uppercase tracking-wider text-violet-400">Đồng Bộ Đa Thiết Bị (Supabase Cloud)</span>
+                        <h4 class="text-sm font-extrabold text-white mt-0.5">☁️ Trạng Thái Dung Lượng Cloud</h4>
+                    </div>
+                    <span class="px-2.5 py-1 rounded-full text-[10px] font-bold border ${rep.cloud.enabled ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" : "bg-slate-800 text-slate-400 border-white/10"}">
+                        ${rep.cloud.enabled ? "🟢 Đang kết nối Cloud" : "💾 Chế độ cục bộ"}
+                    </span>
+                </div>
+
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-[11px] text-slate-300">
+                        <span>🗄️ Cơ sở dữ liệu học tập (Database Free 500 MB)</span>
+                        <strong class="text-emerald-300">${formatStorageBytesPretty(rep.cloud.dbBytes)} / 500 MB (${cloudDbPct < 0.1 ? "<0.1" : cloudDbPct.toFixed(2)}%)</strong>
+                    </div>
+                    <div class="h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <div class="h-full bg-gradient-to-r from-violet-500 to-indigo-400 rounded-full" style="width:${Math.max(1.5, cloudDbPct)}%"></div>
+                    </div>
+                    <p class="text-[10px] text-slate-500">Chứa toàn bộ từ vựng, bài viết, tiến độ và cấu trúc Unit/Bài tập của mọi khóa học PDF.</p>
+                </div>
+
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-[11px] text-slate-300">
+                        <span>🎧 Kho File Media Cloud (Storage Free 1 GB)</span>
+                        <strong class="text-cyan-300">~${formatStorageBytesPretty(rep.cloud.mediaEstimatedBytes)} / 1 GB (~${cloudMediaPct.toFixed(1)}%)</strong>
+                    </div>
+                    <div class="h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <div class="h-full bg-gradient-to-r from-cyan-500 to-emerald-400 rounded-full" style="width:${Math.max(1.5, cloudMediaPct)}%"></div>
+                    </div>
+                    <p class="text-[10px] text-slate-400">
+                        Đang lưu: <strong class="text-white">${rep.cloud.cloudAudioCount}</strong> file MP3 Listening • <strong class="text-white">${rep.cloud.cloudPagesTotal}</strong> trang sách HD (${rep.cloud.cloudPageSets} giáo trình) • <strong class="text-white">${rep.cloud.cloudMaterialFiles}</strong> tài liệu tải lên.
+                    </p>
+                </div>
+
+                <div class="p-3 rounded-xl bg-violet-500/10 border border-violet-500/20 text-[11px] text-slate-300 leading-relaxed">
+                    💡 <strong>Mẹo mở rộng lâu dài:</strong> Trên máy cá nhân QEnglish đã tự động lưu không giới hạn 5 MB bằng <strong>IndexedDB</strong>. Trên Cloud Free (1 GB) bạn vẫn còn dư hơn <strong>${formatStorageBytesPretty(Math.max(0, rep.cloud.mediaLimitBytes - rep.cloud.mediaEstimatedBytes))}</strong> cho thêm nhiều giáo trình kèm Audio!
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function handleOptimizeStorageClick() {
+    if (typeof optimizeAndMigrateAllToIdb !== "function") return;
+    showToast("⏳ Đang tối ưu và chuyển toàn bộ dữ liệu lớn sang IndexedDB...");
+    const res = await optimizeAndMigrateAllToIdb();
+    await renderStorageManagerWidget();
+    const kb = Math.round((res.freedBytes || 0) / 1024);
+    showToast(`✅ Đã tối ưu hoàn tất! Giải phóng ${kb > 0 ? kb + " KB" : "toàn bộ bản trùng"} khỏi localStorage và đồng bộ an toàn sang IndexedDB.`);
+}
+
+async function handleRequestPersistentStorageClick() {
+    if (typeof QEnglishIdbStore === "undefined") return;
+    const granted = await QEnglishIdbStore.requestPersistentStorage();
+    await renderStorageManagerWidget();
+    if (granted) {
+        showToast("🛡️ Trình duyệt đã bật chế độ Lưu Bền Vững (Persistent Storage) cho QEnglish!");
+    } else {
+        showToast("ℹ️ Trình duyệt tự động quản lý lưu bền vững cho QEnglish (hãy đánh dấu trang web hoặc cài làm ứng dụng để tăng mức ưu tiên).", "warning");
+    }
 }
 
 async function saveBackendSettingsAndTest() {
@@ -597,7 +750,8 @@ function importAllData(event) {
 function clearAllProgress() {
     if (!confirm("Xác nhận xóa lịch sử tiến độ các bài tập nhưng GIỮ NGUYÊN 100% Kho từ vựng (qenglish_deck_v2) và Sổ tay ghi chú?")) return;
     [STORAGE_KEYS.PROGRESS, STORAGE_KEYS.DASHBOARD, STORAGE_KEYS.GRAMMAR, STORAGE_KEYS.LISTENING, STORAGE_KEYS.SPEAKING, STORAGE_KEYS.READING, STORAGE_KEYS.WRITING, STORAGE_KEYS.SRS].forEach(k => {
-        localStorage.removeItem(k);
+        if (typeof safeRemoveStorageKey === "function") safeRemoveStorageKey(k);
+        else localStorage.removeItem(k);
     });
     loadSRSState();
     loadProgressState();
@@ -1015,9 +1169,12 @@ async function bootAuthenticatedWorkspace(user, options = {}) {
     window.__QENGLISH_AUTH_USER = user;
     window.__QENGLISH_ACTIVE_UID = options.useLegacyNamespace ? null : user.id;
 
-    // Self-heal bloated localStorage (duplicated pdfStudio in DASHBOARD / qenglish_accounts_v1) before syncing or writing
+    // Self-heal bloated localStorage & hydrate unlimited IndexedDB storage BEFORE cloud merge/render
     if (typeof cleanupBloatedLocalStorage === "function") {
         cleanupBloatedLocalStorage({ aggressive: false });
+    }
+    if (typeof hydrateUserStorageFromIdb === "function") {
+        await hydrateUserStorageFromIdb(window.__QENGLISH_ACTIVE_UID);
     }
     if (typeof hydratePdfStudioStateFromVault === "function") {
         await hydratePdfStudioStateFromVault(true);
@@ -1755,7 +1912,7 @@ function handleMaterialFileUpload(event) {
             showToast(`Đã thêm file nghe "${baseTitle}" vào mục Listening!`);
         };
 
-        if (file.size <= 1.8 * 1024 * 1024) {
+        if (file.size <= 10 * 1024 * 1024) {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const dataUrl = String(e.target.result || "");
@@ -1790,7 +1947,7 @@ function handleMaterialFileUpload(event) {
             showToast(`Đã thêm ảnh đề bài "${baseTitle}"!`);
         };
 
-        if (file.size <= 1.5 * 1024 * 1024) {
+        if (file.size <= 10 * 1024 * 1024) {
             const reader = new FileReader();
             reader.onload = (e) => saveImgItem(String(e.target.result || ""), true);
             reader.readAsDataURL(file);

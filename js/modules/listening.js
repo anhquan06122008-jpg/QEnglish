@@ -12,7 +12,7 @@ let fullTestTimerId = null;
 let fullTestRemainingSec = 0;
 
 function getListeningState() {
-    return safeParseJSON(localStorage.getItem(STORAGE_KEYS.LISTENING), { completedIds: [], history: [] });
+    return safeReadJSON(STORAGE_KEYS.LISTENING, { completedIds: [], history: [] });
 }
 
 function saveListeningState(st) {

@@ -16,7 +16,7 @@ let guidedFollowUpIdx = 0;
 let currentStarterObj = null;
 
 function getSpeakingState() {
-    return safeParseJSON(localStorage.getItem(STORAGE_KEYS.SPEAKING), { history: [] });
+    return safeReadJSON(STORAGE_KEYS.SPEAKING, { history: [] });
 }
 
 function saveSpeakingState(st) {

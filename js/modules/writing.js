@@ -21,7 +21,7 @@ const WRITING_MODE_LABELS = {
 };
 
 function getWritingState() {
-    return safeParseJSON(localStorage.getItem(STORAGE_KEYS.WRITING), { drafts: {}, submissions: [] });
+    return safeReadJSON(STORAGE_KEYS.WRITING, { drafts: {}, submissions: [] });
 }
 
 function saveWritingState(st) {

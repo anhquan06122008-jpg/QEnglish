@@ -66,9 +66,399 @@ function safeParseJSON(raw, fallback) {
     }
 }
 
-const PDF_STUDIO_LOCALSTORAGE_INLINE_MAX = 120000; // >120KB PDF courses live in IndexedDB + Cloud (never bloat 5MB localStorage)
-if (typeof window !== "undefined" && !window.__QENGLISH_PDF_STUDIO_CACHE) {
-    window.__QENGLISH_PDF_STUDIO_CACHE = {};
+const PDF_STUDIO_LOCALSTORAGE_INLINE_MAX = 120000; // >120KB PDF courses live in IndexedDB + Cloud
+const IDB_LOCALSTORAGE_INLINE_MAX = 65536; // >64KB data keys live in IndexedDB (multi-GB quota) + RAM + Cloud
+if (typeof window !== "undefined") {
+    if (!window.__QENGLISH_PDF_STUDIO_CACHE) window.__QENGLISH_PDF_STUDIO_CACHE = {};
+    if (!(window.__QENGLISH_IDB_MEM_CACHE instanceof Map)) window.__QENGLISH_IDB_MEM_CACHE = new Map();
+}
+
+/* ==================== UNLIMITED INDEXEDDB STORAGE ENGINE (MULTI-GB QUOTA) ==================== */
+const QEnglishIdbStore = {
+    DB_NAME: "QEnglishStorageDB_v1",
+    STORE_NAME: "records",
+    _dbPromise: null,
+    _persisted: null,
+    isAvailable() {
+        return typeof indexedDB !== "undefined";
+    },
+    open() {
+        if (this._dbPromise) return this._dbPromise;
+        this._dbPromise = new Promise(resolve => {
+            if (!this.isAvailable()) return resolve(null);
+            try {
+                const req = indexedDB.open(this.DB_NAME, 1);
+                req.onupgradeneeded = () => {
+                    const db = req.result;
+                    if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+                        db.createObjectStore(this.STORE_NAME);
+                    }
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => resolve(null);
+            } catch {
+                resolve(null);
+            }
+        });
+        return this._dbPromise;
+    },
+    async put(key, rawValue) {
+        const db = await this.open();
+        if (!db) return false;
+        return new Promise(resolve => {
+            try {
+                const tx = db.transaction(this.STORE_NAME, "readwrite");
+                tx.objectStore(this.STORE_NAME).put(rawValue, key);
+                tx.oncomplete = () => resolve(true);
+                tx.onerror = () => resolve(false);
+            } catch {
+                resolve(false);
+            }
+        });
+    },
+    async get(key) {
+        const db = await this.open();
+        if (!db) return null;
+        return new Promise(resolve => {
+            try {
+                const tx = db.transaction(this.STORE_NAME, "readonly");
+                const req = tx.objectStore(this.STORE_NAME).get(key);
+                req.onsuccess = () => resolve(req.result !== undefined ? req.result : null);
+                req.onerror = () => resolve(null);
+            } catch {
+                resolve(null);
+            }
+        });
+    },
+    async del(key) {
+        const db = await this.open();
+        if (!db) return false;
+        return new Promise(resolve => {
+            try {
+                const tx = db.transaction(this.STORE_NAME, "readwrite");
+                tx.objectStore(this.STORE_NAME).delete(key);
+                tx.oncomplete = () => resolve(true);
+                tx.onerror = () => resolve(false);
+            } catch {
+                resolve(false);
+            }
+        });
+    },
+    async getAllMatching(prefix = "") {
+        const db = await this.open();
+        if (!db) return [];
+        return new Promise(resolve => {
+            try {
+                const out = [];
+                const tx = db.transaction(this.STORE_NAME, "readonly");
+                const req = tx.objectStore(this.STORE_NAME).openCursor();
+                req.onsuccess = () => {
+                    const cursor = req.result;
+                    if (!cursor) return resolve(out);
+                    const k = String(cursor.key || "");
+                    if (!prefix || k.startsWith(prefix)) {
+                        out.push([k, cursor.value]);
+                    }
+                    cursor.continue();
+                };
+                req.onerror = () => resolve(out);
+            } catch {
+                resolve([]);
+            }
+        });
+    },
+    async requestPersistentStorage() {
+        try {
+            if (navigator.storage && typeof navigator.storage.persisted === "function") {
+                const already = await navigator.storage.persisted();
+                if (already) {
+                    this._persisted = true;
+                    return true;
+                }
+                if (typeof navigator.storage.persist === "function") {
+                    const granted = await navigator.storage.persist();
+                    this._persisted = Boolean(granted);
+                    return this._persisted;
+                }
+            }
+        } catch {}
+        this._persisted = false;
+        return false;
+    },
+    async estimateQuota() {
+        try {
+            if (navigator.storage && typeof navigator.storage.estimate === "function") {
+                const est = await navigator.storage.estimate();
+                const persisted = typeof navigator.storage.persisted === "function"
+                    ? await navigator.storage.persisted().catch(() => false)
+                    : false;
+                this._persisted = Boolean(persisted);
+                return {
+                    supported: true,
+                    usage: Number(est.usage) || 0,
+                    quota: Number(est.quota) || 0,
+                    persisted: Boolean(persisted)
+                };
+            }
+        } catch {}
+        return { supported: false, usage: 0, quota: 0, persisted: false };
+    }
+};
+
+function safeReadRaw(key) {
+    if (typeof window !== "undefined" && window.__QENGLISH_IDB_MEM_CACHE instanceof Map && window.__QENGLISH_IDB_MEM_CACHE.has(key)) {
+        return window.__QENGLISH_IDB_MEM_CACHE.get(key);
+    }
+    try {
+        return localStorage.getItem(key);
+    } catch {
+        return null;
+    }
+}
+
+function safeReadJSON(key, fallback) {
+    const raw = safeReadRaw(key);
+    if (raw === null || raw === undefined) return fallback;
+    if (typeof raw !== "string") return raw;
+    return safeParseJSON(raw, fallback);
+}
+
+function safeRemoveStorageKey(key) {
+    if (typeof window !== "undefined" && window.__QENGLISH_IDB_MEM_CACHE instanceof Map) {
+        window.__QENGLISH_IDB_MEM_CACHE.delete(key);
+    }
+    try { localStorage.removeItem(key); } catch {}
+    QEnglishIdbStore.del(key).catch(() => {});
+}
+
+async function hydrateUserStorageFromIdb(uid = null) {
+    if (typeof window === "undefined") return { hydratedKeys: 0, migratedKeys: 0 };
+    if (!(window.__QENGLISH_IDB_MEM_CACHE instanceof Map)) window.__QENGLISH_IDB_MEM_CACHE = new Map();
+    const prefix = uid ? `qenglish_u_${uid}::` : "qenglish_";
+
+    // Ask browser for persistent storage protection (non-blocking)
+    QEnglishIdbStore.requestPersistentStorage().catch(() => {});
+
+    // 1. Load all records for this user namespace from IndexedDB into synchronous RAM cache
+    const entries = await QEnglishIdbStore.getAllMatching(prefix);
+    let hydratedKeys = 0;
+    entries.forEach(([k, val]) => {
+        if (typeof val === "string") {
+            window.__QENGLISH_IDB_MEM_CACHE.set(k, val);
+            hydratedKeys++;
+        }
+    });
+
+    // 2. Also pull any keys currently only in localStorage -> mirror into IndexedDB & prune >64KB copies from localStorage
+    let migratedKeys = 0;
+    try {
+        const lsKeys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (!k) continue;
+            if (uid ? k.startsWith(prefix) : Object.values(BASE_STORAGE_KEYS).includes(k)) {
+                lsKeys.push(k);
+            }
+        }
+        for (const k of lsKeys) {
+            if (k.endsWith("::sync_queue_v1") || k.endsWith(`::${BASE_STORAGE_KEYS.PDF_STUDIO}`) || k === BASE_STORAGE_KEYS.PDF_STUDIO) continue;
+            const lsVal = localStorage.getItem(k);
+            if (lsVal === null) continue;
+            if (!window.__QENGLISH_IDB_MEM_CACHE.has(k)) {
+                window.__QENGLISH_IDB_MEM_CACHE.set(k, lsVal);
+                const saved = await QEnglishIdbStore.put(k, lsVal);
+                if (saved) {
+                    migratedKeys++;
+                    if (lsVal.length > IDB_LOCALSTORAGE_INLINE_MAX) {
+                        try { localStorage.removeItem(k); } catch {}
+                    }
+                }
+            } else if (lsVal.length > IDB_LOCALSTORAGE_INLINE_MAX) {
+                // Already safely stored in IndexedDB -> free 5MB localStorage slot
+                try { localStorage.removeItem(k); } catch {}
+            }
+        }
+    } catch {}
+
+    return { hydratedKeys, migratedKeys };
+}
+
+async function computeStorageDiagnosticsReport() {
+    const estimate = await QEnglishIdbStore.estimateQuota();
+    const utf8Len = (str) => {
+        if (!str) return 0;
+        try { return new Blob([String(str)]).size; } catch { return String(str).length * 2; }
+    };
+
+    // 1. Measure localStorage total & keys
+    let localStorageBytes = 0;
+    let localStorageKeysCount = 0;
+    try {
+        localStorageKeysCount = localStorage.length;
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (!k) continue;
+            localStorageBytes += utf8Len(localStorage.getItem(k));
+        }
+    } catch {}
+
+    // 2. Measure per-module data sizes (from live RAM / IndexedDB / localStorage)
+    const measureKey = (storageKey) => {
+        const raw = safeReadRaw(storageKey);
+        return raw ? utf8Len(typeof raw === "string" ? raw : JSON.stringify(raw)) : 0;
+    };
+    const vocabBytes = measureKey(STORAGE_KEYS.DECK_V2) + measureKey(STORAGE_KEYS.SRS);
+    const writingBytes = measureKey(STORAGE_KEYS.WRITING);
+    const materialsBytes = measureKey(STORAGE_KEYS.CMS) + measureKey(STORAGE_KEYS.NOTEBOOK);
+    const otherSkillsBytes = measureKey(STORAGE_KEYS.PROGRESS) + measureKey(STORAGE_KEYS.GRAMMAR) +
+        measureKey(STORAGE_KEYS.LISTENING) + measureKey(STORAGE_KEYS.READING) +
+        measureKey(STORAGE_KEYS.SPEAKING) + measureKey(STORAGE_KEYS.DASHBOARD) + measureKey(STORAGE_KEYS.SETTINGS);
+
+    const pdfRawObj = getCurrentPdfStudioRawForSnapshot();
+    const pdfCourseJsonBytes = pdfRawObj ? utf8Len(JSON.stringify(pdfRawObj)) : 0;
+
+    // Count local binary PDFs/Audios in PdfBinaryVault if available
+    let localVaultBinariesBytes = 0;
+    let localVaultFilesCount = 0;
+    try {
+        if (typeof PdfBinaryVault !== "undefined" && typeof PdfBinaryVault.open === "function") {
+            const vdb = await PdfBinaryVault.open();
+            if (vdb) {
+                for (const storeName of ["pdfs", "audios"]) {
+                    if (!vdb.objectStoreNames.contains(storeName)) continue;
+                    await new Promise(resolve => {
+                        const tx = vdb.transaction(storeName, "readonly");
+                        const req = tx.objectStore(storeName).openCursor();
+                        req.onsuccess = () => {
+                            const c = req.result;
+                            if (!c) return resolve();
+                            const v = c.value;
+                            localVaultFilesCount++;
+                            if (v && typeof v.size === "number") localVaultBinariesBytes += v.size;
+                            else if (v && typeof v.byteLength === "number") localVaultBinariesBytes += v.byteLength;
+                            c.continue();
+                        };
+                        req.onerror = () => resolve();
+                    });
+                }
+            }
+        }
+    } catch {}
+
+    // 3. Measure Cloud DB Snapshot size & Cloud Storage footprint
+    let cloudDbBytes = 0;
+    try {
+        const snap = collectCurrentWorkspaceSnapshot();
+        cloudDbBytes = utf8Len(JSON.stringify(snap));
+    } catch {}
+
+    let cloudAudioCount = 0;
+    let cloudPageSets = 0;
+    let cloudPagesTotal = 0;
+    let cloudMaterialFiles = 0;
+    let cloudMaterialBytes = 0;
+    if (pdfRawObj) {
+        (pdfRawObj.courses || []).forEach(c => {
+            const seenAudio = new Set();
+            (c.units || []).forEach(u => {
+                (u.skills?.listening || []).forEach(l => {
+                    if (l.audioStoragePath) seenAudio.add(l.audioStoragePath);
+                });
+            });
+            (c.skills?.listening || []).forEach(l => {
+                if (l.audioStoragePath) seenAudio.add(l.audioStoragePath);
+            });
+            cloudAudioCount += seenAudio.size;
+        });
+        (pdfRawObj.documents || []).forEach(d => {
+            if (d.cloudPagesPrefix) {
+                cloudPageSets++;
+                const pStart = Number(d.cloudPagesRange?.start || 1);
+                const pEnd = Number(d.cloudPagesRange?.end || d.totalPages || 0);
+                if (pEnd >= pStart) cloudPagesTotal += (pEnd - pStart + 1);
+            }
+        });
+    }
+    (Array.isArray(cmsItems) ? cmsItems : []).forEach(item => {
+        if (item?.payload?.cloudStoragePath) {
+            cloudMaterialFiles++;
+            cloudMaterialBytes += Number(item.payload.fileSize) || 0;
+        }
+    });
+    // Conservative realistic estimate for cloud media (~1.37 MB avg per textbook MP3 + ~100 KB per HD page JPEG + exact material bytes)
+    const cloudMediaEstimatedBytes = (cloudAudioCount * 1370 * 1024) + (cloudPagesTotal * 100 * 1024) + cloudMaterialBytes;
+
+    return {
+        estimate,
+        localStorageBytes,
+        localStorageLimitBytes: 5 * 1024 * 1024,
+        localStorageKeysCount,
+        modules: {
+            vocabBytes,
+            writingBytes,
+            pdfCourseJsonBytes,
+            localVaultBinariesBytes,
+            localVaultFilesCount,
+            materialsBytes,
+            otherSkillsBytes
+        },
+        cloud: {
+            enabled: typeof CloudClient !== "undefined" && CloudClient.isCloudMode(),
+            dbBytes: cloudDbBytes,
+            dbLimitBytes: 500 * 1024 * 1024,
+            mediaEstimatedBytes: cloudMediaEstimatedBytes,
+            mediaLimitBytes: 1024 * 1024 * 1024,
+            cloudAudioCount,
+            cloudPageSets,
+            cloudPagesTotal,
+            cloudMaterialFiles
+        }
+    };
+}
+
+async function optimizeAndMigrateAllToIdb() {
+    const uid = typeof window !== "undefined" ? window.__QENGLISH_ACTIVE_UID : null;
+    const freedSync = cleanupBloatedLocalStorage({ aggressive: true });
+    const res = await hydrateUserStorageFromIdb(uid);
+
+    // Ensure every active scoped key > 64KB is written to IndexedDB and removed from localStorage
+    let prunedLargeLs = 0;
+    try {
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k) keys.push(k);
+        }
+        for (const k of keys) {
+            if (!k.includes("::qenglish_") && !Object.values(BASE_STORAGE_KEYS).includes(k)) continue;
+            if (k.endsWith("::sync_queue_v1") || k === "qenglish_cloud_session_v1") continue;
+            const val = localStorage.getItem(k);
+            if (!val) continue;
+            if (k.endsWith(`::${BASE_STORAGE_KEYS.PDF_STUDIO}`) || k === BASE_STORAGE_KEYS.PDF_STUDIO) {
+                const parsed = safeParseJSON(val, null);
+                if (parsed && typeof PdfBinaryVault !== "undefined") {
+                    const ok = await PdfBinaryVault.put("kv", k, parsed);
+                    if (ok && val.length > IDB_LOCALSTORAGE_INLINE_MAX) {
+                        localStorage.removeItem(k);
+                        prunedLargeLs += val.length;
+                    }
+                }
+            } else if (val.length > IDB_LOCALSTORAGE_INLINE_MAX) {
+                window.__QENGLISH_IDB_MEM_CACHE.set(k, val);
+                const ok = await QEnglishIdbStore.put(k, val);
+                if (ok) {
+                    localStorage.removeItem(k);
+                    prunedLargeLs += val.length;
+                }
+            }
+        }
+    } catch {}
+
+    await QEnglishIdbStore.requestPersistentStorage();
+    return {
+        freedBytes: freedSync + prunedLargeLs,
+        migratedKeys: res.migratedKeys
+    };
 }
 
 function stripPdfStudioFromDashboardObj(dashObj) {
@@ -229,6 +619,25 @@ function safeWriteJSON(key, value) {
         valueToWrite = stripPdfStudioFromDashboardObj(value);
     }
     const serialized = JSON.stringify(valueToWrite);
+    const isAuthOrMetaKey = (
+        key === "qenglish_cloud_session_v1" ||
+        key === "qenglish_local_auth_users_v1" ||
+        key === "qenglish_local_auth_session_v1" ||
+        key === "qenglish_accounts_v1" ||
+        key.endsWith("::sync_queue_v1")
+    );
+
+    // 1. Always update synchronous RAM cache & persist to unlimited IndexedDB for all user data keys
+    if (!isAuthOrMetaKey && typeof window !== "undefined") {
+        if (!(window.__QENGLISH_IDB_MEM_CACHE instanceof Map)) window.__QENGLISH_IDB_MEM_CACHE = new Map();
+        window.__QENGLISH_IDB_MEM_CACHE.set(key, serialized);
+        QEnglishIdbStore.put(key, serialized).then(ok => {
+            if (ok && serialized.length > IDB_LOCALSTORAGE_INLINE_MAX) {
+                try { localStorage.removeItem(key); } catch {}
+            }
+        }).catch(() => {});
+    }
+
     const finalize = () => {
         if (
             typeof window !== "undefined" &&
@@ -241,11 +650,18 @@ function safeWriteJSON(key, value) {
         }
         return true;
     };
+
+    // 2. Oversized user data (>64KB) lives cleanly in IndexedDB + RAM + Cloud — NEVER clogs 5MB localStorage!
+    if (!isAuthOrMetaKey && serialized.length > IDB_LOCALSTORAGE_INLINE_MAX && QEnglishIdbStore.isAvailable()) {
+        return finalize();
+    }
+
+    // 3. Small keys & auth keys also stay mirrored in localStorage for instant synchronous startup
     try {
         localStorage.setItem(key, serialized);
         return finalize();
     } catch (err) {
-        // Self-healing QuotaExceededError recovery: strip bloated duplicates & move large PDF cache to IndexedDB, then retry once!
+        // Self-healing QuotaExceededError recovery: strip bloated duplicates & move large caches to IndexedDB, then retry once!
         const freed = cleanupBloatedLocalStorage({ aggressive: true });
         try {
             localStorage.setItem(key, serialized);
@@ -254,6 +670,11 @@ function safeWriteJSON(key, value) {
             }
             return finalize();
         } catch (retryErr) {
+            // If IndexedDB already accepted this data key, do NOT show a scary false error!
+            if (!isAuthOrMetaKey && QEnglishIdbStore.isAvailable()) {
+                console.info(`[QEnglish Storage] Stored "${key}" directly in IndexedDB (bypassed full localStorage).`);
+                return finalize();
+            }
             console.error("[QEnglish Storage] Write error for key " + key, retryErr);
             if (typeof showToast === "function") {
                 showToast("Bộ nhớ trình duyệt đầy hoặc bị chặn. Hãy Xuất Backup!", "error");
@@ -335,7 +756,7 @@ function normalizeWordItem(item, indexFallback = 0) {
 function loadDeckFromStorage() {
     ensureLegacyBackupSnapshot();
     const isIsolatedAccount = Boolean(typeof window !== "undefined" && window.__QENGLISH_ACTIVE_UID);
-    const rawV2 = localStorage.getItem(STORAGE_KEYS.DECK_V2);
+    const rawV2 = safeReadRaw(STORAGE_KEYS.DECK_V2);
     const rawV1 = isIsolatedAccount ? null : localStorage.getItem(BASE_STORAGE_KEYS.DECK_V1);
     const rawFpt = isIsolatedAccount ? null : localStorage.getItem(BASE_STORAGE_KEYS.FPT_V3);
     const syncFlagKey = getScopedStorageKey("qenglish_builtin_sync_v50");
@@ -396,7 +817,7 @@ function getDefaultSettings() {
 }
 
 function loadSettings() {
-    const saved = safeParseJSON(localStorage.getItem(STORAGE_KEYS.SETTINGS), {});
+    const saved = safeReadJSON(STORAGE_KEYS.SETTINGS, {});
     appSettings = { ...getDefaultSettings(), ...saved };
     // Security guard: strip any accidental API key if ever imported from external JSON
     if ("apiKey" in appSettings) delete appSettings.apiKey;
@@ -415,7 +836,7 @@ function saveSettings(partial = {}) {
 
 /* ==================== SPACED REPETITION SYSTEM (SRS) ==================== */
 function loadSRSState() {
-    srsState = safeParseJSON(localStorage.getItem(STORAGE_KEYS.SRS), {});
+    srsState = safeReadJSON(STORAGE_KEYS.SRS, {});
     return srsState;
 }
 
@@ -506,7 +927,7 @@ function getEmptyDayLog() {
 }
 
 function loadProgressState() {
-    const raw = safeParseJSON(localStorage.getItem(STORAGE_KEYS.PROGRESS), null);
+    const raw = safeReadJSON(STORAGE_KEYS.PROGRESS, null);
     progressState = raw && typeof raw === "object" ? raw : {
         days: {},
         activities: [], // { id, type, skill, title, detail, scorePct, source, at }
@@ -671,10 +1092,10 @@ function computeOverallAnalytics() {
     const writingTotal = getAllContentForSkill("writing").length || 15;
     const speakingTarget = 12; // 2 sessions/week * 6 weeks
 
-    const grammarSaved = safeParseJSON(localStorage.getItem(STORAGE_KEYS.GRAMMAR), { completedIds: [] });
-    const listeningSaved = safeParseJSON(localStorage.getItem(STORAGE_KEYS.LISTENING), { completedIds: [] });
-    const readingSaved = safeParseJSON(localStorage.getItem(STORAGE_KEYS.READING), { completedIds: [] });
-    const writingSaved = safeParseJSON(localStorage.getItem(STORAGE_KEYS.WRITING), { submissions: [] });
+    const grammarSaved = safeReadJSON(STORAGE_KEYS.GRAMMAR, { completedIds: [] });
+    const listeningSaved = safeReadJSON(STORAGE_KEYS.LISTENING, { completedIds: [] });
+    const readingSaved = safeReadJSON(STORAGE_KEYS.READING, { completedIds: [] });
+    const writingSaved = safeReadJSON(STORAGE_KEYS.WRITING, { submissions: [] });
 
     const vocabPct = deck.length > 0 ? Math.min(100, Math.round((wordsLearned / deck.length) * 100)) : 0;
     const grammarPct = Math.min(100, Math.round(((grammarSaved.completedIds || []).length / grammarTotal) * 100));
@@ -890,7 +1311,7 @@ function computeAdaptiveRecommendations() {
 
 /* ==================== STRUCTURED ENGLISH NOTEBOOK (PHẦN 6) ==================== */
 function loadNotebook() {
-    notebookItems = safeParseJSON(localStorage.getItem(STORAGE_KEYS.NOTEBOOK), []);
+    notebookItems = safeReadJSON(STORAGE_KEYS.NOTEBOOK, []);
     if (!Array.isArray(notebookItems)) notebookItems = [];
     return notebookItems;
 }
@@ -959,7 +1380,7 @@ function autoLogMistake(mistakeData) {
 
 /* ==================== LEARNING CONTENT MANAGEMENT (CMS - PHẦN 5) ==================== */
 function loadCMSItems() {
-    cmsItems = safeParseJSON(localStorage.getItem(STORAGE_KEYS.CMS), []);
+    cmsItems = safeReadJSON(STORAGE_KEYS.CMS, []);
     if (!Array.isArray(cmsItems)) cmsItems = [];
     return cmsItems;
 }
@@ -1077,12 +1498,12 @@ function exportAllBackupJSON() {
             qenglish_deck_v2: deck,
             qenglish_srs_v1: srsState,
             qenglish_progress_v1: progressState,
-            qenglish_dashboard_v1: safeParseJSON(localStorage.getItem(STORAGE_KEYS.DASHBOARD), {}),
-            qenglish_grammar_v1: safeParseJSON(localStorage.getItem(STORAGE_KEYS.GRAMMAR), {}),
-            qenglish_listening_v1: safeParseJSON(localStorage.getItem(STORAGE_KEYS.LISTENING), {}),
-            qenglish_speaking_v1: safeParseJSON(localStorage.getItem(STORAGE_KEYS.SPEAKING), {}),
-            qenglish_reading_v1: safeParseJSON(localStorage.getItem(STORAGE_KEYS.READING), {}),
-            qenglish_writing_v1: safeParseJSON(localStorage.getItem(STORAGE_KEYS.WRITING), {}),
+            qenglish_dashboard_v1: safeReadJSON(STORAGE_KEYS.DASHBOARD, {}),
+            qenglish_grammar_v1: safeReadJSON(STORAGE_KEYS.GRAMMAR, {}),
+            qenglish_listening_v1: safeReadJSON(STORAGE_KEYS.LISTENING, {}),
+            qenglish_speaking_v1: safeReadJSON(STORAGE_KEYS.SPEAKING, {}),
+            qenglish_reading_v1: safeReadJSON(STORAGE_KEYS.READING, {}),
+            qenglish_writing_v1: safeReadJSON(STORAGE_KEYS.WRITING, {}),
             qenglish_notebook_v1: notebookItems,
             qenglish_cms_v1: cmsItems,
             qenglish_settings_v1: appSettings,
@@ -1462,6 +1883,9 @@ function resetInMemoryWorkspaceState() {
     cmsItems = [];
     appSettings = null;
     accountsStore = null;
+    if (typeof window !== "undefined" && window.__QENGLISH_IDB_MEM_CACHE instanceof Map) {
+        window.__QENGLISH_IDB_MEM_CACHE.clear();
+    }
     if (typeof activeWritingTopic !== "undefined") activeWritingTopic = null;
     if (typeof resetTranslationWorkspaceMemory === "function") resetTranslationWorkspaceMemory();
     if (typeof resetPdfStudioMemory === "function") resetPdfStudioMemory();
@@ -1508,25 +1932,25 @@ function compactPdfStudioForCloud(rawPdfState) {
 }
 
 function collectCurrentWorkspaceSnapshot() {
-    const dashRaw = safeParseJSON(localStorage.getItem(STORAGE_KEYS.DASHBOARD), { tasksByDate: {} }) || { tasksByDate: {} };
+    const dashRaw = safeReadJSON(STORAGE_KEYS.DASHBOARD, { tasksByDate: {} }) || { tasksByDate: {} };
     const dashBase = stripPdfStudioFromDashboardObj(dashRaw);
     const pdfRaw = getCurrentPdfStudioRawForSnapshot();
     const pdfCompact = compactPdfStudioForCloud(pdfRaw);
     const dashboardStateMerged = pdfCompact ? { ...dashBase, pdfStudio: pdfCompact } : dashBase;
 
     return {
-        settings: appSettings || safeParseJSON(localStorage.getItem(STORAGE_KEYS.SETTINGS), getDefaultSettings()),
-        deck_v2: Array.isArray(deck) && deck.length ? deck : safeParseJSON(localStorage.getItem(STORAGE_KEYS.DECK_V2), []),
-        srs_state: srsState || safeParseJSON(localStorage.getItem(STORAGE_KEYS.SRS), {}),
-        progress_state: progressState || safeParseJSON(localStorage.getItem(STORAGE_KEYS.PROGRESS), {}),
+        settings: appSettings || safeReadJSON(STORAGE_KEYS.SETTINGS, getDefaultSettings()),
+        deck_v2: Array.isArray(deck) && deck.length ? deck : safeReadJSON(STORAGE_KEYS.DECK_V2, []),
+        srs_state: srsState || safeReadJSON(STORAGE_KEYS.SRS, {}),
+        progress_state: progressState || safeReadJSON(STORAGE_KEYS.PROGRESS, {}),
         dashboard_state: dashboardStateMerged,
-        grammar_state: safeParseJSON(localStorage.getItem(STORAGE_KEYS.GRAMMAR), { completedIds: [], scores: {} }),
-        listening_state: safeParseJSON(localStorage.getItem(STORAGE_KEYS.LISTENING), { completedIds: [], scores: {}, history: [] }),
-        speaking_state: safeParseJSON(localStorage.getItem(STORAGE_KEYS.SPEAKING), { history: [] }),
-        reading_state: safeParseJSON(localStorage.getItem(STORAGE_KEYS.READING), { completedIds: [], highlights: {}, notes: {}, scores: {} }),
-        writing_state: safeParseJSON(localStorage.getItem(STORAGE_KEYS.WRITING), { drafts: {}, submissions: [] }),
-        notebook: Array.isArray(notebookItems) ? notebookItems : safeParseJSON(localStorage.getItem(STORAGE_KEYS.NOTEBOOK), []),
-        cms_items: Array.isArray(cmsItems) ? cmsItems : safeParseJSON(localStorage.getItem(STORAGE_KEYS.CMS), [])
+        grammar_state: safeReadJSON(STORAGE_KEYS.GRAMMAR, { completedIds: [], scores: {} }),
+        listening_state: safeReadJSON(STORAGE_KEYS.LISTENING, { completedIds: [], scores: {}, history: [] }),
+        speaking_state: safeReadJSON(STORAGE_KEYS.SPEAKING, { history: [] }),
+        reading_state: safeReadJSON(STORAGE_KEYS.READING, { completedIds: [], highlights: {}, notes: {}, scores: {} }),
+        writing_state: safeReadJSON(STORAGE_KEYS.WRITING, { drafts: {}, submissions: [] }),
+        notebook: Array.isArray(notebookItems) ? notebookItems : safeReadJSON(STORAGE_KEYS.NOTEBOOK, []),
+        cms_items: Array.isArray(cmsItems) ? cmsItems : safeReadJSON(STORAGE_KEYS.CMS, [])
     };
 }
 
