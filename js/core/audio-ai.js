@@ -56,42 +56,233 @@ function renderLevelBadge(level) {
     return `<span class="level-badge ${cls}">${escHtml(lv)}</span>`;
 }
 
-/* ==================== SPEECH SYNTHESIS (TTS) ==================== */
-function speakText(text, customRate = null, onEndCallback = null) {
-    if (!text || !String(text).trim()) return false;
-    if (!("speechSynthesis" in window)) {
-        showToast("Trình duyệt không hỗ trợ đọc giọng nói (SpeechSynthesis).", "error");
+/* ==================== SPEECH SYNTHESIS (TTS) WITH LIVE SPEED CONTROL ==================== */
+const SPEECH_RATE_OPTIONS = [
+    { value: 0.5, label: "0.5x (Rất chậm)" },
+    { value: 0.75, label: "0.75x (Chậm)" },
+    { value: 1, label: "1.0x (Chuẩn)" },
+    { value: 1.25, label: "1.25x (Hơi nhanh)" },
+    { value: 1.5, label: "1.5x (Nhanh)" },
+    { value: 1.75, label: "1.75x (Rất nhanh)" },
+    { value: 2, label: "2.0x (Cực nhanh)" }
+];
+
+function normalizeSpeechRate(val) {
+    const n = parseFloat(val);
+    if (!Number.isFinite(n)) return 1;
+    let best = 1;
+    let minDiff = Infinity;
+    for (const opt of SPEECH_RATE_OPTIONS) {
+        const diff = Math.abs(opt.value - n);
+        if (diff < minDiff) {
+            minDiff = diff;
+            best = opt.value;
+        }
+    }
+    return best;
+}
+
+function formatSpeechRateLabel(val) {
+    const norm = normalizeSpeechRate(val);
+    const found = SPEECH_RATE_OPTIONS.find(o => o.value === norm);
+    return found ? found.label : `${norm}x`;
+}
+
+let _activeSpeechToken = 0;
+let _activeSpeechState = null; // { token, fullText, sliceOffset, charIndex, customRate, onEndCallback, watchdogId }
+
+function _clearSpeechWatchdog() {
+    if (_activeSpeechState && _activeSpeechState.watchdogId) {
+        clearInterval(_activeSpeechState.watchdogId);
+        _activeSpeechState.watchdogId = null;
+    }
+}
+
+function _selectPreferredEnglishVoice() {
+    if (!("speechSynthesis" in window) || !window.speechSynthesis.getVoices) return null;
+    const voices = window.speechSynthesis.getVoices() || [];
+    return voices.find(v => /en[-_]US/i.test(v.lang) && /Natural|Online|Google|Microsoft/i.test(v.name))
+        || voices.find(v => /en[-_](US|GB)/i.test(v.lang) && /Natural|Online|Google|Microsoft/i.test(v.name))
+        || voices.find(v => /^en[-_](US|GB)/i.test(v.lang))
+        || voices.find(v => /^en/i.test(v.lang))
+        || null;
+}
+
+function _startUtteranceSegment(fullText, sliceOffset, customRate, onEndCallback) {
+    const token = ++_activeSpeechToken;
+    const remaining = String(fullText || "").slice(sliceOffset).trim();
+    if (!remaining) {
+        _activeSpeechState = null;
+        if (typeof onEndCallback === "function") onEndCallback();
         return false;
     }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(String(text).trim());
+
+    const utterance = new SpeechSynthesisUtterance(remaining);
     utterance.lang = "en-US";
-    const effectiveRate = customRate !== null ? Number(customRate) : speechRate;
-    utterance.rate = Math.min(3.0, Math.max(0.1, effectiveRate || 1.0));
+    utterance.pitch = 1.0; // Preserve natural voice pitch across all playback rates
+    const effectiveRate = customRate !== null && customRate !== undefined
+        ? Math.min(3.0, Math.max(0.1, Number(customRate) || 1.0))
+        : normalizeSpeechRate(speechRate);
+    utterance.rate = effectiveRate;
 
-    const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
-    const preferred = voices.find(v => /en[-_](US|GB)/i.test(v.lang) && /Natural|Online|Google|Microsoft/i.test(v.name))
-        || voices.find(v => /^en/i.test(v.lang));
-    if (preferred) utterance.voice = preferred;
-
-    if (typeof onEndCallback === "function") {
-        utterance.onend = () => onEndCallback();
-        utterance.onerror = () => onEndCallback();
+    const preferred = _selectPreferredEnglishVoice();
+    if (preferred) {
+        try {
+            utterance.voice = preferred;
+        } catch (e) {
+            // Safely fall back to browser default en-US voice if voice object is rejected
+        }
     }
-    window.speechSynthesis.speak(utterance);
+
+    const state = {
+        token,
+        fullText: String(fullText || "").trim(),
+        sliceOffset,
+        charIndex: sliceOffset,
+        customRate: customRate !== null && customRate !== undefined ? Number(customRate) : null,
+        onEndCallback: typeof onEndCallback === "function" ? onEndCallback : null,
+        started: false,
+        startedAt: Date.now(),
+        watchdogId: null
+    };
+    _activeSpeechState = state;
+
+    const finishOnce = () => {
+        if (!_activeSpeechState || _activeSpeechState.token !== token) return;
+        const cb = _activeSpeechState.onEndCallback;
+        _clearSpeechWatchdog();
+        _activeSpeechState = null;
+        if (typeof cb === "function") cb();
+    };
+
+    utterance.onstart = () => {
+        if (_activeSpeechState && _activeSpeechState.token === token) {
+            _activeSpeechState.started = true;
+        }
+    };
+    utterance.onboundary = (ev) => {
+        if (_activeSpeechState && _activeSpeechState.token === token && typeof ev.charIndex === "number") {
+            _activeSpeechState.charIndex = sliceOffset + ev.charIndex;
+        }
+    };
+    utterance.onend = () => finishOnce();
+    utterance.onerror = (ev) => {
+        // Ignore intentional cancel/interrupted when we live-restart at a new rate
+        if (ev && (ev.error === "canceled" || ev.error === "interrupted")) {
+            if (!_activeSpeechState || _activeSpeechState.token !== token) return;
+        }
+        finishOnce();
+    };
+
+    // Safety watchdog so Chrome/Edge never hangs AI_SPEAKING if onend is dropped
+    const estDurationMs = Math.max(4000, Math.ceil((remaining.length / Math.max(4, effectiveRate * 11)) * 1000) + 5000);
+    state.watchdogId = setInterval(() => {
+        if (!_activeSpeechState || _activeSpeechState.token !== token) {
+            clearInterval(state.watchdogId);
+            return;
+        }
+        const elapsed = Date.now() - state.startedAt;
+        if (state.started && !window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
+            finishOnce();
+            return;
+        }
+        if (elapsed > estDurationMs + 15000) {
+            finishOnce();
+        }
+    }, 350);
+
+    try {
+        window.speechSynthesis.speak(utterance);
+        // Keep-alive check if browser paused speechSynthesis queue
+        if (window.speechSynthesis.paused) {
+            try { window.speechSynthesis.resume(); } catch (e) {}
+        }
+    } catch (err) {
+        finishOnce();
+        return false;
+    }
     return true;
 }
 
-function stopSpeech() {
-    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+function speakText(text, customRate = null, onEndCallback = null) {
+    const cleanText = String(text || "").trim();
+    if (!cleanText) {
+        if (typeof onEndCallback === "function") onEndCallback();
+        return false;
+    }
+    if (!("speechSynthesis" in window)) {
+        showToast("Trình duyệt không hỗ trợ đọc giọng nói (SpeechSynthesis).", "error");
+        if (typeof onEndCallback === "function") onEndCallback();
+        return false;
+    }
+    _clearSpeechWatchdog();
+    _activeSpeechToken++;
+    _activeSpeechState = null;
+    try { window.speechSynthesis.cancel(); } catch (e) {}
+    return _startUtteranceSegment(cleanText, 0, customRate, onEndCallback);
 }
 
-function updateSpeechRate(val) {
-    speechRate = parseFloat(val) || 1.0;
-    if (typeof saveSettings === "function") saveSettings({ speechRate });
+function stopSpeech() {
+    _clearSpeechWatchdog();
+    _activeSpeechToken++;
+    _activeSpeechState = null;
+    if ("speechSynthesis" in window) {
+        try { window.speechSynthesis.cancel(); } catch (e) {}
+    }
+}
+
+function syncSpeedSelectorsUI() {
+    const norm = normalizeSpeechRate(speechRate);
+    const valStr = String(norm);
+    const labelStr = formatSpeechRateLabel(norm);
+
     const sel = document.getElementById("speed-select");
-    if (sel && sel.value !== String(val)) sel.value = String(val);
-    showToast(`Đã đổi tốc độ đọc sang ${speechRate}x`);
+    if (sel && sel.value !== valStr) sel.value = valStr;
+
+    document.querySelectorAll("[data-speech-rate-select]").forEach(el => {
+        if (el.value !== valStr) el.value = valStr;
+    });
+    document.querySelectorAll("[data-speech-rate-label]").forEach(el => {
+        el.textContent = labelStr;
+    });
+
+    // Also sync any active HTMLAudioElement in Speaking workspace if playing
+    const topicAud = document.getElementById("topic-playback-audio");
+    if (topicAud) {
+        try { topicAud.playbackRate = norm; } catch (e) {}
+    }
+}
+
+function updateSpeechRate(val, opts = {}) {
+    speechRate = normalizeSpeechRate(val);
+    if (typeof saveSettings === "function") saveSettings({ speechRate });
+    syncSpeedSelectorsUI();
+
+    // Live-apply to currently playing AI voice without breaking conversation flow
+    if (
+        "speechSynthesis" in window &&
+        _activeSpeechState &&
+        _activeSpeechState.customRate === null &&
+        (window.speechSynthesis.speaking || window.speechSynthesis.pending)
+    ) {
+        const snap = { ..._activeSpeechState };
+        let resumeIdx = Math.max(0, Math.min(snap.fullText.length, snap.charIndex || 0));
+        // Snap cleanly to start of current word so we never cut a word in half
+        while (resumeIdx > 0 && resumeIdx < snap.fullText.length && !/\s/.test(snap.fullText[resumeIdx - 1])) {
+            resumeIdx--;
+        }
+        _clearSpeechWatchdog();
+        _activeSpeechToken++;
+        _activeSpeechState = null;
+        try { window.speechSynthesis.cancel(); } catch (e) {}
+        setTimeout(() => {
+            _startUtteranceSegment(snap.fullText, resumeIdx, null, snap.onEndCallback);
+        }, 40);
+    }
+
+    if (!opts.silent) {
+        showToast(`🔊 Tốc độ giọng nói AI: ${formatSpeechRateLabel(speechRate)}`);
+    }
 }
 
 function toggleAutoPlay() {
@@ -681,7 +872,7 @@ const AIClient = {
         const ctrl = new AbortController();
         const timeoutMs = task.startsWith("pdf-")
             ? 60000
-            : ((task === "writing-eval" || task === "translation-eval") ? 48000 : 28000);
+            : ((task === "writing-eval" || task === "translation-eval" || task === "speaking-eval") ? 48000 : 28000);
         const timer = setTimeout(() => ctrl.abort(), timeoutMs);
         try {
             let res = await fetch(`${base}/${task}`, {

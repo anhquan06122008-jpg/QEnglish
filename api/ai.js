@@ -587,42 +587,161 @@ Return JSON with exact keys:
         return buildWritingEvalPrompt(payload);
     }
 
-    if (task === "speaking-chat") {
+    if (task === "speaking-start") {
+        const mode = payload.mode === "custom" ? "custom" : "random";
+        const topic = String(payload.topic || "").trim().slice(0, 220);
+        const level = String(payload.level || "B1").trim().toUpperCase();
+        const difficulty = String(payload.difficulty || "medium").trim().toLowerCase();
+        const style = String(payload.style || "Casual Conversation").trim();
+        const language = String(payload.language || "English").trim();
+
+        const levelGuide = {
+            A1: "Use very simple everyday vocabulary, short clear sentences (5-10 words), and warm supportive tone.",
+            A2: "Use simple familiar everyday English and clear straightforward questions.",
+            B1: "Use clear standard English with everyday & opinion questions at intermediate complexity.",
+            B2: "Use fluent, natural upper-intermediate English with nuanced questions and useful idioms.",
+            C1: "Use advanced, precise vocabulary and analytical open-ended questions.",
+            C2: "Use near-native nuanced expression, sophisticated rhetoric, and deep probing questions."
+        }[level] || "Use clear standard B1 English.";
+
+        const diffGuide = {
+            easy: "Keep the opening question approachable, concrete, and easy to answer.",
+            medium: "Ask a balanced, engaging question that encourages 2-4 sentences of explanation.",
+            hard: "Ask a thought-provoking, deeper question that requires reasoning, examples, or nuance."
+        }[difficulty] || "Ask a balanced, engaging question.";
+
+        const styleGuide = {
+            "Casual Conversation": "Friendly, warm, relaxed everyday conversation partner.",
+            "Academic Discussion": "Thoughtful university seminar/academic discussion tone with analytical framing.",
+            "Interview": "Professional, polite interviewer asking structured conversational interview questions.",
+            "Debate": "Respectful debate partner presenting an angle and inviting the learner to argue or defend a stance."
+        }[style] || "Friendly, natural conversational partner.";
+
         return {
-            system: "You are a friendly English speaking partner for a Vietnamese learner. Keep replies concise (1-3 sentences) and end with 1 natural follow-up question. Return valid JSON: {\"reply\": \"...\"}.",
-            prompt: `Target level: ${payload.level || "B1"}
-Recent conversation turns:
-${JSON.stringify((payload.history || []).slice(-8))}
-Return JSON: { "reply": "Your natural English response + follow-up question" }`
+            system: `You are an expert AI English Speaking Partner on QEnglish.
+CRITICAL RULES:
+- Respond ONLY in ${language} inside "openingQuestion" and "fallbackFollowUps".
+- CEFR calibration (${level}): ${levelGuide}
+- Difficulty (${difficulty}): ${diffGuide}
+- Style (${style}): ${styleGuide}
+- Return STRICT valid JSON only.`,
+            prompt: mode === "custom"
+                ? `The learner wants a Custom Topic Speaking Conversation about: "${topic}".
+1. Analyze the topic carefully.
+2. Build an engaging opening line + ONE clear, direct opening question strictly about "${topic}" (1-3 sentences total, natural spoken English).
+3. Provide 4 useful vocabulary words/phrases for this topic at CEFR ${level}.
+4. Provide 4 natural follow-up questions that stay strictly on "${topic}".
+
+Return STRICT JSON:
+{
+  "topic": "${topic.replace(/"/g, '\\"')}",
+  "openingQuestion": "Natural opening remark + direct engaging question strictly about the topic",
+  "contextBriefVi": "1 câu tiếng Việt ngắn gọn mô tả ngữ cảnh & mục tiêu luyện nói chủ đề này",
+  "focusVocab": ["phrase 1", "phrase 2", "phrase 3", "phrase 4"],
+  "fallbackFollowUps": ["Follow-up question 1", "Follow-up question 2", "Follow-up question 3", "Follow-up question 4"]
+}`
+                : `Pick ONE interesting, fresh random everyday/university/culture/technology/travel conversation topic suitable for CEFR ${level}.
+Return STRICT JSON:
+{
+  "topic": "Short clear topic title in English",
+  "openingQuestion": "Natural friendly opening remark + 1 engaging question about the chosen topic (1-3 sentences)",
+  "contextBriefVi": "1 câu tiếng Việt ngắn gọn giới thiệu chủ đề ngẫu nhiên vừa chọn",
+  "focusVocab": ["phrase 1", "phrase 2", "phrase 3", "phrase 4"],
+  "fallbackFollowUps": ["Follow-up question 1", "Follow-up question 2", "Follow-up question 3", "Follow-up question 4"]
+}`
+        };
+    }
+
+    if (task === "speaking-chat") {
+        const mode = payload.mode === "custom" ? "custom" : "random";
+        const topic = String(payload.topic || "").trim().slice(0, 220);
+        const level = String(payload.level || "B1").trim().toUpperCase();
+        const difficulty = String(payload.difficulty || "medium").trim().toLowerCase();
+        const style = String(payload.style || "Casual Conversation").trim();
+        const language = String(payload.language || "English").trim();
+
+        const levelGuide = {
+            A1: "Strictly A1 CEFR: very simple words, short clear sentences, patient and encouraging.",
+            A2: "Strictly A2 CEFR: simple everyday phrases and clear familiar topics.",
+            B1: "Strictly B1 CEFR: clear standard English, everyday and opinion expressions.",
+            B2: "Strictly B2 CEFR: fluent natural English with moderate idioms and reasoning.",
+            C1: "Strictly C1 CEFR: rich precise vocabulary, nuanced follow-ups, sophisticated fluency.",
+            C2: "Strictly C2 CEFR: near-native articulation, subtle argumentation, high-level nuance."
+        }[level] || "Clear standard B1 English.";
+
+        const topicLockRule = mode === "custom" && topic
+            ? `STRICT TOPIC LOCK: The learner chose the topic "${topic}". You MUST keep the conversation focused on "${topic}" throughout the session. You may ask natural expanding sub-questions connected to "${topic}", but NEVER abruptly switch to an unrelated topic.`
+            : (topic ? `Active conversation topic: "${topic}". Keep the dialogue cohesive and engaging.` : "Keep the conversation cohesive and natural.");
+
+        return {
+            system: `You are a live AI English speaking partner for a Vietnamese learner.
+- Language: Reply strictly in ${language}.
+- CEFR Level (${level}): ${levelGuide}
+- Difficulty: ${difficulty}.
+- Conversation Style: ${style}.
+- ${topicLockRule}
+- Acknowledge what the learner specifically said, keep your reply concise and natural for spoken dialogue (1-3 sentences), and end with ONE natural follow-up question.
+- Return valid JSON only: {"reply": "..."}.`,
+            prompt: `Mode: ${mode}
+Topic: ${topic || "Random Conversation"}
+Target CEFR Level: ${level} | Difficulty: ${difficulty} | Style: ${style}
+Conversation history (most recent turns):
+${JSON.stringify((payload.history || []).slice(-16))}
+Return JSON: { "reply": "Your natural spoken English response + 1 relevant follow-up question" }`
         };
     }
 
     if (task === "speaking-eval") {
+        const topic = String(payload.topic || "Free Conversation").trim().slice(0, 220);
+        const level = String(payload.level || "B1").trim().toUpperCase();
+        const mode = String(payload.mode || "random").trim();
+        const style = String(payload.style || "Casual Conversation").trim();
+        const difficulty = String(payload.difficulty || "medium").trim();
+        const convLog = Array.isArray(payload.conversationLog) ? payload.conversationLog.slice(-24) : [];
+        const hasConvLog = convLog.length > 0;
+
         return {
-            system: "You are an English speaking coach. Be strictly honest: the input is ONLY a text transcript from SpeechRecognition without raw audio waveforms, so do NOT invent IPA/acoustic pitch measurements from audio. Evaluate fluency indicators, grammar, vocabulary, coherence, and natural spoken English. Return valid JSON.",
-            prompt: `Topic: ${payload.topic || "Free Conversation"}
-Level: ${payload.level || "B1"}, Approximate speed: ${payload.wpm || 100} WPM
-Student transcript:
+            system: `You are a senior English speaking coach evaluating a FULL speaking session (every user turn, NOT just the last answer).
+Be strictly honest: the input is a text transcript from browser Speech-to-Text without raw acoustic waveforms, so do NOT fabricate IPA/pitch measurements. Evaluate Grammar, Vocabulary, Fluency, Coherence, topic relevance, and CEFR ${level} alignment across the ENTIRE session. Return valid JSON only.`,
+            prompt: `Session Mode: ${mode}
+Topic: ${topic}
+Target CEFR Level: ${level} | Difficulty: ${difficulty} | Style: ${style}
+Approximate Speaking Rate: ${payload.wpm || 100} WPM | User Turns: ${payload.turnCount || 1}
+${hasConvLog ? `Full Conversation Dialogue (AI & Learner):
+${JSON.stringify(convLog)}` : ""}
+Complete Learner Transcript (ALL turns combined):
 """
-${String(payload.transcript || "").slice(0, 4000)}
+${String(payload.transcript || "").slice(0, 5000)}
 """
-Return JSON:
+
+Evaluate the ENTIRE session against the topic "${topic}" and CEFR level ${level}.
+Return STRICT JSON:
 {
-  "overallScore": number,
+  "overallScore": 78,
+  "grammarScore": 76,
+  "vocabularyScore": 75,
+  "fluencyScore": 80,
+  "coherenceScore": 82,
   "pronunciationScore": null,
-  "transcriptHonestyNote": "Lưu ý: Phân tích từ văn bản Speech-to-Text; hệ thống không phân tích trực tiếp sóng âm thanh.",
-  "fluencyFeedbackVi": "Vietnamese feedback on flow, pacing and sentence length",
+  "transcriptHonestyNote": "Lưu ý: Phân tích từ văn bản Speech-to-Text; hệ thống không phân tích trực tiếp sóng âm thanh IPA.",
+  "topicRelevanceFeedbackVi": "Nhận xét chi tiết bằng tiếng Việt về mức độ bám sát chủ đề '${topic}', độ phù hợp với trình độ CEFR ${level} và phong cách ${style} trong toàn bộ buổi hội thoại.",
+  "fluencyFeedbackVi": "Nhận xét chi tiết bằng tiếng Việt về độ trôi chảy, nhịp nói, độ dài câu và khả năng phát triển ý xuyên suốt buổi nói.",
   "errors": [
     {
-      "wrongSentence": "...",
-      "where": "...",
-      "why": "Vietnamese explanation",
-      "fixedSentence": "...",
-      "naturalWay": "More natural spoken expression"
+      "wrongSentence": "Exact faulty sentence from the learner's transcript",
+      "where": "Specific error phrase",
+      "why": "Clear Vietnamese explanation of the error",
+      "fixedSentence": "Grammatically correct English sentence",
+      "naturalWay": "More natural native-like spoken English version"
     }
   ],
-  "upgradePhrases": ["Natural spoken filler/idiom/transition 1", "phrase 2"],
-  "modelAnswer": "Natural 5-7 sentence spoken model answer for this topic"
+  "upgradePhrases": ["Natural spoken filler/idiom/topic phrase 1", "phrase 2", "phrase 3", "phrase 4"],
+  "modelAnswer": "Natural 5-7 sentence spoken model answer tailored to topic '${topic}' at CEFR ${level}",
+  "practiceRecommendationsVi": [
+    "Đề xuất luyện tập cụ thể 1 bằng tiếng Việt dựa trên lỗi thực tế của buổi nói",
+    "Đề xuất luyện tập cụ thể 2 bằng tiếng Việt",
+    "Đề xuất luyện tập cụ thể 3 bằng tiếng Việt"
+  ]
 }`
         };
     }

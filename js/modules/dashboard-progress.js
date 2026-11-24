@@ -1349,10 +1349,11 @@ async function bootAuthenticatedWorkspace(user, options = {}) {
     syncAccountBadgesUI();
     syncCurrentAccountSnapshot();
 
-    speechRate = appSettings.speechRate || 1.0;
+    speechRate = typeof normalizeSpeechRate === "function" ? normalizeSpeechRate(appSettings.speechRate) : (appSettings.speechRate || 1.0);
     autoPlay = appSettings.autoPlay !== false;
     const speedSel = document.getElementById("speed-select");
     if (speedSel) speedSel.value = String(speechRate);
+    if (typeof syncSpeedSelectorsUI === "function") syncSpeedSelectorsUI();
     const autoTxt = document.getElementById("autoplay-text");
     if (autoTxt) autoTxt.textContent = autoPlay ? "Tự Đọc: Bật" : "Tự Đọc: Tắt";
     const glSel = document.getElementById("global-level");
