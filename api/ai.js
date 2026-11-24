@@ -153,11 +153,12 @@ async function callLLMJson(systemInstruction, userPrompt, options = {}) {
             const modelChain = Array.from(new Set([
                 info.model,
                 "gemini-flash-lite-latest",
-                "gemini-3.8-flash",
                 "gemini-3.5-flash-lite",
                 "gemini-3.1-flash-lite",
-                "gemini-2.5-flash"
+                "gemini-3.8-flash"
             ].filter(Boolean)));
+            // Include one quick retry of the primary working model on transient 503 spikes
+            if (info.model) modelChain.push(info.model);
 
             const userParts = [{ text: safePrompt }];
             inlineImages.forEach(img => {
