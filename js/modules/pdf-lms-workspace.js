@@ -22,7 +22,7 @@ const LMS_SKILLS_META = [
 
 let pdfLmsUi = {
     level: "units", // units | unit_skills | skill_lessons | lesson | extra_tool
-    extraTool: "mindmap", // mindmap | exam | weakness | knowledge_map
+    extraTool: "mindmap", // mindmap | exam | weakness | knowledge_map | history
     unitId: null,
     skillKey: null,
     lessonId: null,
@@ -36,22 +36,27 @@ let pdfLmsUi = {
     searchQuery: "",
     statusFilter: "all", // all | todo | done
     aiGenCount: 5,
-    aiGenDifficulty: "same", // easier | same | harder
+    aiGenDifficulty: "same", // easier | same | harder | exact_cefr
     aiGenFocus: "mixed", // same_type | mixed | mistakes | deep
+    aiGenCefr: "", // Mandatory CEFR selection before generating more questions
+    aiGenCefrConfirmed: false,
     aiGenBusy: false,
     aiExerciseBusy: false,
     aiExerciseStyle: "pdf_press", // pdf_press | pdf_deep | ielts_academic | custom_url
+    aiExerciseCefr: "", // Mandatory CEFR selection before generating new AI exercise
+    aiExerciseCefrConfirmed: false,
     aiExerciseFocus: "",
+    audioAlignBusy: false,
     showTranscriptVi: true,
     transcriptOpen: true,
     writingDraftTimers: {}
 };
 
-/* ==================== 0. INTERACTIVE SENTENCE-SYNCED AUDIO & MULTI-VOICE TTS ENGINE ==================== */
+/* ==================== 0. REAL-TIME ACCURATE AUDIO & EVENT-DRIVEN TTS SYNC ENGINE (PHẦN 4) ==================== */
 const lmsAudioState = {
     lessonId: null,
     mode: "tts", // tts | mp3
-    lines: [], // [{ speaker, text, translationVi }]
+    lines: [], // [{ speaker, text, translationVi, startTime?, endTime? }]
     segments: [], // [{ idx, start, end, dur }]
     totalDur: 10,
     currentTime: 0,
@@ -61,7 +66,12 @@ const lmsAudioState = {
     volume: 1.0,
     muted: false,
     runToken: 0,
-    timerId: null
+    mp3Abort: null,
+    mp3RafId: null,
+    mp3SyncSource: "none", // "timestamps" | "vad_envelope" | "pending"
+    vadCacheByLesson: {},
+    activeWordEl: null,
+    userScrollPauseUntil: 0
 };
 
 function lmsFormatTimeSec(sec) {
@@ -74,11 +84,17 @@ function lmsFormatTimeSec(sec) {
 function lmsParseTranscriptLines(ls) {
     if (!ls) return [];
     if (Array.isArray(ls.transcriptLines) && ls.transcriptLines.length) {
-        return ls.transcriptLines.map(ln => ({
-            speaker: String(ln?.speaker || "").trim(),
-            text: String(ln?.text || ln || "").trim(),
-            translationVi: String(ln?.translationVi || "").trim()
-        })).filter(ln => ln.text);
+        return ls.transcriptLines.map(ln => {
+            const st = (typeof ln?.startTime === "number" && Number.isFinite(ln.startTime)) ? ln.startTime : null;
+            const en = (typeof ln?.endTime === "number" && Number.isFinite(ln.endTime)) ? ln.endTime : null;
+            return {
+                speaker: String(ln?.speaker || "").trim(),
+                text: String(ln?.text || ln || "").trim(),
+                translationVi: String(ln?.translationVi || "").trim(),
+                startTime: st,
+                endTime: en
+            };
+        }).filter(ln => ln.text);
     }
     const raw = String(ls.transcript || "").trim();
     if (!raw) return [];
@@ -87,16 +103,70 @@ function lmsParseTranscriptLines(ls) {
     byNewline.forEach(line => {
         const m = line.match(/^([A-Za-z][A-Za-z0-9.\s]{0,22}):\s*(.+)$/);
         if (m) {
-            out.push({ speaker: m[1].trim(), text: m[2].trim(), translationVi: "" });
+            out.push({ speaker: m[1].trim(), text: m[2].trim(), translationVi: "", startTime: null, endTime: null });
         } else {
             const sents = line.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) || [line];
             sents.forEach(s => {
                 const clean = s.trim();
-                if (clean) out.push({ speaker: "", text: clean, translationVi: "" });
+                if (clean) out.push({ speaker: "", text: clean, translationVi: "", startTime: null, endTime: null });
             });
         }
     });
     return out;
+}
+
+function lmsHasRealTimestamps(lines) {
+    if (!Array.isArray(lines) || !lines.length) return false;
+    let valid = 0;
+    for (const l of lines) {
+        if (typeof l.startTime === "number" && typeof l.endTime === "number" && Number.isFinite(l.startTime) && Number.isFinite(l.endTime) && l.endTime > l.startTime) {
+            valid++;
+        }
+    }
+    return valid >= Math.max(1, Math.floor(lines.length * 0.7));
+}
+
+function lmsRenderLineWordsHtml(text, lineIdx) {
+    const raw = String(text || "");
+    const parts = raw.split(/(\s+)/);
+    let offset = 0;
+    return parts.map(part => {
+        const start = offset;
+        offset += part.length;
+        if (!part.trim()) return part;
+        return `<span class="lms-word-span transition-colors duration-100 rounded px-0.5" data-lidx="${lineIdx}" data-wstart="${start}" data-wend="${offset}">${escHtml(part)}</span>`;
+    }).join("");
+}
+
+function lmsClearWordHighlights() {
+    if (lmsAudioState.activeWordEl) {
+        lmsAudioState.activeWordEl.classList.remove("bg-cyan-400/35", "text-white", "font-extrabold");
+        lmsAudioState.activeWordEl = null;
+    }
+    document.querySelectorAll(".lms-word-span.bg-cyan-400\\/35").forEach(el => {
+        el.classList.remove("bg-cyan-400/35", "text-white", "font-extrabold");
+    });
+}
+
+function lmsHighlightWordAtChar(lineIdx, charIndex) {
+    const row = document.querySelector(`[data-lms-trow="${lineIdx}"]`);
+    if (!row) return;
+    const spans = row.querySelectorAll(".lms-word-span");
+    let matched = null;
+    for (const sp of spans) {
+        const ws = Number(sp.getAttribute("data-wstart"));
+        const we = Number(sp.getAttribute("data-wend"));
+        if (charIndex >= ws && charIndex <= we) {
+            matched = sp;
+            break;
+        }
+    }
+    if (!matched) return;
+    if (lmsAudioState.activeWordEl && lmsAudioState.activeWordEl !== matched) {
+        lmsAudioState.activeWordEl.classList.remove("bg-cyan-400/35", "text-white", "font-extrabold");
+    }
+    matched.classList.add("bg-cyan-400/35", "text-white", "font-extrabold");
+    lmsAudioState.activeWordEl = matched;
 }
 
 function lmsComputeTtsSegments(lines, rate = 1.0) {
@@ -120,21 +190,58 @@ function lmsSegIdxForTime(segs, sec) {
     return segs.length - 1;
 }
 
-function lmsHighlightTranscriptRow(activeIdx, scrollIntoView = true) {
+/**
+ * Resolve active transcript line strictly from real [startTime, endTime] ranges.
+ * Returns { activeIdx, spokenUpToIdx }:
+ * - Before first line (track intro/title): activeIdx = -1, spokenUpToIdx = -1 (NO early highlight!)
+ * - Inside line i: activeIdx = i, spokenUpToIdx = i - 1
+ * - In silence pause between i and i+1: activeIdx = -1, spokenUpToIdx = i
+ * - After last line (outro/post-dialogue silence): activeIdx = -1, spokenUpToIdx = lines.length - 1 (NO stuck highlight!)
+ */
+function lmsResolveTimestampState(timings, currentTime) {
+    if (!Array.isArray(timings) || !timings.length) return { activeIdx: -1, spokenUpToIdx: -1 };
+    const t = Number(currentTime) || 0;
+    let spokenUpToIdx = -1;
+    for (let i = 0; i < timings.length; i++) {
+        const st = Number(timings[i].startTime);
+        const en = Number(timings[i].endTime);
+        if (!Number.isFinite(st) || !Number.isFinite(en)) continue;
+        if (t >= st && t < en) {
+            return { activeIdx: i, spokenUpToIdx: i - 1 };
+        }
+        if (t >= en) {
+            spokenUpToIdx = i;
+        }
+    }
+    return { activeIdx: -1, spokenUpToIdx };
+}
+
+function lmsHighlightTranscriptRow(activeIdx, scrollIntoView = true, spokenUpToIdx = null) {
+    const resolvedSpokenUpTo = spokenUpToIdx !== null ? spokenUpToIdx : (activeIdx > 0 ? activeIdx - 1 : -1);
     const rows = document.querySelectorAll("[data-lms-trow]");
     rows.forEach(row => {
         const idx = Number(row.getAttribute("data-lms-trow"));
         const isActive = idx === activeIdx;
+        const isSpoken = !isActive && idx <= resolvedSpokenUpTo && resolvedSpokenUpTo >= 0;
+
         row.classList.toggle("border-cyan-400", isActive);
         row.classList.toggle("bg-cyan-500/20", isActive);
         row.classList.toggle("shadow-[0_0_20px_rgba(34,211,238,0.28)]", isActive);
         row.classList.toggle("ring-1", isActive);
         row.classList.toggle("ring-cyan-400/60", isActive);
-        row.classList.toggle("border-white/5", !isActive);
+        row.classList.toggle("audio-line-active", isActive);
+
+        row.classList.toggle("audio-line-spoken", isSpoken);
+        row.classList.toggle("opacity-70", isSpoken);
+        row.classList.toggle("border-emerald-500/20", isSpoken);
+
+        row.classList.toggle("border-white/5", !isActive && !isSpoken);
         row.classList.toggle("bg-slate-900/70", !isActive);
+
         const badge = row.querySelector(".lms-trow-playing-dot");
         if (badge) badge.classList.toggle("hidden", !isActive);
-        if (isActive && scrollIntoView) {
+
+        if (isActive && scrollIntoView && Date.now() > lmsAudioState.userScrollPauseUntil) {
             try { row.scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch {}
         }
     });
@@ -162,13 +269,22 @@ function lmsSyncTtsControlsUI() {
     });
 }
 
+function lmsTeardownMp3Sync() {
+    if (lmsAudioState.mp3Abort) {
+        try { lmsAudioState.mp3Abort.abort(); } catch {}
+        lmsAudioState.mp3Abort = null;
+    }
+    if (lmsAudioState.mp3RafId) {
+        cancelAnimationFrame(lmsAudioState.mp3RafId);
+        lmsAudioState.mp3RafId = null;
+    }
+}
+
 function stopLmsAudioPlayer(resetUi = false) {
     lmsAudioState.runToken += 1;
     lmsAudioState.isPlaying = false;
-    if (lmsAudioState.timerId) {
-        clearInterval(lmsAudioState.timerId);
-        lmsAudioState.timerId = null;
-    }
+    lmsTeardownMp3Sync();
+    lmsClearWordHighlights();
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
         try { window.speechSynthesis.cancel(); } catch {}
     }
@@ -187,14 +303,19 @@ function lmsInitAudioStateForLesson(ls, hasRealAudio) {
         lmsAudioState.lessonId = ls.id;
         lmsAudioState.mode = hasRealAudio ? "mp3" : "tts";
         lmsAudioState.lines = lines;
+        lmsAudioState.mp3SyncSource = lmsHasRealTimestamps(lines) ? "timestamps" : "pending";
         const { segs, totalDur } = lmsComputeTtsSegments(lines, lmsAudioState.rate);
         lmsAudioState.segments = segs;
         lmsAudioState.totalDur = totalDur;
         lmsAudioState.currentTime = 0;
         lmsAudioState.currentIdx = -1;
+    } else if (lmsHasRealTimestamps(lines)) {
+        lmsAudioState.lines = lines;
+        lmsAudioState.mp3SyncSource = "timestamps";
     }
 }
 
+/* --- STRICTLY EVENT-DRIVEN TTS SYNC (onstart + onboundary word highlight + onend; ZERO setInterval!) --- */
 function lmsSpeakTtsLine(idx, myToken) {
     if (myToken !== lmsAudioState.runToken || !lmsAudioState.isPlaying) return;
     if (!("speechSynthesis" in window)) {
@@ -206,11 +327,11 @@ function lmsSpeakTtsLine(idx, myToken) {
     if (idx >= lines.length) {
         lmsAudioState.runToken += 1;
         lmsAudioState.isPlaying = false;
-        if (lmsAudioState.timerId) { clearInterval(lmsAudioState.timerId); lmsAudioState.timerId = null; }
+        lmsClearWordHighlights();
         lmsAudioState.currentTime = lmsAudioState.totalDur;
         lmsAudioState.currentIdx = -1;
         lmsSyncTtsControlsUI();
-        lmsHighlightTranscriptRow(-1, false);
+        lmsHighlightTranscriptRow(-1, false, lines.length - 1);
         const stEl = document.getElementById("lms-tts-status");
         if (stEl) stEl.textContent = "✅ Đã phát hết toàn bộ bài nghe";
         return;
@@ -219,6 +340,7 @@ function lmsSpeakTtsLine(idx, myToken) {
     lmsAudioState.currentIdx = idx;
     const seg = lmsAudioState.segments[idx] || { start: 0, end: lmsAudioState.totalDur, dur: 3 };
     lmsAudioState.currentTime = seg.start;
+    lmsClearWordHighlights();
     lmsSyncTtsControlsUI();
     lmsHighlightTranscriptRow(idx, true);
 
@@ -228,19 +350,6 @@ function lmsSpeakTtsLine(idx, myToken) {
         const spk = ln.speaker ? ` • ${ln.speaker}` : "";
         stEl.textContent = `🔊 Đang đọc câu ${idx + 1}/${lines.length}${spk} (${lmsAudioState.rate}x)`;
     }
-
-    if (lmsAudioState.timerId) clearInterval(lmsAudioState.timerId);
-    const startedAt = Date.now();
-    lmsAudioState.timerId = setInterval(() => {
-        if (myToken !== lmsAudioState.runToken || !lmsAudioState.isPlaying) {
-            clearInterval(lmsAudioState.timerId);
-            lmsAudioState.timerId = null;
-            return;
-        }
-        const elapsed = (Date.now() - startedAt) / 1000;
-        lmsAudioState.currentTime = Math.min(seg.end - 0.05, seg.start + elapsed);
-        lmsSyncTtsControlsUI();
-    }, 100);
 
     // Distinct voice & pitch per speaker name so dialogues sound natural!
     const speakerOrder = [];
@@ -264,20 +373,33 @@ function lmsSpeakTtsLine(idx, myToken) {
             lmsHighlightTranscriptRow(idx, true);
         }
     };
+    // REAL word-level event from browser SpeechSynthesis engine (ZERO fake timer guessing!)
+    u.onboundary = (ev) => {
+        if (myToken !== lmsAudioState.runToken || !lmsAudioState.isPlaying) return;
+        if (!ev.name || ev.name === "word") {
+            const cIdx = Number(ev.charIndex) || 0;
+            lmsHighlightWordAtChar(idx, cIdx);
+            const charFrac = ln.text.length > 0 ? Math.min(0.98, cIdx / ln.text.length) : 0;
+            lmsAudioState.currentTime = seg.start + seg.dur * charFrac;
+            lmsSyncTtsControlsUI();
+        }
+    };
     u.onend = () => {
         if (myToken !== lmsAudioState.runToken || !lmsAudioState.isPlaying) return;
-        if (lmsAudioState.timerId) { clearInterval(lmsAudioState.timerId); lmsAudioState.timerId = null; }
+        lmsClearWordHighlights();
         lmsAudioState.currentTime = seg.end;
         lmsSyncTtsControlsUI();
         setTimeout(() => {
             if (myToken === lmsAudioState.runToken && lmsAudioState.isPlaying) {
                 lmsSpeakTtsLine(idx + 1, myToken);
             }
-        }, 220);
+        }, 180);
     };
     u.onerror = () => {
         if (myToken !== lmsAudioState.runToken || !lmsAudioState.isPlaying) return;
-        if (lmsAudioState.timerId) { clearInterval(lmsAudioState.timerId); lmsAudioState.timerId = null; }
+        lmsClearWordHighlights();
+        lmsAudioState.isPlaying = false;
+        lmsSyncTtsControlsUI();
     };
     window.speechSynthesis.speak(u);
 }
@@ -387,45 +509,324 @@ function lmsTtsToggleMute() {
     }
 }
 
+/* --- REAL WEB AUDIO API SPEECH-ENVELOPE VAD ANALYZER (Fallback for unaligned MP3s — detects actual speech start/gaps/end!) --- */
+async function lmsAnalyzeMp3SpeechEnvelope(audioSrc, lines) {
+    if (!audioSrc || !Array.isArray(lines) || !lines.length) return null;
+    try {
+        const resp = await fetch(audioSrc);
+        if (!resp.ok) return null;
+        const arrBuf = await resp.arrayBuffer();
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return null;
+        const ctx = new AudioCtx();
+        let audioBuf;
+        try {
+            audioBuf = await ctx.decodeAudioData(arrBuf.slice(0));
+        } finally {
+            try { await ctx.close(); } catch {}
+        }
+        const ch = audioBuf.getChannelData(0);
+        const sr = audioBuf.sampleRate;
+        const duration = audioBuf.duration;
+        const frameSec = 0.05; // 50ms RMS windows
+        const frameLen = Math.max(1, Math.floor(sr * frameSec));
+        const rmsVals = [];
+        let maxRms = 0;
+        for (let pos = 0; pos < ch.length; pos += frameLen) {
+            let sum = 0;
+            const end = Math.min(ch.length, pos + frameLen);
+            for (let j = pos; j < end; j++) sum += ch[j] * ch[j];
+            const rms = Math.sqrt(sum / Math.max(1, end - pos));
+            rmsVals.push(rms);
+            if (rms > maxRms) maxRms = rms;
+        }
+        const thresh = Math.max(0.012, maxRms * 0.09);
+
+        // Extract continuous speech islands (merge short internal pauses < 0.45s)
+        const islands = [];
+        let inSpeech = false;
+        let curStart = 0;
+        let lastLoud = 0;
+        for (let i = 0; i < rmsVals.length; i++) {
+            const t = i * frameSec;
+            if (rmsVals[i] >= thresh) {
+                if (!inSpeech) { inSpeech = true; curStart = t; }
+                lastLoud = t + frameSec;
+            } else if (inSpeech && (t - lastLoud) >= 0.55) {
+                if (lastLoud - curStart >= 0.25) islands.push({ start: curStart, end: lastLoud });
+                inSpeech = false;
+            }
+        }
+        if (inSpeech && lastLoud - curStart >= 0.25) islands.push({ start: curStart, end: lastLoud });
+        if (!islands.length) return null;
+
+        // Textbook tracks often start with a short spoken title ("Page 17, Exercise B...") followed by >= 1.2s pause before dialogue begins,
+        // and/or end with a long pause (> 2.5s) before repeat/answer section. Trim those cleanly!
+        let dialogIslands = islands.slice();
+        if (dialogIslands.length > 2) {
+            const gapAfterFirst = dialogIslands[1].start - dialogIslands[0].end;
+            if (gapAfterFirst >= 1.2 && (dialogIslands[0].end - dialogIslands[0].start) < 9) {
+                dialogIslands.shift();
+            }
+        }
+        // If there is a big >= 3.0s silence gap after significant speech (> 35% of track), trim trailing review/repeat section
+        const cutIdx = dialogIslands.findIndex((isl, idx) => idx > 0 && (isl.start - dialogIslands[idx - 1].end) >= 3.0 && dialogIslands[idx - 1].end >= duration * 0.3);
+        if (cutIdx > 0) dialogIslands = dialogIslands.slice(0, cutIdx);
+
+        const activeStart = dialogIslands[0].start;
+        const activeEnd = dialogIslands[dialogIslands.length - 1].end;
+        const activeSpan = Math.max(1.5, activeEnd - activeStart);
+
+        // Distribute lines weighted by spoken syllables/word count strictly inside the REAL detected speech window [activeStart, activeEnd]
+        const weights = lines.map(l => Math.max(4, String(l.text || "").trim().split(/\s+/).length * 4.5 + String(l.text || "").length * 0.4));
+        const totalW = weights.reduce((a, b) => a + b, 0) || 1;
+        let cursor = activeStart;
+        return lines.map((l, idx) => {
+            const dur = (weights[idx] / totalW) * activeSpan;
+            const seg = { startTime: Math.round(cursor * 100) / 100, endTime: Math.round((cursor + dur) * 100) / 100 };
+            cursor += dur;
+            return seg;
+        });
+    } catch {
+        return null;
+    }
+}
+
+/* --- 1-CLICK AI MULTIMODAL AUDIO ALIGNMENT (Gemini listens to real MP3 -> persists exact startTime/endTime!) --- */
+async function lmsAlignMp3WithAi(unitId, lessonId, audioElId) {
+    if (pdfLmsUi.audioAlignBusy) return;
+    const course = getActivePdfCourse();
+    const u = lmsGetUnit(course, unitId);
+    const ls = lmsGetLesson(u, "listening", lessonId);
+    const audioEl = document.getElementById(audioElId);
+    if (!course || !u || !ls || !audioEl) return;
+
+    const src = audioEl.currentSrc || audioEl.src;
+    if (!src) {
+        showToast("Audio chưa tải xong — hãy chờ 1 giây rồi thử lại!", "warning");
+        return;
+    }
+    const lines = lmsParseTranscriptLines(ls);
+    if (!lines.length) {
+        showToast("Bài nghe chưa có phụ đề để căn chỉnh!", "warning");
+        return;
+    }
+
+    pdfLmsUi.audioAlignBusy = true;
+    const statusBadge = document.getElementById("lms-sync-quality-badge");
+    if (statusBadge) statusBadge.textContent = "⏳ AI đang nghe file MP3 để đo từng mốc giây thực tế...";
+
+    try {
+        const resp = await fetch(src);
+        if (!resp.ok) throw new Error("Không tải được dữ liệu MP3 (HTTP " + resp.status + ")");
+        const blob = await resp.blob();
+        if (blob.size > 4.2 * 1024 * 1024) {
+            showToast("File audio lớn hơn 4MB — đang dùng chế độ phân tích sóng âm Web Audio VAD cục bộ!", "warning");
+            return;
+        }
+        const base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const s = String(reader.result || "");
+                resolve(s.includes(",") ? s.split(",")[1] : s);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+
+        const res = await AIClient.request("audio-align-timestamps", {
+            audioBase64: base64,
+            mimeType: blob.type || "audio/mpeg",
+            durationSec: Number.isFinite(audioEl.duration) ? Math.round(audioEl.duration * 10) / 10 : 0,
+            lines: lines.map((l, i) => ({ index: i, speaker: l.speaker, text: l.text }))
+        });
+
+        const rawTimings = Array.isArray(res?.data?.segments) ? res.data.segments : (Array.isArray(res?.data?.timings) ? res.data.timings : null);
+        if (!res || !res.ok || !rawTimings || !rawTimings.length) {
+            showToast("Không căn chỉnh được bằng AI Audio: " + (res?.error || "Thử lại sau."), "error");
+            return;
+        }
+
+        const tMap = new Map(rawTimings.map(t => [Number(t.index), t]));
+        const maxDur = Number.isFinite(audioEl.duration) && audioEl.duration > 1 ? audioEl.duration : 600;
+        // Validate that AI timestamps stay strictly inside [0, audioEl.duration + 1s]
+        const rawEndMax = Math.max(...rawTimings.map(t => Number(t.endTime) || 0));
+        if (!Number.isFinite(rawEndMax) || rawEndMax <= 0.5 || rawEndMax > maxDur + 2.0) {
+            showToast("⚠️ AI trả về mốc thời gian lệch độ dài thực của file MP3 — đang dùng phân tích sóng âm Speech-VAD chính xác!", "warning");
+            return;
+        }
+        let prevEnd = 0;
+        ls.transcriptLines = lines.map((ln, idx) => {
+            const hit = tMap.get(idx);
+            const st = hit ? Math.max(prevEnd, Math.min(maxDur - 0.3, Number(hit.startTime) || prevEnd)) : ln.startTime;
+            const en = hit ? Math.max(st + 0.25, Math.min(maxDur, Number(hit.endTime) || (st + 1.5))) : ln.endTime;
+            if (typeof en === "number" && Number.isFinite(en)) prevEnd = en;
+            return {
+                speaker: ln.speaker,
+                text: ln.text,
+                translationVi: ln.translationVi,
+                startTime: typeof st === "number" ? Math.round(st * 100) / 100 : null,
+                endTime: typeof en === "number" ? Math.round(en * 100) / 100 : null
+            };
+        });
+        ls.audioAlignedByAi = true;
+        lmsAudioState.lines = lmsParseTranscriptLines(ls);
+        lmsAudioState.mp3SyncSource = "timestamps";
+        course.updatedAt = new Date().toISOString();
+        savePdfStudioState();
+        if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) CloudClient.syncNow();
+        showToast("🎯 Đã đồng bộ chuẩn từng câu với file MP3 thật và lưu vĩnh viễn!");
+        renderPdfStudioPage();
+    } catch (err) {
+        showToast("Lỗi căn chỉnh audio: " + (err.message || err), "error");
+    } finally {
+        pdfLmsUi.audioAlignBusy = false;
+    }
+}
+
+function lmsGetActiveMp3Timings(lessonId, lines) {
+    if (lmsHasRealTimestamps(lines)) {
+        return { source: "timestamps", timings: lines };
+    }
+    const vad = lmsAudioState.vadCacheByLesson[lessonId];
+    if (Array.isArray(vad) && vad.length === lines.length) {
+        return { source: "vad_envelope", timings: vad };
+    }
+    return { source: "none", timings: null };
+}
+
 function lmsJumpToTranscriptLine(idx, audioElId = "") {
     if (audioElId) {
         const audioEl = document.getElementById(audioElId);
-        if (audioEl && Number.isFinite(audioEl.duration) && audioEl.duration > 0 && lmsAudioState.lines.length) {
-            const totalChars = lmsAudioState.lines.reduce((s, l) => s + Math.max(8, l.text.length), 0) || 1;
-            let acc = 0;
-            for (let i = 0; i < idx; i++) acc += Math.max(8, lmsAudioState.lines[i].text.length);
-            audioEl.currentTime = (acc / totalChars) * audioEl.duration;
-            audioEl.play?.().catch(() => {});
-            lmsHighlightTranscriptRow(idx, true);
-            return;
+        if (audioEl && lmsAudioState.lines.length) {
+            const { timings } = lmsGetActiveMp3Timings(lmsAudioState.lessonId, lmsAudioState.lines);
+            if (timings && timings[idx] && typeof timings[idx].startTime === "number") {
+                audioEl.currentTime = Math.max(0, timings[idx].startTime + 0.02);
+                audioEl.play?.().catch(() => {});
+                lmsAudioState.currentIdx = idx;
+                lmsHighlightTranscriptRow(idx, true, idx - 1);
+                return;
+            }
+            if (Number.isFinite(audioEl.duration) && audioEl.duration > 0) {
+                const totalChars = lmsAudioState.lines.reduce((s, l) => s + Math.max(8, l.text.length), 0) || 1;
+                let acc = 0;
+                for (let i = 0; i < idx; i++) acc += Math.max(8, lmsAudioState.lines[i].text.length);
+                audioEl.currentTime = (acc / totalChars) * audioEl.duration;
+                audioEl.play?.().catch(() => {});
+                lmsAudioState.currentIdx = idx;
+                lmsHighlightTranscriptRow(idx, true, idx - 1);
+                return;
+            }
         }
     }
     lmsTtsStartFromIndex(idx);
 }
 
 function lmsBindMp3TranscriptSync(audioElId) {
+    lmsTeardownMp3Sync();
     const audioEl = document.getElementById(audioElId);
-    if (!audioEl || audioEl.dataset.syncBound === "1") return;
-    audioEl.dataset.syncBound = "1";
-    audioEl.addEventListener("timeupdate", () => {
-        if (!Number.isFinite(audioEl.duration) || audioEl.duration <= 0 || !lmsAudioState.lines.length) return;
-        const ratio = Math.max(0, Math.min(1, audioEl.currentTime / audioEl.duration));
-        const totalChars = lmsAudioState.lines.reduce((s, l) => s + Math.max(8, l.text.length), 0) || 1;
-        let acc = 0;
-        let activeIdx = lmsAudioState.lines.length - 1;
-        for (let i = 0; i < lmsAudioState.lines.length; i++) {
-            const nextAcc = acc + Math.max(8, lmsAudioState.lines[i].text.length);
-            if (ratio <= nextAcc / totalChars) {
-                activeIdx = i;
-                break;
+    if (!audioEl || !lmsAudioState.lines.length) return;
+
+    const ac = new AbortController();
+    lmsAudioState.mp3Abort = ac;
+    const lessonId = lmsAudioState.lessonId;
+    let lastActive = -99;
+    let lastSpoken = -99;
+
+    const updateBadge = (srcMode) => {
+        const badge = document.getElementById("lms-sync-quality-badge");
+        if (!badge || pdfLmsUi.audioAlignBusy) return;
+        if (srcMode === "timestamps") {
+            badge.textContent = "🎯 Đồng bộ Timestamp chuẩn từng câu";
+            badge.className = "px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-[10.5px] font-bold";
+        } else if (srcMode === "vad_envelope") {
+            badge.textContent = "🎚️ Đã dò sóng âm Speech-VAD (Bấm Căn chỉnh AI để chính xác từng giây)";
+            badge.className = "px-2.5 py-0.5 rounded-full bg-cyan-500/15 border border-cyan-500/35 text-cyan-300 text-[10.5px] font-bold";
+        } else {
+            badge.textContent = "⚠️ Chưa có timestamp — Bấm '🎯 Căn chỉnh chuẩn AI Audio'";
+            badge.className = "px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/35 text-amber-300 text-[10.5px] font-bold";
+        }
+    };
+
+    const syncNow = () => {
+        if (ac.signal.aborted) return;
+        if (!Number.isFinite(audioEl.duration) || audioEl.duration <= 0) return;
+        const { source, timings } = lmsGetActiveMp3Timings(lessonId, lmsAudioState.lines);
+        if (timings) {
+            const { activeIdx, spokenUpToIdx } = lmsResolveTimestampState(timings, audioEl.currentTime);
+            if (activeIdx !== lastActive || spokenUpToIdx !== lastSpoken) {
+                lastActive = activeIdx;
+                lastSpoken = spokenUpToIdx;
+                lmsAudioState.currentIdx = activeIdx;
+                lmsHighlightTranscriptRow(activeIdx, true, spokenUpToIdx);
             }
-            acc = nextAcc;
+            return;
         }
-        if (activeIdx !== lmsAudioState.currentIdx) {
-            lmsAudioState.currentIdx = activeIdx;
-            lmsHighlightTranscriptRow(activeIdx, true);
+        // Only while VAD is decoding: never highlight before first second or after 98%
+        if (audioEl.currentTime < 0.8 || audioEl.currentTime >= audioEl.duration * 0.98) {
+            if (lastActive !== -1) {
+                lastActive = -1;
+                lmsAudioState.currentIdx = -1;
+                lmsHighlightTranscriptRow(-1, false, audioEl.currentTime >= audioEl.duration * 0.98 ? lmsAudioState.lines.length - 1 : -1);
+            }
         }
-    });
+    };
+
+    const rafLoop = () => {
+        if (ac.signal.aborted) return;
+        syncNow();
+        if (!audioEl.paused && !audioEl.ended) {
+            lmsAudioState.mp3RafId = requestAnimationFrame(rafLoop);
+        }
+    };
+
+    const ensureVadIfNeeded = () => {
+        const cur = lmsGetActiveMp3Timings(lessonId, lmsAudioState.lines);
+        updateBadge(cur.source);
+        if (cur.source !== "none") return;
+        const srcUrl = audioEl.currentSrc || audioEl.src;
+        if (!srcUrl) return;
+        lmsAnalyzeMp3SpeechEnvelope(srcUrl, lmsAudioState.lines).then(vadTimings => {
+            if (ac.signal.aborted || !vadTimings) return;
+            lmsAudioState.vadCacheByLesson[lessonId] = vadTimings;
+            lmsAudioState.mp3SyncSource = "vad_envelope";
+            updateBadge("vad_envelope");
+            syncNow();
+        }).catch(() => {});
+    };
+
+    audioEl.addEventListener("loadedmetadata", ensureVadIfNeeded, { signal: ac.signal });
+    audioEl.addEventListener("canplay", ensureVadIfNeeded, { signal: ac.signal });
+    audioEl.addEventListener("play", () => {
+        ensureVadIfNeeded();
+        if (lmsAudioState.mp3RafId) cancelAnimationFrame(lmsAudioState.mp3RafId);
+        lmsAudioState.mp3RafId = requestAnimationFrame(rafLoop);
+    }, { signal: ac.signal });
+    audioEl.addEventListener("pause", () => {
+        if (lmsAudioState.mp3RafId) {
+            cancelAnimationFrame(lmsAudioState.mp3RafId);
+            lmsAudioState.mp3RafId = null;
+        }
+        syncNow();
+    }, { signal: ac.signal });
+    audioEl.addEventListener("seeked", () => {
+        syncNow();
+    }, { signal: ac.signal });
+    audioEl.addEventListener("timeupdate", syncNow, { signal: ac.signal });
+    audioEl.addEventListener("ended", () => {
+        if (lmsAudioState.mp3RafId) {
+            cancelAnimationFrame(lmsAudioState.mp3RafId);
+            lmsAudioState.mp3RafId = null;
+        }
+        lastActive = -1;
+        lastSpoken = lmsAudioState.lines.length - 1;
+        lmsAudioState.currentIdx = -1;
+        lmsHighlightTranscriptRow(-1, false, lastSpoken);
+    }, { signal: ac.signal });
+
+    if (audioEl.readyState >= 1 || audioEl.src) {
+        ensureVadIfNeeded();
+    }
 }
 
 function lmsPlaySpeakingDialogueSynced(dialogueLines) {
@@ -548,6 +949,7 @@ function ensureCourseUnitsNormalized(course) {
             suggestedAudioFile: l.suggestedAudioFile || "",
             audioStoragePath: l.audioStoragePath || "",
             transcript: l.transcript || "",
+            transcriptLines: Array.isArray(l.transcriptLines) ? l.transcriptLines : undefined,
             questions: Array.isArray(l.questions) ? l.questions : [],
             level: l.level || course.level || "B1",
             sourcePage: Number(l.sourcePage) || u.pageStart,
@@ -1117,6 +1519,34 @@ function lmsSubmitQuestionLesson(unitId, skillKey, lessonId, practiceSetId) {
             { type: "pdf_lesson", skill: skillKey, title: `${u.title} • ${ls.title} (${correctCount}/${totalCount})`, scorePct }
         );
     }
+    if (typeof LearningHub !== "undefined") {
+        const psIdx = practiceSetId === "original" ? 0 : ((ls.aiPracticeSets || []).findIndex(p => p.id === practiceSetId) + 1);
+        const psObj = practiceSetId !== "original" ? (ls.aiPracticeSets || []).find(p => p.id === practiceSetId) : null;
+        LearningHub.recordAttempt({
+            skill: skillKey,
+            sourceScope: "pdf_studio",
+            courseId: course.id,
+            unitId: u.id,
+            lessonId: ls.id,
+            lessonTitle: `${u.title} — ${ls.title}`,
+            questionSetId: practiceSetId === "original" ? "set-1" : practiceSetId,
+            questionSetLabel: practiceSetId === "original" ? "Bộ câu hỏi 1 (Original)" : (psObj?.label || `Bộ câu hỏi ${psIdx + 1}`),
+            exerciseType: practiceSetId === "original" ? "pdf_lesson" : "pdf_ai_question_set",
+            cefrLevel: psObj?.cefrLevel || ls.level || course.level || "B1",
+            score10,
+            scorePct,
+            correctCount,
+            totalCount,
+            durationSec,
+            answers: itemResults.map(r => ({
+                question: r.question,
+                userAnswer: r.userAnswer,
+                correctAnswer: r.correctAnswer,
+                isCorrect: r.isCorrect,
+                explanationVi: r.explanationVi
+            }))
+        });
+    }
     if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) CloudClient.syncNow();
 
     pdfLmsUi.showingResultAttemptId = attempt.id;
@@ -1136,10 +1566,14 @@ function lmsRetryCurrentLesson() {
     renderPdfStudioPage();
 }
 
-/* ==================== 6. GENERATE AI PRACTICE INSIDE PARENT LESSON (ALL 6 SKILLS!) ==================== */
+/* ==================== 6. GENERATE MORE QUESTIONS (QUESTION SETS 1..N WITH MANDATORY CEFR) ==================== */
 async function lmsGenerateAiPracticeForLesson(unitId, skillKey, lessonId) {
     if (pdfLmsUi.aiGenBusy) {
-        showToast("⏳ AI đang tạo bộ bài tập, vui lòng đợi vài giây...", "warning");
+        showToast("⏳ AI đang tạo bộ câu hỏi mới, vui lòng đợi vài giây...", "warning");
+        return;
+    }
+    if (!pdfLmsUi.aiGenCefrConfirmed || !pdfLmsUi.aiGenCefr) {
+        showToast("⚠️ Bắt buộc chọn cấp độ CEFR (A1 – C2) trong mục SELECT QUESTION LEVEL trước khi tạo!", "warning");
         return;
     }
     const course = getActivePdfCourse();
@@ -1154,6 +1588,8 @@ async function lmsGenerateAiPracticeForLesson(unitId, skillKey, lessonId) {
         const count = Number(pdfLmsUi.aiGenCount) || 5;
         const difficulty = pdfLmsUi.aiGenDifficulty || "same";
         const focusMode = pdfLmsUi.aiGenFocus || "mixed";
+        const cefrLevel = pdfLmsUi.aiGenCefr;
+        const nextSetNumber = (ls.aiPracticeSets || []).length + 2;
 
         // Gather ALL existing questions on this lesson + its existing AI practice sets to guarantee ZERO duplicates
         const existingQuestions = [
@@ -1161,7 +1597,7 @@ async function lmsGenerateAiPracticeForLesson(unitId, skillKey, lessonId) {
             ...(ls.aiPracticeSets || []).flatMap(ps => (ps.questions || []).map(q => q.question)),
             ...(ls.aiPracticeSets || []).flatMap(ps => (ps.writingTasks || []).map(t => t.title)),
             ...(ls.aiPracticeSets || []).flatMap(ps => (ps.speakingTasks || []).map(t => t.title))
-        ].slice(0, 40);
+        ].slice(0, 60);
 
         const wrongHistory = lmsGetLessonAttempts(course, ls.id)
             .flatMap(a => (a.itemResults || []).filter(r => !r.isCorrect))
@@ -1184,26 +1620,38 @@ async function lmsGenerateAiPracticeForLesson(unitId, skillKey, lessonId) {
             unitSummary: u.summaryVi || ""
         };
 
-        const res = await AIClient.request("pdf-generate-lesson-practice", {
-            skill: skillKey,
-            unitTitle: u.title,
-            lessonTitle: ls.title,
-            sourcePage: ls.sourcePage || u.pageStart || 1,
-            count,
-            difficulty,
-            focusMode,
-            lessonContent,
-            existingQuestions,
-            wrongHistory
-        });
+        const useUnifiedMoreQ = count >= 15 || !["writing", "speaking"].includes(skillKey);
+        const res = useUnifiedMoreQ
+            ? await AIClient.request("generate-more-questions", {
+                skill: skillKey,
+                lessonTitle: `${u.title} — ${ls.title}`,
+                lessonContent,
+                cefrLevel,
+                difficultyMode: difficulty,
+                count,
+                setNumber: nextSetNumber,
+                existingQuestions
+            })
+            : await AIClient.request("pdf-generate-lesson-practice", {
+                skill: skillKey,
+                unitTitle: u.title,
+                lessonTitle: ls.title,
+                sourcePage: ls.sourcePage || u.pageStart || 1,
+                count,
+                difficulty,
+                cefrLevel,
+                focusMode,
+                lessonContent,
+                existingQuestions,
+                wrongHistory
+            });
 
         if (!res || !res.ok || !res.data) {
-            showToast("Không tạo được bài tập AI: " + (res?.error || "Vui lòng kiểm tra kết nối AI Backend."), "error");
+            showToast("Không tạo được bộ câu hỏi mới: " + (res?.error || "Vui lòng kiểm tra kết nối AI Backend."), "error");
             return;
         }
 
         const d = res.data;
-        const nextNum = (ls.aiPracticeSets || []).length + 1;
         const cleanQs = (Array.isArray(d.questions) ? d.questions : []).map((q, idx) => {
             let opts = Array.isArray(q.options) ? q.options.map(o => String(o || "").trim()).filter(Boolean) : [];
             if (String(q.type || "").toLowerCase() === "tfng" && opts.length < 2) opts = ["True", "False", "Not Given"];
@@ -1229,9 +1677,11 @@ async function lmsGenerateAiPracticeForLesson(unitId, skillKey, lessonId) {
             parentLessonId: ls.id,
             unitId: u.id,
             skill: skillKey,
-            label: `AI Practice ${nextNum}`,
-            title: String(d.title || `AI Practice ${nextNum} — ${ls.title}`).trim(),
+            setNumber: nextSetNumber,
+            label: `Bộ câu hỏi ${nextSetNumber}`,
+            title: String(d.title || `Bộ câu hỏi ${nextSetNumber} (${cefrLevel} • AI)`).trim(),
             summaryVi: String(d.summaryVi || "").trim(),
+            cefrLevel,
             difficulty,
             focusMode,
             contentOrigin: "AI_GENERATED",
@@ -1243,7 +1693,6 @@ async function lmsGenerateAiPracticeForLesson(unitId, skillKey, lessonId) {
             createdAt: new Date().toISOString()
         };
 
-        // Also update keyVocab on reading lesson if returned and currently empty
         if (skillKey === "reading" && !(ls.keyVocab || []).length && Array.isArray(d.keyVocab) && d.keyVocab.length) {
             ls.keyVocab = d.keyVocab;
         }
@@ -1258,16 +1707,24 @@ async function lmsGenerateAiPracticeForLesson(unitId, skillKey, lessonId) {
         pdfLmsUi.showingResultAttemptId = null;
         pdfLmsUi.activeQuestionIdx = 0;
         pdfLmsUi.startedAtMap[`${ls.id}::${practiceSet.id}`] = Date.now();
-        showToast(`✨ Đã tạo "${practiceSet.label}" (${cleanQs.length || practiceSet.writingTasks.length || practiceSet.speakingTasks.length} bài mới) lưu ngay trong "${ls.title}"!`);
+        if (d.insufficientSource && d.insufficientReasonVi) {
+            showToast(`ℹ️ ${d.insufficientReasonVi} (Đã tạo ${cleanQs.length} câu chất lượng vào Bộ câu hỏi ${nextSetNumber})`, "warning");
+        } else {
+            showToast(`✨ Đã tạo Bộ câu hỏi ${nextSetNumber} (${cleanQs.length || practiceSet.writingTasks.length || practiceSet.speakingTasks.length} câu mới • CEFR ${cefrLevel}) — không ghi đè bộ cũ!`);
+        }
     } finally {
         pdfLmsUi.aiGenBusy = false;
         renderPdfStudioPage();
     }
 }
 
-/* ==================== 6B. QCHINESE-STYLE "AI – GENERATE EXERCISE N" FOR ALL 6 SKILLS ==================== */
+/* ==================== 6B. QCHINESE-STYLE "AI – GENERATE EXERCISE N" WITH MANDATORY CEFR ==================== */
 async function lmsGenerateNewSkillExercise(unitId, skillKey) {
     if (pdfLmsUi.aiExerciseBusy) return;
+    if (!pdfLmsUi.aiExerciseCefrConfirmed || !pdfLmsUi.aiExerciseCefr) {
+        showToast("⚠️ Bắt buộc chọn trình độ CEFR (A1 – C2) trong mục SELECT YOUR ENGLISH LEVEL trước khi tạo Exercise mới!", "warning");
+        return;
+    }
     const course = getActivePdfCourse();
     const u = lmsGetUnit(course, unitId);
     if (!course || !u) return;
@@ -1275,6 +1732,7 @@ async function lmsGenerateNewSkillExercise(unitId, skillKey) {
     const list = u.skills?.[skillKey] || [];
     const nextNum = list.length + 1;
     const doc = getPdfDocumentById(course.docId);
+    const chosenLevel = pdfLmsUi.aiExerciseCefr;
 
     // Collect REAL PDF page excerpts belonging to this Unit so AI reads the actual uploaded textbook!
     const excerptParts = [];
@@ -1321,7 +1779,7 @@ async function lmsGenerateNewSkillExercise(unitId, skillKey) {
             skill: skillKey,
             unitTitle: u.title,
             courseTitle: course.title,
-            level: course.level || "B1",
+            level: chosenLevel,
             exerciseNumber: nextNum,
             sourceStyle,
             sourcePage: u.pageStart || 1,
@@ -1544,6 +2002,26 @@ async function lmsSubmitOpenTask(unitId, skillKey, lessonId, taskObjId, mode) {
     course.progress.scores[ls.id] = Math.max(Number(course.progress.scores[ls.id]) || 0, score10);
     course.updatedAt = new Date().toISOString();
     savePdfStudioState();
+    if (typeof LearningHub !== "undefined") {
+        LearningHub.recordAttempt({
+            skill: skillKey,
+            sourceScope: "pdf_studio",
+            courseId: course.id,
+            unitId: u.id,
+            lessonId: ls.id,
+            lessonTitle: `${u.title} — ${taskObj.title || ls.title}`,
+            questionSetId: pdfLmsUi.practiceSetId === "original" ? "set-1" : pdfLmsUi.practiceSetId,
+            questionSetLabel: pdfLmsUi.practiceSetId === "original" ? "Bộ câu hỏi 1 (Original)" : "AI Practice",
+            exerciseType: mode,
+            cefrLevel: ls.level || course.level || "B1",
+            score10,
+            scorePct,
+            correctCount: score10 >= 5 ? 1 : 0,
+            totalCount: 1,
+            userText: submission,
+            aiFeedback: d
+        });
+    }
     if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) CloudClient.syncNow();
     renderPdfStudioPage();
     showToast(`✅ AI chấm ${score10}/10 điểm! Đã lưu kết quả và lịch sử làm bài lên Cloud.`);
@@ -1569,25 +2047,41 @@ async function lmsRecordSpeakingVoice(taskObjId) {
 function renderLmsAiPracticeGeneratorBar(u, ls) {
     const busy = pdfLmsUi.aiGenBusy;
     const sets = ls.aiPracticeSets || [];
+    const nextSetNum = sets.length + 2;
+    const cefrList = ["A1", "A2", "B1", "B2", "C1", "C2"];
     return `
-        <div class="p-4 rounded-2xl bg-gradient-to-r from-violet-950/80 via-indigo-950/70 to-slate-950 border border-violet-500/35 space-y-3 text-xs">
+        <div class="p-4 rounded-2xl bg-gradient-to-r from-violet-950/80 via-indigo-950/70 to-slate-950 border border-emerald-500/35 space-y-3 text-xs">
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                    <p class="font-extrabold text-white text-sm">✨ Tạo Thêm Bài Tập Bằng AI (Lưu ngay trong bài học gốc)</p>
-                    <p class="text-[11px] text-slate-300">AI phân tích lại nội dung bài này + lỗi bạn từng sai để sinh bộ câu hỏi mới hoàn toàn, không trùng lặp.</p>
+                    <p class="font-extrabold text-white text-sm">➕ AI – GENERATE MORE QUESTIONS (Tạo Bộ câu hỏi ${nextSetNum} độc lập)</p>
+                    <p class="text-[11px] text-slate-300">Phân tích nội dung bài gốc + tất cả bộ câu hỏi cũ để tạo <strong>Bộ câu hỏi ${nextSetNum}</strong> mới hoàn toàn — KHÔNG bao giờ ghi đè bộ cũ.</p>
                 </div>
-                ${sets.length ? `<span class="px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-extrabold text-[11px]">Đã có ${sets.length} bộ AI Practice</span>` : ""}
+                <span class="px-2.5 py-1 rounded-full border font-extrabold text-[11px] ${pdfLmsUi.aiGenCefrConfirmed ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" : "bg-amber-500/15 text-amber-300 border-amber-500/30"}">
+                    ${pdfLmsUi.aiGenCefrConfirmed ? `✅ Đã chọn cấp độ: ${pdfLmsUi.aiGenCefr}` : "⚠️ Bắt buộc chọn CEFR A1–C2"}
+                </span>
+            </div>
+            <div class="space-y-1.5">
+                <p class="text-[11px] font-extrabold text-cyan-300 uppercase">Bước 1: SELECT QUESTION LEVEL (Bắt buộc xác nhận trước khi tạo) *</p>
+                <div class="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                    ${cefrList.map(lv => {
+                        const active = pdfLmsUi.aiGenCefr === lv;
+                        return `<button type="button" data-pdf-qcefr="${lv}" onclick="pdfLmsUi.aiGenCefr='${lv}'; pdfLmsUi.aiGenCefrConfirmed=true; renderPdfStudioPage();" class="py-1.5 px-2 rounded-xl border font-black transition ${active ? "bg-emerald-600/30 border-emerald-400 text-white ring-1 ring-emerald-400" : "bg-slate-900 border-white/10 text-slate-300 hover:border-cyan-400/50"}">${lv}</button>`;
+                    }).join("")}
+                </div>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
                 <select onchange="pdfLmsUi.aiGenCount=Number(this.value)" class="bg-slate-900 border border-white/15 rounded-xl px-3 py-2 text-cyan-300 font-bold">
-                    <option value="5" ${pdfLmsUi.aiGenCount === 5 ? "selected" : ""}>5 câu hỏi</option>
-                    <option value="10" ${pdfLmsUi.aiGenCount === 10 ? "selected" : ""}>10 câu hỏi</option>
-                    <option value="15" ${pdfLmsUi.aiGenCount === 15 ? "selected" : ""}>15 câu hỏi</option>
+                    <option value="5" ${pdfLmsUi.aiGenCount === 5 ? "selected" : ""}>5 câu hỏi mới</option>
+                    <option value="10" ${pdfLmsUi.aiGenCount === 10 ? "selected" : ""}>10 câu hỏi mới</option>
+                    <option value="15" ${pdfLmsUi.aiGenCount === 15 ? "selected" : ""}>15 câu hỏi mới</option>
+                    <option value="20" ${pdfLmsUi.aiGenCount === 20 ? "selected" : ""}>20 câu hỏi mới</option>
+                    <option value="30" ${pdfLmsUi.aiGenCount === 30 ? "selected" : ""}>30 câu hỏi mới</option>
                 </select>
                 <select onchange="pdfLmsUi.aiGenDifficulty=this.value" class="bg-slate-900 border border-white/15 rounded-xl px-3 py-2 text-violet-300 font-bold">
-                    <option value="easier" ${pdfLmsUi.aiGenDifficulty === "easier" ? "selected" : ""}>Độ khó: Dễ hơn</option>
-                    <option value="same" ${pdfLmsUi.aiGenDifficulty === "same" ? "selected" : ""}>Độ khó: Tương đương</option>
-                    <option value="harder" ${pdfLmsUi.aiGenDifficulty === "harder" ? "selected" : ""}>Độ khó: Khó hơn</option>
+                    <option value="same" ${pdfLmsUi.aiGenDifficulty === "same" ? "selected" : ""}>🎯 Giữ nguyên trình độ bài gốc</option>
+                    <option value="harder" ${pdfLmsUi.aiGenDifficulty === "harder" ? "selected" : ""}>🔥 Tăng độ khó</option>
+                    <option value="easier" ${pdfLmsUi.aiGenDifficulty === "easier" ? "selected" : ""}>🌱 Giảm độ khó</option>
+                    <option value="exact_cefr" ${pdfLmsUi.aiGenDifficulty === "exact_cefr" ? "selected" : ""}>📐 Đúng chuẩn CEFR đã chọn</option>
                 </select>
                 <select onchange="pdfLmsUi.aiGenFocus=this.value" class="bg-slate-900 border border-white/15 rounded-xl px-3 py-2 text-emerald-300 font-bold">
                     <option value="same_type" ${pdfLmsUi.aiGenFocus === "same_type" ? "selected" : ""}>Giữ nguyên dạng bài</option>
@@ -1595,8 +2089,8 @@ function renderLmsAiPracticeGeneratorBar(u, ls) {
                     <option value="mistakes" ${pdfLmsUi.aiGenFocus === "mistakes" ? "selected" : ""}>Tập trung vào lỗi sai</option>
                     <option value="deep" ${pdfLmsUi.aiGenFocus === "deep" ? "selected" : ""}>Luyện chuyên sâu</option>
                 </select>
-                <button type="button" ${busy ? "disabled" : ""} onclick="lmsGenerateAiPracticeForLesson('${u.id}','${ls.skill}','${ls.id}')" class="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 hover:opacity-95 text-white font-extrabold shadow-lg ${busy ? "opacity-60 animate-pulse" : ""}">
-                    ${busy ? "⏳ AI đang tạo..." : "⚡ Tạo thêm bài tập AI"}
+                <button type="button" ${busy ? "disabled" : ""} onclick="lmsGenerateAiPracticeForLesson('${u.id}','${ls.skill}','${ls.id}')" class="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-95 text-white font-extrabold shadow-lg ${busy ? "opacity-60 animate-pulse" : ""}">
+                    ${busy ? `⏳ Đang tạo Bộ ${nextSetNum}...` : `➕ AI – Generate More Questions`}
                 </button>
             </div>
         </div>
@@ -1604,15 +2098,36 @@ function renderLmsAiPracticeGeneratorBar(u, ls) {
 }
 
 function renderLmsPracticeSetSwitcher(u, ls) {
+    const course = getActivePdfCourse();
     const sets = ls.aiPracticeSets || [];
-    if (!sets.length) return "";
+    const origAtts = lmsGetLessonAttempts(course, ls.id, "original");
+    const origLast = origAtts[0] || null;
+    const origQCount = (ls.questions || []).length;
+
     return `
-        <div class="flex flex-wrap items-center gap-1.5 text-xs">
-            <span class="text-slate-400 font-bold mr-1">Bộ bài tập:</span>
-            <button onclick="lmsOpenLesson('${u.id}','${ls.skill}','${ls.id}','original')" class="px-3 py-1.5 rounded-xl font-extrabold border transition ${pdfLmsUi.practiceSetId === "original" ? "bg-emerald-600 text-white border-emerald-400" : "bg-slate-950 text-slate-300 border-white/10 hover:text-white"}">📄 Bài gốc</button>
-            ${sets.map(ps => `
-                <button onclick="lmsOpenLesson('${u.id}','${ls.skill}','${ls.id}','${ps.id}')" class="px-3 py-1.5 rounded-xl font-extrabold border transition ${pdfLmsUi.practiceSetId === ps.id ? "bg-violet-600 text-white border-violet-400" : "bg-slate-950 text-violet-300 border-violet-500/30 hover:bg-violet-500/15"}">🤖 ${escHtml(ps.label)}</button>
-            `).join("")}
+        <div class="p-3.5 rounded-2xl bg-slate-950/90 border border-violet-500/30 space-y-2 text-xs">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="text-[10.5px] font-black uppercase tracking-wider text-violet-300">📚 QUESTION SETS (${sets.length + 1} bộ câu hỏi độc lập — chuyển bộ không reload)</span>
+                <span class="text-[11px] text-slate-400">Mỗi bộ lưu kết quả &amp; lịch sử riêng</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <button onclick="lmsOpenLesson('${u.id}','${ls.skill}','${ls.id}','original')" class="px-3 py-2 rounded-xl border text-left transition ${pdfLmsUi.practiceSetId === "original" ? "bg-violet-600/25 border-violet-400 ring-1 ring-violet-400/60 text-white" : "bg-slate-900 border-white/10 text-slate-300 hover:border-cyan-400/50"}">
+                    <div class="font-extrabold flex items-center gap-1.5"><span>Bộ câu hỏi 1</span><span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300">Original</span></div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">${origQCount ? `${origQCount} câu • ` : ""}${origLast ? `<span class="text-emerald-300 font-bold">✅ ${origLast.score10}/10 (${origAtts.length} lần)</span>` : "⏳ Chưa làm"}</div>
+                </button>
+                ${sets.map((ps, idx) => {
+                    const setNum = Number(ps.setNumber) || (idx + 2);
+                    const psAtts = lmsGetLessonAttempts(course, ls.id, ps.id);
+                    const psLast = psAtts[0] || null;
+                    const qLen = (ps.questions || []).length || (ps.writingTasks || []).length || (ps.speakingTasks || []).length;
+                    return `
+                        <button onclick="lmsOpenLesson('${u.id}','${ls.skill}','${ls.id}','${ps.id}')" class="px-3 py-2 rounded-xl border text-left transition ${pdfLmsUi.practiceSetId === ps.id ? "bg-violet-600/25 border-violet-400 ring-1 ring-violet-400/60 text-white" : "bg-slate-900 border-white/10 text-slate-300 hover:border-emerald-400/50"}">
+                            <div class="font-extrabold flex items-center gap-1.5"><span>Bộ câu hỏi ${setNum}</span><span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300">AI • ${escHtml(ps.cefrLevel || ls.level || "B1")}</span></div>
+                            <div class="text-[10px] text-slate-400 mt-0.5">${qLen} câu • ${psLast ? `<span class="text-emerald-300 font-bold">✅ ${psLast.score10}/10 (${psAtts.length} lần)</span>` : "⏳ Chưa làm"}</div>
+                        </button>
+                    `;
+                }).join("")}
+            </div>
         </div>
     `;
 }
@@ -1873,30 +2388,37 @@ function renderLmsQuestionBasedWorkspace(course, u, ls, skillKey) {
             setTimeout(() => lmsBindMp3TranscriptSync(audioElId), 80);
         }
 
+        const hasRealTs = lmsHasRealTimestamps(tLines);
         const transcriptRowsHtml = tLines.length ? `
             <div class="p-4 rounded-2xl bg-slate-950/90 border border-cyan-500/25 space-y-2.5 text-xs">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <button type="button" onclick="pdfLmsUi.transcriptOpen=!pdfLmsUi.transcriptOpen; renderPdfStudioPage();" class="font-extrabold text-cyan-300 hover:text-white flex items-center gap-1.5">
                         <span>${pdfLmsUi.transcriptOpen ? "▾" : "▸"} 📜 Phụ đề tương tác (${tLines.length} câu — bấm bất kỳ câu nào để nghe)</span>
                     </button>
-                    ${hasViTrans && pdfLmsUi.transcriptOpen ? `
-                        <button type="button" onclick="pdfLmsUi.showTranscriptVi=!pdfLmsUi.showTranscriptVi; renderPdfStudioPage();" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] font-bold text-slate-300">
-                            ${pdfLmsUi.showTranscriptVi ? "🇻🇳 Ẩn dịch Việt" : "🇻🇳 Hiện dịch Việt"}
-                        </button>
-                    ` : ""}
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        ${hasRealAudio ? `<span id="lms-sync-quality-badge" class="px-2.5 py-0.5 rounded-full border text-[10.5px] font-bold ${hasRealTs ? "bg-emerald-500/15 border-emerald-500/35 text-emerald-300" : "bg-cyan-500/15 border-cyan-500/35 text-cyan-300"}">${hasRealTs ? "🎯 Đồng bộ Timestamp chuẩn từng câu" : "🎚️ Đang dùng Speech-VAD"}</span>` : ""}
+                        ${hasViTrans && pdfLmsUi.transcriptOpen ? `
+                            <button type="button" onclick="pdfLmsUi.showTranscriptVi=!pdfLmsUi.showTranscriptVi; renderPdfStudioPage();" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] font-bold text-slate-300">
+                                ${pdfLmsUi.showTranscriptVi ? "🇻🇳 Ẩn dịch Việt" : "🇻🇳 Hiện dịch Việt"}
+                            </button>
+                        ` : ""}
+                    </div>
                 </div>
                 ${pdfLmsUi.transcriptOpen ? `
-                    <div class="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                    <div onwheel="lmsAudioState.userScrollPauseUntil = Date.now() + 4000" ontouchmove="lmsAudioState.userScrollPauseUntil = Date.now() + 4000" class="space-y-1.5 max-h-72 overflow-y-auto pr-1">
                         ${tLines.map((ln, idx) => {
                             const isActive = idx === lmsAudioState.currentIdx;
+                            const tsBadge = (typeof ln.startTime === "number" && typeof ln.endTime === "number")
+                                ? `<span class="text-[9.5px] font-mono text-slate-500 ml-1.5">[${lmsFormatTimeSec(ln.startTime)}–${lmsFormatTimeSec(ln.endTime)}]</span>`
+                                : "";
                             return `
-                                <div data-lms-trow="${idx}" onclick="lmsJumpToTranscriptLine(${idx}, '${hasRealAudio ? audioElId : ""}')" class="cursor-pointer p-2.5 rounded-xl border transition-all duration-200 ${isActive ? "border-cyan-400 bg-cyan-500/20 shadow-[0_0_20px_rgba(34,211,238,0.28)] ring-1 ring-cyan-400/60" : "border-white/5 bg-slate-900/70 hover:border-cyan-500/40 hover:bg-slate-900"}">
+                                <div data-lms-trow="${idx}" onclick="lmsJumpToTranscriptLine(${idx}, '${hasRealAudio ? audioElId : ""}')" class="cursor-pointer p-2.5 rounded-xl border transition-all duration-200 ${isActive ? "border-cyan-400 bg-cyan-500/20 shadow-[0_0_20px_rgba(34,211,238,0.28)] ring-1 ring-cyan-400/60 audio-line-active" : "border-white/5 bg-slate-900/70 hover:border-cyan-500/40 hover:bg-slate-900"}">
                                     <div class="flex items-start gap-2">
                                         <span class="lms-trow-playing-dot ${isActive ? "" : "hidden"} text-cyan-300 animate-pulse shrink-0">🔊</span>
                                         <span class="text-[10px] font-mono text-slate-500 shrink-0 mt-0.5">${idx + 1}.</span>
                                         <div class="flex-1 min-w-0 space-y-0.5">
                                             <p class="text-slate-100 leading-relaxed">
-                                                ${ln.speaker ? `<strong class="text-emerald-300 mr-1">${escHtml(ln.speaker)}:</strong>` : ""}${escHtml(ln.text)}
+                                                ${ln.speaker ? `<strong class="text-emerald-300 mr-1">${escHtml(ln.speaker)}:</strong>` : ""}${lmsRenderLineWordsHtml(ln.text, idx)}${tsBadge}
                                             </p>
                                             ${pdfLmsUi.showTranscriptVi && ln.translationVi ? `<p class="text-[11px] text-slate-400 italic">${escHtml(ln.translationVi)}</p>` : ""}
                                         </div>
@@ -1925,12 +2447,19 @@ function renderLmsQuestionBasedWorkspace(course, u, ls, skillKey) {
                             <span class="pdf-audio-status text-[11px] font-bold text-cyan-300">${blobUrl ? "✅ Sẵn sàng phát giọng bản xứ" : "⏳ Đang nạp audio từ Cloud..."}</span>
                         </div>
                         <audio id="${audioElId}" controls preload="metadata" ${blobUrl ? `src="${blobUrl}"` : `data-audio-storage-path="${escHtml(cloudPath)}"`} class="w-full h-10"></audio>
-                        <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
-                            <button type="button" onclick="rewindPdfAudio('${audioElId}', -5)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-white/10 text-slate-200 font-bold">⏪ -5 giây</button>
-                            <button type="button" onclick="setPdfAudioRate('${audioElId}', 0.75)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-white/10 text-cyan-300 font-bold">0.75x</button>
-                            <button type="button" onclick="setPdfAudioRate('${audioElId}', 1.0)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-white/10 text-emerald-300 font-bold">1.0x</button>
-                            <button type="button" onclick="setPdfAudioRate('${audioElId}', 1.25)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-white/10 text-violet-300 font-bold">1.25x</button>
-                            <button type="button" onclick="setPdfAudioRate('${audioElId}', 1.5)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-white/10 text-amber-300 font-bold">1.5x</button>
+                        <div class="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                            <div class="flex flex-wrap items-center gap-1.5">
+                                <button type="button" onclick="rewindPdfAudio('${audioElId}', -5)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-white/10 text-slate-200 font-bold">⏪ -5 giây</button>
+                                <button type="button" onclick="setPdfAudioRate('${audioElId}', 0.75)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-white/10 text-cyan-300 font-bold">0.75x</button>
+                                <button type="button" onclick="setPdfAudioRate('${audioElId}', 1.0)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-white/10 text-emerald-300 font-bold">1.0x</button>
+                                <button type="button" onclick="setPdfAudioRate('${audioElId}', 1.25)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-white/10 text-violet-300 font-bold">1.25x</button>
+                                <button type="button" onclick="setPdfAudioRate('${audioElId}', 1.5)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-white/10 text-amber-300 font-bold">1.5x</button>
+                            </div>
+                            ${tLines.length ? `
+                                <button type="button" onclick="lmsAlignMp3WithAi('${u.id}','${ls.id}','${audioElId}')" ${pdfLmsUi.audioAlignBusy ? "disabled" : ""} class="px-3 py-1 rounded-lg bg-violet-600/25 hover:bg-violet-600/40 border border-violet-400/40 text-violet-200 font-extrabold disabled:opacity-60">
+                                    ${pdfLmsUi.audioAlignBusy ? "⏳ Đang căn chỉnh AI..." : (hasRealTs ? "🔄 Căn chỉnh lại AI Audio" : "🎯 Căn chỉnh chuẩn từng câu (AI Audio)")}
+                                </button>
+                            ` : ""}
                         </div>
                     </div>
                 ` : `
@@ -2218,9 +2747,18 @@ function renderLmsCourseWorkspace(course, folders) {
 
     let bodyHtml = "";
 
-    // LEVEL A: EXTRA TOOLS (Mind Map, Comprehensive Exam, Weakness Detector, Knowledge Map)
+    // LEVEL A: EXTRA TOOLS (Mind Map, Comprehensive Exam, Weakness Detector, Knowledge Map, Learning History)
     if (pdfLmsUi.level === "extra_tool") {
-        bodyHtml = `<div class="glass-panel p-5 rounded-3xl">${renderPdfCourseTabContent(course)}</div>`;
+        if (pdfLmsUi.extraTool === "history") {
+            bodyHtml = `<div id="lh-history-pdf-studio-all" class="space-y-4"></div>`;
+            setTimeout(() => {
+                if (typeof LearningHub !== "undefined") {
+                    LearningHub.renderLearningHistoryPanel("all", { containerId: "lh-history-pdf-studio-all", sourceScope: "pdf_studio" });
+                }
+            }, 30);
+        } else {
+            bodyHtml = `<div class="glass-panel p-5 rounded-3xl">${renderPdfCourseTabContent(course)}</div>`;
+        }
     }
     // LEVEL B: COURSE UNITS LIST (Step 4)
     else if (pdfLmsUi.level === "units") {
@@ -2239,6 +2777,7 @@ function renderLmsCourseWorkspace(course, folders) {
                         <p class="text-xs text-slate-400">${units.length} Units • ${totalLessonsAll} bài học • Hoàn thành <strong class="text-emerald-300">${doneLessonsAll}/${totalLessonsAll} (${coursePct}%)</strong></p>
                     </div>
                     <div class="flex flex-wrap gap-2 text-xs">
+                        <button onclick="lmsOpenExtraTool('history')" class="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 font-bold">📜 Learning History</button>
                         <button onclick="lmsOpenExtraTool('mindmap')" class="px-3 py-2 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-bold">🗺️ Sơ đồ tóm tắt</button>
                         <button onclick="lmsOpenExtraTool('exam')" class="px-3 py-2 rounded-xl bg-violet-500/15 border border-violet-500/30 text-violet-200 font-bold">🎓 Kiểm tra tổng hợp</button>
                         <button onclick="lmsOpenExtraTool('weakness')" class="px-3 py-2 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-200 font-bold">🧠 Lỗ hổng (${computePdfWeaknessClusters(course).length})</button>
@@ -2371,16 +2910,28 @@ function renderLmsCourseWorkspace(course, folders) {
                     </div>
                 </div>
 
-                <!-- QChinese-inspired AI Exercise Source Bar (PDF Textbook + International Press + Web Article URL) -->
-                <div class="p-3.5 rounded-2xl bg-emerald-950/25 border border-emerald-500/25 flex flex-wrap items-center gap-2.5 text-xs">
-                    <span class="font-extrabold text-emerald-300 shrink-0">🌐 Nguồn AI tạo Exercise ${list.length + 1}:</span>
-                    <select onchange="pdfLmsUi.aiExerciseStyle=this.value;" class="bg-slate-950 border border-white/15 rounded-xl px-3 py-1.5 text-cyan-300 font-bold">
-                        <option value="pdf_press" ${pdfLmsUi.aiExerciseStyle === "pdf_press" ? "selected" : ""}>📰 PDF Unit + Báo chí quốc tế (BBC / NatGeo / Guardian)</option>
-                        <option value="pdf_deep" ${pdfLmsUi.aiExerciseStyle === "pdf_deep" ? "selected" : ""}>📖 Chuyên sâu từ giáo trình PDF đã tải</option>
-                        <option value="ielts_academic" ${pdfLmsUi.aiExerciseStyle === "ielts_academic" ? "selected" : ""}>🎓 Chuẩn IELTS / Học thuật</option>
-                        <option value="custom_url" ${pdfLmsUi.aiExerciseStyle === "custom_url" ? "selected" : ""}>🔗 Biến link bài báo URL thành bài tập</option>
-                    </select>
-                    <input type="text" value="${escHtml(pdfLmsUi.aiExerciseFocus || "")}" oninput="pdfLmsUi.aiExerciseFocus=this.value;" placeholder="Tùy chọn: nhập chủ đề hoặc dán link bài báo (https://...) — bỏ trống để AI tự đọc PDF Unit này" class="flex-1 min-w-[220px] bg-slate-950 border border-white/15 rounded-xl px-3 py-1.5 text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400">
+                <!-- QChinese-inspired AI Exercise Source Bar + Mandatory CEFR A1-C2 Selection -->
+                <div class="p-3.5 rounded-2xl bg-emerald-950/25 border border-emerald-500/25 space-y-2.5 text-xs">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <span class="font-extrabold text-cyan-300">Bước 1: SELECT YOUR ENGLISH LEVEL (Bắt buộc chọn cho AI – Generate Exercise ${list.length + 1}) *</span>
+                        <span class="text-[11px] font-bold ${pdfLmsUi.aiExerciseCefrConfirmed ? "text-emerald-300" : "text-amber-300"}">${pdfLmsUi.aiExerciseCefrConfirmed ? `✅ CEFR ${pdfLmsUi.aiExerciseCefr}` : "⚠️ Chưa chọn CEFR"}</span>
+                    </div>
+                    <div class="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                        ${["A1", "A2", "B1", "B2", "C1", "C2"].map(lv => {
+                            const active = pdfLmsUi.aiExerciseCefr === lv;
+                            return `<button type="button" data-pdf-excefr="${lv}" onclick="pdfLmsUi.aiExerciseCefr='${lv}'; pdfLmsUi.aiExerciseCefrConfirmed=true; renderPdfStudioPage();" class="py-1.5 px-2 rounded-xl border font-black transition ${active ? "bg-emerald-600/30 border-emerald-400 text-white ring-1 ring-emerald-400" : "bg-slate-950 border-white/10 text-slate-300 hover:border-cyan-400/50"}">${lv}</button>`;
+                        }).join("")}
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2.5">
+                        <span class="font-extrabold text-emerald-300 shrink-0">🌐 Nguồn AI:</span>
+                        <select onchange="pdfLmsUi.aiExerciseStyle=this.value;" class="bg-slate-950 border border-white/15 rounded-xl px-3 py-1.5 text-cyan-300 font-bold">
+                            <option value="pdf_press" ${pdfLmsUi.aiExerciseStyle === "pdf_press" ? "selected" : ""}>📰 PDF Unit + Báo chí quốc tế (BBC / NatGeo / Guardian)</option>
+                            <option value="pdf_deep" ${pdfLmsUi.aiExerciseStyle === "pdf_deep" ? "selected" : ""}>📖 Chuyên sâu từ giáo trình PDF đã tải</option>
+                            <option value="ielts_academic" ${pdfLmsUi.aiExerciseStyle === "ielts_academic" ? "selected" : ""}>🎓 Chuẩn IELTS / Học thuật</option>
+                            <option value="custom_url" ${pdfLmsUi.aiExerciseStyle === "custom_url" ? "selected" : ""}>🔗 Biến link bài báo URL thành bài tập</option>
+                        </select>
+                        <input type="text" value="${escHtml(pdfLmsUi.aiExerciseFocus || "")}" oninput="pdfLmsUi.aiExerciseFocus=this.value;" placeholder="Tùy chọn: nhập chủ đề hoặc dán link bài báo (https://...) — bỏ trống để AI tự đọc PDF Unit này" class="flex-1 min-w-[220px] bg-slate-950 border border-white/15 rounded-xl px-3 py-1.5 text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400">
+                    </div>
                 </div>
 
                 ${filtered.length ? `
@@ -2431,8 +2982,17 @@ function renderLmsCourseWorkspace(course, folders) {
                         <p class="text-slate-400">Bạn có thể bấm <strong>➕ Thêm bài học</strong> ở góc trên để tự tạo bài học mới cho kỹ năng này.</p>
                     </div>
                 `}
+                <div id="lh-history-pdf-skill-${activeSkillMeta.key}" class="pt-3"></div>
             </div>
         `;
+        setTimeout(() => {
+            if (typeof LearningHub !== "undefined") {
+                LearningHub.renderLearningHistoryPanel(activeSkillMeta.key, {
+                    containerId: `lh-history-pdf-skill-${activeSkillMeta.key}`,
+                    sourceScope: "pdf_studio"
+                });
+            }
+        }, 30);
     }
     // LEVEL E: ACTIVE INTERACTIVE LESSON OR RESULT SCREEN (Step 9 & 10)
     else if (pdfLmsUi.level === "lesson" && activeUnit && activeSkillMeta && activeLesson) {

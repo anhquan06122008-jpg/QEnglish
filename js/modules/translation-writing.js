@@ -1552,6 +1552,25 @@ function persistTranslationSubmission(lesson, userTranslation, report, evalMode)
         }
     );
 
+    if (typeof LearningHub !== "undefined") {
+        LearningHub.recordAttempt({
+            skill: "writing",
+            sourceScope: "standalone",
+            lessonId: `trans-${lesson.id}`,
+            lessonTitle: `Dịch Việt–Anh #${lesson.id}: ${lesson.title}`,
+            questionSetId: "set-1",
+            questionSetLabel: "Luyện dịch Việt–Anh",
+            exerciseType: "translation",
+            cefrLevel: lesson.level || "A1",
+            score10: newScore10 !== null ? newScore10 : Math.round(((record.scorePct || 75) / 10) * 10) / 10,
+            scorePct: newScore10 !== null ? Math.round(newScore10 * 10) : (record.scorePct || 75),
+            correctCount: 1,
+            totalCount: 1,
+            userText: userTranslation,
+            aiFeedback: serializableReport
+        });
+    }
+
     showToast(
         newScore10 !== null
             ? `🎉 Đã chấm bài #${lesson.id}: ${newScore10}/10 điểm! Bản dịch mẫu và 3 câu luyện tập đã mở khóa.`
@@ -1609,12 +1628,42 @@ function renderTranslationHistoryList() {
                 </div>
                 <p class="text-[11px] text-slate-400">${item.wordCount || 0} từ • ${new Date(item.at).toLocaleString("vi-VN")}</p>
             </div>
-            <div class="flex items-center gap-2.5">
+            <div class="flex items-center gap-2">
                 <span class="font-black text-cyan-300">${typeof item.totalScore10 === "number" ? `${item.totalScore10} / 10` : `${item.scorePct || 0}% (Cục bộ)`}</span>
                 <button type="button" onclick="openTranslationHistoryByIdx(${idx})" class="px-3 py-1.5 rounded-lg bg-violet-600/25 hover:bg-violet-600/40 border border-violet-400/35 text-violet-200 font-bold transition">Xem kết quả</button>
+                <button type="button" onclick='deleteTranslationHistoryItem(${JSON.stringify(String(item.id || ""))}, ${idx})' title="Xóa lượt dịch này khỏi lịch sử" aria-label="Xóa lượt dịch này" class="px-2.5 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 font-bold transition">🗑️</button>
             </div>
         </div>
     `).join("");
+}
+
+function deleteTranslationHistoryItem(recId, fallbackIdx) {
+    const tState = getTranslationState();
+    const list = Array.isArray(tState.history) ? tState.history : [];
+    let targetIdx = recId ? list.findIndex(x => String(x?.id || "") === String(recId)) : -1;
+    if (targetIdx < 0 && Number.isInteger(fallbackIdx) && fallbackIdx >= 0 && fallbackIdx < list.length) {
+        targetIdx = fallbackIdx;
+    }
+    if (targetIdx < 0) return;
+    const item = list[targetIdx];
+    const label = item ? `Bài ${item.lessonId}: ${item.title}` : "bản ghi này";
+    if (!confirm(`Bạn có chắc muốn xóa "${label}" khỏi Lịch Sử Luyện Dịch Việt – Anh không? (Bài học gốc vẫn giữ nguyên)`)) return;
+
+    list.splice(targetIdx, 1);
+    tState.history = list;
+    const removedId = String(item?.id || recId || "").trim();
+    if (removedId) {
+        const delSet = new Set(Array.isArray(tState.deletedHistoryIds) ? tState.deletedHistoryIds.map(String) : []);
+        delSet.add(removedId);
+        tState.deletedHistoryIds = Array.from(delSet).slice(-300);
+    }
+    saveTranslationState(tState);
+    if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) {
+        CloudClient.scheduleCloudSync();
+    }
+    renderTranslationHistoryList();
+    renderTranslationProgressSummary();
+    showToast(`🗑️ Đã xóa "${label}" khỏi lịch sử luyện dịch!`);
 }
 
 function openTranslationHistoryByIdx(idx) {

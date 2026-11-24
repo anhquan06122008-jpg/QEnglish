@@ -597,7 +597,79 @@ begin
     end loop;
 end $$;
 
--- 12. Explicit least-privilege table grants for authenticated users (RLS still isolates by auth.uid())
+-- 12. Unified Learning History, AI Generated Exercises & Unlimited Question Sets (All 6 Skills)
+create table if not exists public.ai_generated_exercises (
+    id text not null,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    skill text not null check (skill in ('reading', 'listening', 'writing', 'speaking', 'vocabulary', 'grammar')),
+    cefr_level text not null default 'B1' check (cefr_level in ('A1', 'A2', 'B1', 'B2', 'C1', 'C2')),
+    difficulty text not null default 'medium',
+    topic text not null default '',
+    exercise_type text not null default 'mixed',
+    title text not null,
+    content jsonb not null default '{}'::jsonb,
+    answer_key jsonb not null default '[]'::jsonb,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    primary key (user_id, id)
+);
+
+create table if not exists public.question_sets (
+    id text not null,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    lesson_id text not null,
+    skill text not null check (skill in ('reading', 'listening', 'writing', 'speaking', 'vocabulary', 'grammar')),
+    set_number integer not null default 1,
+    source_type text not null default 'ai_generated' check (source_type in ('original', 'ai_generated')),
+    cefr_level text not null default 'B1',
+    difficulty_mode text not null default 'same',
+    question_count integer not null default 0,
+    questions jsonb not null default '[]'::jsonb,
+    created_at timestamptz not null default now(),
+    primary key (user_id, id)
+);
+
+create table if not exists public.learning_history (
+    id text not null,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    skill text not null check (skill in ('reading', 'listening', 'writing', 'speaking', 'vocabulary', 'grammar')),
+    source_scope text not null default 'standalone',
+    lesson_id text not null,
+    lesson_title text not null default '',
+    question_set_id text not null default 'set-1',
+    question_set_label text not null default 'Bộ câu hỏi 1',
+    attempt_number integer not null default 1,
+    exercise_type text not null default '',
+    cefr_level text not null default 'B1',
+    score_10 numeric(4,2) not null default 0,
+    score_pct integer not null default 0,
+    correct_count integer not null default 0,
+    total_count integer not null default 0,
+    duration_sec integer not null default 0,
+    answers jsonb not null default '[]'::jsonb,
+    wrong_items jsonb not null default '[]'::jsonb,
+    ai_feedback jsonb not null default '{}'::jsonb,
+    completed_at timestamptz not null default now(),
+    primary key (user_id, id)
+);
+
+create index if not exists idx_ai_gen_ex_user_skill on public.ai_generated_exercises (user_id, skill, created_at desc);
+create index if not exists idx_question_sets_lesson on public.question_sets (user_id, skill, lesson_id, set_number);
+create index if not exists idx_learning_history_user_skill on public.learning_history (user_id, skill, completed_at desc);
+create index if not exists idx_learning_history_qset on public.learning_history (user_id, lesson_id, question_set_id, attempt_number desc);
+
+do $$
+declare
+    tbl text;
+begin
+    foreach tbl in array array['ai_generated_exercises', 'question_sets', 'learning_history'] loop
+        execute format('alter table public.%I enable row level security', tbl);
+        execute format('drop policy if exists "Users manage own %s" on public.%I', tbl, tbl);
+        execute format('create policy "Users manage own %s" on public.%I for all using (auth.uid() = user_id) with check (auth.uid() = user_id)', tbl, tbl);
+    end loop;
+end $$;
+
+-- 13. Explicit least-privilege table grants for authenticated users (RLS still isolates by auth.uid())
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on table
     public.qenglish_user_snapshots,
@@ -621,5 +693,8 @@ grant select, insert, update, delete on table
     public.user_answers,
     public.ai_generated_practice,
     public.learning_progress,
-    public.source_references
+    public.source_references,
+    public.ai_generated_exercises,
+    public.question_sets,
+    public.learning_history
 to authenticated;

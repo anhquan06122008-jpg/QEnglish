@@ -142,6 +142,20 @@ function openReadingPassage(id, customPassage = null) {
         noteArea.value = (st.notesById && st.notesById[p.id]) || "";
     }
 
+    window._readingStartedAt = Date.now();
+    if (typeof LearningHub !== "undefined") {
+        LearningHub.renderQuestionSetsBar("reading", p.id, p.questions || [], "reading-qsets-bar", {
+            lessonTitle: p.title,
+            lessonLevel: p.level || "B1",
+            lessonContent: { title: p.title, passage: p.passage },
+            onSelect: () => {
+                window._readingStartedAt = Date.now();
+                document.getElementById("reading-results")?.classList.add("hidden");
+                renderReadingQuestionsList();
+            }
+        });
+    }
+
     renderReadingQuestionsList();
     switchReadingMobileTab("passage");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -299,18 +313,43 @@ function saveLookupWordToBank(wordRaw, ipa, pos, level) {
     showToast(`Đã lưu "${wordRaw}" vào Vocabulary Bank!`);
 }
 
+function getActiveReadingQuestionSet() {
+    const p = activeReadingPassage;
+    if (!p) return { id: "set-1", label: "Bộ câu hỏi 1", sourceType: "original", cefrLevel: "B1", questions: [] };
+    if (typeof LearningHub !== "undefined") {
+        return LearningHub.getActiveQuestionSet("reading", p.id, p.questions || []);
+    }
+    return { id: "set-1", label: "Bộ câu hỏi 1", sourceType: "original", cefrLevel: p.level || "B1", questions: p.questions || [] };
+}
+
+function onReadingDraftInput(qi, val) {
+    if (activeReadingPassage && typeof LearningHub !== "undefined") {
+        const activeSet = getActiveReadingQuestionSet();
+        const q = (activeSet.questions || [])[qi];
+        if (q) LearningHub.setDraftAnswer("reading", activeReadingPassage.id, activeSet.id, q.id || `q-${qi}`, val);
+    }
+    updateReadingProgressUI();
+}
+
 function renderReadingQuestionsList() {
     const p = activeReadingPassage;
     if (!p) return;
     const qWrap = document.getElementById("reading-questions");
-    const questions = p.questions || [];
+    const activeSet = getActiveReadingQuestionSet();
+    const questions = activeSet.questions || [];
+    const draft = (typeof LearningHub !== "undefined")
+        ? LearningHub.getSetDraft("reading", p.id, activeSet.id)
+        : {};
 
     const typeLabels = {
         multiple_choice: "Multiple Choice",
+        mcq: "Multiple Choice",
         true_false_notgiven: "True / False / Not Given",
         true_false_ng: "True / False / Not Given",
+        true_false: "True / False",
         matching_headings: "Matching Headings",
         matching_info: "Matching Information",
+        matching: "Matching",
         fill_blank: "Sentence Completion",
         sentence_completion: "Sentence Completion",
         summary_completion: "Summary Completion",
@@ -320,6 +359,7 @@ function renderReadingQuestionsList() {
     qWrap.innerHTML = questions.length > 0 ? questions.map((q, qi) => {
         const hasOptions = Array.isArray(q.options) && q.options.length > 0;
         const badge = typeLabels[q.type] || "Question";
+        const savedVal = draft[q.id || `q-${qi}`] || "";
         return `
             <div class="p-4 rounded-2xl bg-slate-950/85 border border-white/10 space-y-2.5 transition" id="r-qbox-${qi}">
                 <div class="flex items-center justify-between gap-2">
@@ -332,14 +372,14 @@ function renderReadingQuestionsList() {
                 ${hasOptions ? `
                     <div class="grid gap-2">
                         ${q.options.map(opt => `
-                            <label class="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-900 border border-white/10 cursor-pointer hover:border-violet-500/40 text-xs text-slate-200">
-                                <input type="radio" name="r-q-${qi}" value="${escHtml(opt)}" onchange="updateReadingProgressUI()" class="accent-violet-500">
+                            <label class="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-900 border ${savedVal === opt ? "border-violet-400 bg-violet-500/15" : "border-white/10"} cursor-pointer hover:border-violet-500/40 text-xs text-slate-200">
+                                <input type="radio" name="r-q-${qi}" value="${escHtml(opt)}" ${savedVal === opt ? "checked" : ""} onchange="onReadingDraftInput(${qi}, this.value)" class="accent-violet-500">
                                 <span>${escHtml(opt)}</span>
                             </label>
                         `).join("")}
                     </div>
                 ` : `
-                    <input type="text" id="r-q-input-${qi}" oninput="updateReadingProgressUI()" placeholder="Nhập câu trả lời ngắn từ bài đọc..." class="w-full bg-slate-900 border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-violet-500">
+                    <input type="text" id="r-q-input-${qi}" value="${escHtml(savedVal)}" oninput="onReadingDraftInput(${qi}, this.value)" placeholder="Nhập câu trả lời ngắn từ bài đọc..." class="w-full bg-slate-900 border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-violet-500">
                 `}
                 <div id="r-qfb-${qi}" class="hidden text-xs pt-2 border-t border-white/10 space-y-1"></div>
             </div>
@@ -347,7 +387,7 @@ function renderReadingQuestionsList() {
     }).join("") : `
         <div class="p-4 rounded-2xl bg-slate-950/85 border border-white/10 space-y-2 text-xs text-slate-300">
             <p class="font-bold text-cyan-300">📖 Tài liệu đọc cá nhân (Chế độ đọc tự do & tra từ)</p>
-            <p>Bài đọc này chưa kèm câu hỏi trắc nghiệm. Bạn có thể <strong>bôi đen hoặc nhấp đúp bất kỳ từ nào</strong> bên trái để tra nghĩa & lưu vào Vocabulary Bank, tô Highlight 4 màu, hoặc viết ghi chú rồi bấm Nộp bài để lưu tiến độ.</p>
+            <p>Bài đọc này chưa kèm câu hỏi trắc nghiệm. Bạn có thể bấm nút <strong>➕ AI – Generate More Questions</strong> ở ngay phía trên để AI tạo bộ câu hỏi đọc hiểu theo đúng chuẩn CEFR A1–C2!</p>
         </div>
     `;
 
@@ -370,7 +410,7 @@ function toggleReadingFlag(qi) {
 
 function updateReadingProgressUI() {
     if (!activeReadingPassage) return;
-    const questions = activeReadingPassage.questions || [];
+    const questions = getActiveReadingQuestionSet().questions || [];
     let answered = 0;
     questions.forEach((q, qi) => {
         if (Array.isArray(q.options) && q.options.length > 0) {
@@ -409,8 +449,10 @@ function detectParagraphForAnswer(passageText, answerStr, explanationStr) {
 
 function submitReadingAnswers() {
     if (!activeReadingPassage) return;
-    const questions = activeReadingPassage.questions || [];
+    const activeSet = getActiveReadingQuestionSet();
+    const questions = activeSet.questions || [];
     let correct = 0;
+    const detailedAnswers = [];
 
     questions.forEach((q, qi) => {
         let userAns = "";
@@ -420,12 +462,23 @@ function submitReadingAnswers() {
             userAns = (document.getElementById(`r-q-input-${qi}`)?.value || "").trim();
         }
 
+        const acceptedList = [q.answer, ...(q.acceptableAnswers || [])].map(a => normalizeWords(a)).filter(Boolean);
         const normU = normalizeWords(userAns);
         const normExp = normalizeWords(q.answer);
-        const ok = normU !== "" && (normU === normExp || (q.type === "short_answer" && normU.length >= 4 && (normExp.includes(normU) || normU.includes(normExp))));
+        const ok = normU !== "" && (acceptedList.includes(normU) || (q.type === "short_answer" && normU.length >= 4 && (normExp.includes(normU) || normU.includes(normExp))));
         if (ok) correct++;
 
-        const paraIdx = q.paragraphRef || detectParagraphForAnswer(activeReadingPassage.passage, q.answer, q.explanation);
+        const paraIdx = q.paragraphRef || detectParagraphForAnswer(activeReadingPassage.passage, q.answer, q.explanation || q.explanationVi);
+        const expText = q.explanationVi || q.explanation || "";
+        detailedAnswers.push({
+            question: q.question,
+            userAnswer: userAns,
+            correctAnswer: q.answer,
+            isCorrect: ok,
+            explanationVi: expText,
+            paragraphRef: paraIdx
+        });
+
         const box = document.getElementById(`r-qbox-${qi}`);
         const fb = document.getElementById(`r-qfb-${qi}`);
         if (box) {
@@ -438,7 +491,7 @@ function submitReadingAnswers() {
                 <p class="font-bold ${ok ? "text-emerald-300" : "text-rose-300"}">
                     ${ok ? "✅ Chính xác!" : `❌ Bạn trả lời: "${escHtml(userAns || "Trống")}" — Đáp án chuẩn: "${escHtml(q.answer)}"`}
                 </p>
-                <p class="text-slate-300">💡 ${escHtml(q.explanation || "")}</p>
+                <p class="text-slate-300">💡 ${escHtml(expText)}</p>
                 <button onclick="locateEvidenceParagraph(${paraIdx})" class="text-[11px] font-bold text-cyan-300 hover:underline">
                     🔎 Xem đoạn chứa thông tin: [Đoạn ${paraIdx}]
                 </button>
@@ -447,10 +500,42 @@ function submitReadingAnswers() {
     });
 
     const pct = questions.length > 0 ? Math.round((correct / questions.length) * 100) : 100;
+    const score10 = Math.round((pct / 10) * 10) / 10;
+    const durationSec = Math.max(1, Math.round((Date.now() - (window._readingStartedAt || Date.now())) / 1000));
     const st = getReadingState();
     if (!st.completedIds.includes(activeReadingPassage.id)) st.completedIds.push(activeReadingPassage.id);
     st.scoresById[activeReadingPassage.id] = Math.max(st.scoresById[activeReadingPassage.id] || 0, pct);
     saveReadingState(st);
+
+    // Record full attempt into Unified Learning History (PHẦN 1 + PHẦN 3)
+    if (typeof LearningHub !== "undefined") {
+        LearningHub.recordAttempt({
+            skill: "reading",
+            sourceScope: "standalone",
+            lessonId: activeReadingPassage.id,
+            lessonTitle: activeReadingPassage.title,
+            questionSetId: activeSet.id,
+            questionSetLabel: activeSet.label,
+            exerciseType: activeSet.sourceType === "original" ? "reading_comprehension" : "ai_question_set",
+            cefrLevel: activeSet.cefrLevel || activeReadingPassage.level || "B1",
+            score10,
+            scorePct: pct,
+            correctCount: correct,
+            totalCount: questions.length,
+            durationSec,
+            answers: detailedAnswers
+        });
+        LearningHub.renderQuestionSetsBar("reading", activeReadingPassage.id, activeReadingPassage.questions || [], "reading-qsets-bar", {
+            lessonTitle: activeReadingPassage.title,
+            lessonLevel: activeReadingPassage.level || "B1",
+            lessonContent: { title: activeReadingPassage.title, passage: activeReadingPassage.passage },
+            onSelect: () => {
+                window._readingStartedAt = Date.now();
+                document.getElementById("reading-results")?.classList.add("hidden");
+                renderReadingQuestionsList();
+            }
+        });
+    }
 
     // Extract key vocabulary from passage
     const keyWords = Array.isArray(activeReadingPassage.keyVocab) && activeReadingPassage.keyVocab.length > 0

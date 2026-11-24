@@ -20,7 +20,8 @@ const BASE_STORAGE_KEYS = {
     NOTEBOOK: "qenglish_notebook_v1",
     CMS: "qenglish_cms_v1",
     SETTINGS: "qenglish_settings_v1",
-    PDF_STUDIO: "qenglish_pdf_studio_v1"
+    PDF_STUDIO: "qenglish_pdf_studio_v1",
+    LEARNING_HUB: "qenglish_learning_hub_v1"
 };
 
 function getScopedStorageKey(baseKey) {
@@ -33,7 +34,7 @@ const STORAGE_KEYS = {};
 [
     "DECK_V2", "SRS", "PROGRESS", "DASHBOARD", "GRAMMAR",
     "LISTENING", "SPEAKING", "READING", "WRITING", "NOTEBOOK",
-    "CMS", "SETTINGS", "PDF_STUDIO"
+    "CMS", "SETTINGS", "PDF_STUDIO", "LEARNING_HUB"
 ].forEach(prop => {
     Object.defineProperty(STORAGE_KEYS, prop, {
         enumerable: true,
@@ -276,6 +277,10 @@ async function hydrateUserStorageFromIdb(uid = null) {
             } else if (lsVal.length > IDB_LOCALSTORAGE_INLINE_MAX) {
                 // Already safely stored in IndexedDB -> free 5MB localStorage slot
                 try { localStorage.removeItem(k); } catch {}
+            } else if (lsVal !== window.__QENGLISH_IDB_MEM_CACHE.get(k)) {
+                // Synchronous localStorage copy for <=64KB key is guaranteed newer if tab reloaded mid-IDB commit
+                window.__QENGLISH_IDB_MEM_CACHE.set(k, lsVal);
+                QEnglishIdbStore.put(k, lsVal).catch(() => {});
             }
         }
     } catch {}
@@ -463,9 +468,10 @@ async function optimizeAndMigrateAllToIdb() {
 
 function stripPdfStudioFromDashboardObj(dashObj) {
     if (!dashObj || typeof dashObj !== "object" || Array.isArray(dashObj)) return dashObj;
-    if (!Object.prototype.hasOwnProperty.call(dashObj, "pdfStudio")) return dashObj;
+    if (!Object.prototype.hasOwnProperty.call(dashObj, "pdfStudio") && !Object.prototype.hasOwnProperty.call(dashObj, "learningHub")) return dashObj;
     const copy = { ...dashObj };
     delete copy.pdfStudio;
+    delete copy.learningHub;
     return copy;
 }
 
@@ -1889,6 +1895,7 @@ function resetInMemoryWorkspaceState() {
     if (typeof activeWritingTopic !== "undefined") activeWritingTopic = null;
     if (typeof resetTranslationWorkspaceMemory === "function") resetTranslationWorkspaceMemory();
     if (typeof resetPdfStudioMemory === "function") resetPdfStudioMemory();
+    if (typeof LearningHub !== "undefined" && typeof LearningHub.resetMemory === "function") LearningHub.resetMemory();
     ["writing-evaluation", "writing-inline-check-box", "trans-feedback-panel", "speaking-eval-output", "grammar-coach-output", "listening-coach-output", "reading-coach-output", "vocab-coach-output", "dash-ai-assistant-output"].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -1936,7 +1943,14 @@ function collectCurrentWorkspaceSnapshot() {
     const dashBase = stripPdfStudioFromDashboardObj(dashRaw);
     const pdfRaw = getCurrentPdfStudioRawForSnapshot();
     const pdfCompact = compactPdfStudioForCloud(pdfRaw);
-    const dashboardStateMerged = pdfCompact ? { ...dashBase, pdfStudio: pdfCompact } : dashBase;
+    const hubRaw = (typeof LearningHub !== "undefined" && typeof LearningHub.getStateForSnapshot === "function")
+        ? LearningHub.getStateForSnapshot()
+        : safeReadJSON(STORAGE_KEYS.LEARNING_HUB, null);
+    const dashboardStateMerged = {
+        ...dashBase,
+        ...(pdfCompact ? { pdfStudio: pdfCompact } : {}),
+        ...(hubRaw ? { learningHub: hubRaw } : {})
+    };
 
     return {
         settings: appSettings || safeReadJSON(STORAGE_KEYS.SETTINGS, getDefaultSettings()),
@@ -1972,8 +1986,15 @@ function applyWorkspaceSnapshotToLocal(snapshot, options = {}) {
         }
         if (snapshot.dashboard_state && typeof snapshot.dashboard_state === "object") {
             const incomingPdf = snapshot.dashboard_state.pdfStudio;
+            const incomingHub = snapshot.dashboard_state.learningHub;
             const cleanDash = stripPdfStudioFromDashboardObj(snapshot.dashboard_state);
             safeWriteJSON(STORAGE_KEYS.DASHBOARD, cleanDash);
+            if (incomingHub && typeof incomingHub === "object") {
+                safeWriteJSON(STORAGE_KEYS.LEARNING_HUB, incomingHub);
+                if (typeof LearningHub !== "undefined" && typeof LearningHub.reloadFromStorage === "function") {
+                    LearningHub.reloadFromStorage();
+                }
+            }
             if (incomingPdf && typeof incomingPdf === "object") {
                 if (typeof applyPdfStudioStateFromSync === "function") {
                     applyPdfStudioStateFromSync(incomingPdf);

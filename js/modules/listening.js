@@ -119,6 +119,55 @@ function getResolvedAudioUrl(ex) {
 }
 
 let listeningLiveSubOpen = true;
+let listeningUserScrollUntil = 0;
+let listeningAudioSyncAbort = null;
+let listeningAudioRafId = null;
+let listeningActiveWordToken = null;
+let listeningActiveUtterance = null;
+let listeningStartedAt = 0;
+
+function renderSentenceWithWordSpans(sentence, sentIdx) {
+    const raw = String(sentence || "");
+    const parts = raw.split(/(\s+)/);
+    let offset = 0;
+    return parts.map(part => {
+        const start = offset;
+        offset += part.length;
+        if (!part.trim()) return part;
+        return `<span class="lis-word-span transition-colors duration-100 rounded px-0.5" data-sidx="${sentIdx}" data-wstart="${start}" data-wend="${offset}">${escHtml(part)}</span>`;
+    }).join("");
+}
+
+function clearMainListeningWordHighlights() {
+    if (listeningActiveWordToken) {
+        listeningActiveWordToken.classList.remove("bg-cyan-400/35", "text-white", "font-extrabold");
+        listeningActiveWordToken = null;
+    }
+    document.querySelectorAll(".lis-word-span.bg-cyan-400\\/35").forEach(el => {
+        el.classList.remove("bg-cyan-400/35", "text-white", "font-extrabold");
+    });
+}
+
+function highlightMainListeningWordAtChar(sentIdx, charIndex) {
+    const row = document.getElementById(`main-lis-trow-${sentIdx}`);
+    if (!row) return;
+    const spans = row.querySelectorAll(".lis-word-span");
+    let matched = null;
+    for (const sp of spans) {
+        const ws = Number(sp.getAttribute("data-wstart"));
+        const we = Number(sp.getAttribute("data-wend"));
+        if (charIndex >= ws && charIndex <= we) {
+            matched = sp;
+            break;
+        }
+    }
+    if (!matched) return;
+    if (listeningActiveWordToken && listeningActiveWordToken !== matched) {
+        listeningActiveWordToken.classList.remove("bg-cyan-400/35", "text-white", "font-extrabold");
+    }
+    matched.classList.add("bg-cyan-400/35", "text-white", "font-extrabold");
+    listeningActiveWordToken = matched;
+}
 
 function renderAudioPlayerControls(ex, singleSentenceMode = false) {
     const resolvedUrl = getResolvedAudioUrl(ex);
@@ -160,7 +209,7 @@ function renderAudioPlayerControls(ex, singleSentenceMode = false) {
                 </div>
             </div>
             <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
-                <span id="listening-player-status">${hasExternalUrl && !hasTranscript ? "Đang dùng trình phát tệp âm thanh gốc của bạn (không tự bịa transcript)" : "Sẵn sàng phát âm thanh (Web Speech API en-US)"}</span>
+                <span id="listening-player-status">${hasExternalUrl && !hasTranscript ? "Đang dùng trình phát tệp âm thanh gốc của bạn (không tự bịa transcript)" : "Sẵn sàng phát âm thanh (Đồng bộ thực theo sự kiện onstart / onboundary)"}</span>
                 <div class="flex items-center gap-2">
                     <span id="listening-sentence-indicator"></span>
                     ${!singleSentenceMode && sentences.length ? `<button type="button" onclick="toggleMainListeningLiveSubtitles()" class="px-2.5 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 font-bold">📜 Hiện/Ẩn Phụ Đề Phát Sáng</button>` : ""}
@@ -168,7 +217,7 @@ function renderAudioPlayerControls(ex, singleSentenceMode = false) {
                 </div>
             </div>
             ${!singleSentenceMode && sentences.length ? `
-                <div id="main-listening-live-subtitles" class="${listeningLiveSubOpen ? "" : "hidden"} pt-2 border-t border-white/10 space-y-1.5 max-h-56 overflow-y-auto pr-1 text-xs">
+                <div id="main-listening-live-subtitles" onwheel="listeningUserScrollUntil = Date.now() + 4000" ontouchmove="listeningUserScrollUntil = Date.now() + 4000" class="${listeningLiveSubOpen ? "" : "hidden"} pt-2 border-t border-white/10 space-y-1.5 max-h-60 overflow-y-auto pr-1 text-xs">
                     ${sentences.map((s, idx) => {
                         const viLine = tLines && tLines[idx]?.translationVi ? tLines[idx].translationVi : "";
                         return `
@@ -177,7 +226,7 @@ function renderAudioPlayerControls(ex, singleSentenceMode = false) {
                                     <span class="main-lis-dot hidden text-cyan-300 animate-pulse shrink-0">🔊</span>
                                     <span class="text-[10px] font-mono text-slate-500 shrink-0 mt-0.5">${idx + 1}.</span>
                                     <div class="flex-1 min-w-0">
-                                        <p class="text-slate-200 leading-relaxed">${escHtml(s)}</p>
+                                        <p class="text-slate-200 leading-relaxed">${renderSentenceWithWordSpans(s, idx)}</p>
                                         ${viLine ? `<p class="text-[11px] text-slate-400 italic mt-0.5">${escHtml(viLine)}</p>` : ""}
                                     </div>
                                 </div>
@@ -197,21 +246,26 @@ function toggleMainListeningLiveSubtitles() {
     if (box) box.classList.toggle("hidden", !listeningLiveSubOpen);
 }
 
-function highlightMainListeningSentence(activeIdx) {
+function highlightMainListeningSentence(activeIdx, { skipScroll = false } = {}) {
+    clearMainListeningWordHighlights();
     const rows = document.querySelectorAll("[data-main-lis-trow]");
     rows.forEach(row => {
         const idx = Number(row.getAttribute("data-main-lis-trow"));
         const isActive = idx === activeIdx;
+        const isSpoken = activeIdx >= 0 && idx < activeIdx;
         row.classList.toggle("border-cyan-400", isActive);
         row.classList.toggle("bg-cyan-500/20", isActive);
         row.classList.toggle("shadow-[0_0_20px_rgba(34,211,238,0.28)]", isActive);
         row.classList.toggle("ring-1", isActive);
         row.classList.toggle("ring-cyan-400/60", isActive);
+        row.classList.toggle("audio-line-active", isActive);
+        row.classList.toggle("audio-line-spoken", isSpoken);
+        row.classList.toggle("opacity-70", isSpoken);
         row.classList.toggle("border-white/5", !isActive);
         row.classList.toggle("bg-slate-900/70", !isActive);
         const dot = row.querySelector(".main-lis-dot");
         if (dot) dot.classList.toggle("hidden", !isActive);
-        if (isActive) {
+        if (isActive && !skipScroll && Date.now() > listeningUserScrollUntil) {
             try { row.scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch {}
         }
     });
@@ -311,8 +365,10 @@ function playListeningSequenceFrom(startIdx) {
     const toggleBtn = document.getElementById("listening-play-toggle-btn");
     if (!listeningIsPlaying || startIdx >= sentences.length) {
         listeningIsPlaying = false;
+        listeningActiveUtterance = null;
         listeningSentenceCursor = 0;
-        highlightMainListeningSentence(-1);
+        clearMainListeningWordHighlights();
+        highlightMainListeningSentence(-1, { skipScroll: true });
         if (toggleBtn) toggleBtn.textContent = "▶ Phát Audio";
         const stEl = document.getElementById("listening-player-status");
         if (stEl) stEl.textContent = "✅ Đã phát hết đoạn nghe.";
@@ -326,11 +382,108 @@ function playListeningSequenceFrom(startIdx) {
     if (stEl) stEl.textContent = `🔊 Đang phát câu ${startIdx + 1}/${sentences.length} (${listeningSpeed}x)...`;
     if (indEl) indEl.textContent = `Câu ${startIdx + 1} / ${sentences.length}`;
 
-    speakText(sentences[startIdx], listeningSpeed, () => {
+    // Real event-driven SpeechSynthesis (onstart + onboundary word highlight + onend) — ZERO fake setInterval!
+    const textToSpeak = String(sentences[startIdx] || "").trim();
+    if (!("speechSynthesis" in window) || !textToSpeak) {
+        if (listeningIsPlaying) playListeningSequenceFrom(startIdx + 1);
+        return;
+    }
+    try { window.speechSynthesis.cancel(); } catch {}
+    const utt = new SpeechSynthesisUtterance(textToSpeak);
+    utt.lang = "en-US";
+    utt.rate = Math.max(0.5, Math.min(1.6, Number(listeningSpeed) || 1.0));
+    const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
+    const enVoice = voices.find(v => /^en[-_]US/i.test(v.lang)) || voices.find(v => /^en/i.test(v.lang));
+    if (enVoice) utt.voice = enVoice;
+
+    listeningActiveUtterance = utt;
+    utt.onstart = () => {
+        if (listeningActiveUtterance !== utt) return;
+        highlightMainListeningSentence(startIdx);
+    };
+    utt.onboundary = (e) => {
+        if (listeningActiveUtterance !== utt || !listeningIsPlaying) return;
+        if (!e.name || e.name === "word") {
+            highlightMainListeningWordAtChar(startIdx, Number(e.charIndex) || 0);
+        }
+    };
+    utt.onend = () => {
+        if (listeningActiveUtterance !== utt) return;
+        clearMainListeningWordHighlights();
         if (listeningIsPlaying) {
             playListeningSequenceFrom(startIdx + 1);
         }
-    });
+    };
+    utt.onerror = () => {
+        if (listeningActiveUtterance !== utt) return;
+        clearMainListeningWordHighlights();
+        if (listeningIsPlaying) {
+            listeningIsPlaying = false;
+            if (toggleBtn) toggleBtn.textContent = "▶ Phát Audio";
+        }
+    };
+    window.speechSynthesis.speak(utt);
+}
+
+function listeningBindExternalAudioSync() {
+    if (listeningAudioSyncAbort) {
+        try { listeningAudioSyncAbort.abort(); } catch {}
+        listeningAudioSyncAbort = null;
+    }
+    if (listeningAudioRafId) {
+        cancelAnimationFrame(listeningAudioRafId);
+        listeningAudioRafId = null;
+    }
+    const audioEl = document.getElementById("ext-audio-el");
+    const tLines = Array.isArray(activeListeningItem?.transcriptLines) ? activeListeningItem.transcriptLines : [];
+    if (!audioEl || !tLines.length) return;
+    const hasRealTimestamps = tLines.some(l => typeof l.startTime === "number" && typeof l.endTime === "number");
+    if (!hasRealTimestamps) return;
+
+    const ac = new AbortController();
+    listeningAudioSyncAbort = ac;
+    let lastActive = -2;
+
+    const syncNow = () => {
+        const t = Number(audioEl.currentTime) || 0;
+        let idx = -1;
+        for (let i = 0; i < tLines.length; i++) {
+            const st = Number(tLines[i].startTime);
+            const en = Number(tLines[i].endTime);
+            if (Number.isFinite(st) && Number.isFinite(en) && t >= st && t < en) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx !== lastActive) {
+            lastActive = idx;
+            highlightMainListeningSentence(idx);
+        }
+    };
+
+    const tick = () => {
+        if (ac.signal.aborted) return;
+        syncNow();
+        if (!audioEl.paused && !audioEl.ended) {
+            listeningAudioRafId = requestAnimationFrame(tick);
+        }
+    };
+
+    audioEl.addEventListener("play", () => {
+        if (listeningAudioRafId) cancelAnimationFrame(listeningAudioRafId);
+        listeningAudioRafId = requestAnimationFrame(tick);
+    }, { signal: ac.signal });
+    audioEl.addEventListener("pause", () => {
+        if (listeningAudioRafId) { cancelAnimationFrame(listeningAudioRafId); listeningAudioRafId = null; }
+        syncNow();
+    }, { signal: ac.signal });
+    audioEl.addEventListener("seeked", syncNow, { signal: ac.signal });
+    audioEl.addEventListener("timeupdate", syncNow, { signal: ac.signal });
+    audioEl.addEventListener("ended", () => {
+        if (listeningAudioRafId) { cancelAnimationFrame(listeningAudioRafId); listeningAudioRafId = null; }
+        lastActive = -1;
+        highlightMainListeningSentence(-1, { skipScroll: true });
+    }, { signal: ac.signal });
 }
 
 function listeningRewindAudio(singleSentenceMode = false) {
@@ -354,6 +507,16 @@ function listeningReplayAudio(singleSentenceMode = false) {
 
 function listeningStopAudio() {
     listeningIsPlaying = false;
+    listeningActiveUtterance = null;
+    if (listeningAudioSyncAbort) {
+        try { listeningAudioSyncAbort.abort(); } catch {}
+        listeningAudioSyncAbort = null;
+    }
+    if (listeningAudioRafId) {
+        cancelAnimationFrame(listeningAudioRafId);
+        listeningAudioRafId = null;
+    }
+    clearMainListeningWordHighlights();
     stopSpeech();
     const extAudio = document.getElementById("ext-audio-el");
     if (extAudio && !extAudio.paused) extAudio.pause();
@@ -375,6 +538,7 @@ function openListeningExercise(id, customItem = null) {
     listeningStopAudio();
     activeListeningItem = ex;
     listeningSentenceCursor = 0;
+    listeningStartedAt = Date.now();
 
     document.getElementById("listening-custom-panel")?.classList.add("hidden");
     document.getElementById("listening-list")?.classList.add("hidden");
@@ -530,9 +694,23 @@ function saveDictationSentenceToNotebook() {
 
 function finishDictationExercise() {
     checkDictationSentence();
+    const sentences = getSentencesOfActiveListening();
     const answered = dictationScores.map(v => v === null ? 0 : v);
     const avg = answered.length ? Math.round(answered.reduce((a, b) => a + b, 0) / answered.length) : 0;
-    finalizeListeningCompletion(avg);
+    const answers = sentences.map((s, i) => ({
+        question: `Nghe & chép lại câu ${i + 1}`,
+        userAnswer: `Độ chính xác ${answered[i] || 0}%`,
+        correctAnswer: s,
+        isCorrect: (answered[i] || 0) >= 85,
+        explanationVi: `Câu chuẩn: "${s}"`
+    }));
+    finalizeListeningCompletion(avg, {
+        questionSetId: "set-1",
+        questionSetLabel: "Daily Dictation",
+        correctCount: answers.filter(a => a.isCorrect).length,
+        totalCount: answers.length,
+        answers
+    });
 }
 
 /* --- MODE 3: LISTEN & FILL IN THE BLANKS --- */
@@ -605,13 +783,96 @@ function gradeFillBlanksListening() {
             </div>
         `;
     }
-    finalizeListeningCompletion(pct);
+    finalizeListeningCompletion(pct, {
+        questionSetId: "set-1",
+        questionSetLabel: "Fill in the Blanks",
+        correctCount: correct,
+        totalCount: answers.length,
+        answers: details.map(d => ({
+            question: `Chỗ trống (${d.idx}) trong "${ex.title}"`,
+            userAnswer: d.user,
+            correctAnswer: d.expected,
+            isCorrect: d.ok,
+            explanationVi: `Từ cần điền: "${d.expected}"`
+        }))
+    });
 }
 
 /* --- MODE 1 & MODE 4: LISTEN & CHOOSE / TIMED FULL LISTENING TEST --- */
+function getActiveListeningQuestionSet() {
+    const ex = activeListeningItem;
+    if (!ex) return { id: "set-1", label: "Bộ câu hỏi 1", sourceType: "original", cefrLevel: "B1", questions: [] };
+    if (typeof LearningHub !== "undefined") {
+        return LearningHub.getActiveQuestionSet("listening", ex.id, ex.questions || []);
+    }
+    return { id: "set-1", label: "Bộ câu hỏi 1", sourceType: "original", cefrLevel: ex.level || "B1", questions: ex.questions || [] };
+}
+
+function onListeningDraftInput(qi, val) {
+    if (activeListeningItem && typeof LearningHub !== "undefined") {
+        const activeSet = getActiveListeningQuestionSet();
+        const q = (activeSet.questions || [])[qi];
+        if (q) LearningHub.setDraftAnswer("listening", activeListeningItem.id, activeSet.id, q.id || `lq-${qi}`, val);
+    }
+    updateListeningTestProgress();
+}
+
+function renderListeningQuestionsSectionOnly() {
+    const ex = activeListeningItem;
+    const host = document.getElementById("listening-questions-wrap");
+    if (!ex || !host) return;
+    const activeSet = getActiveListeningQuestionSet();
+    const questions = activeSet.questions || [];
+    const draft = (typeof LearningHub !== "undefined")
+        ? LearningHub.getSetDraft("listening", ex.id, activeSet.id)
+        : {};
+
+    host.innerHTML = questions.length > 0 ? `
+        <div class="space-y-4">
+            ${questions.map((q, qi) => {
+                const hasOpts = Array.isArray(q.options) && q.options.length > 0;
+                const savedVal = draft[q.id || `lq-${qi}`] || "";
+                return `
+                    <div class="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-2.5" id="l-qbox-${qi}">
+                        <p class="text-sm font-bold text-white"><span class="text-violet-400 mr-1">Question ${qi + 1}:</span> ${escHtml(q.question)}</p>
+                        ${hasOpts ? `
+                            <div class="grid gap-2">
+                                ${(q.options || []).map(opt => `
+                                    <label class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-900 border ${savedVal === opt ? "border-violet-400 bg-violet-500/15" : "border-white/10"} cursor-pointer hover:border-violet-500/40 text-xs text-slate-200">
+                                        <input type="radio" name="l-mc-${qi}" value="${escHtml(opt)}" ${savedVal === opt ? "checked" : ""} onchange="onListeningDraftInput(${qi}, this.value)" class="accent-violet-500">
+                                        <span>${escHtml(opt)}</span>
+                                    </label>
+                                `).join("")}
+                            </div>
+                        ` : `
+                            <input type="text" id="l-mc-input-${qi}" value="${escHtml(savedVal)}" oninput="onListeningDraftInput(${qi}, this.value)" placeholder="Nhập câu trả lời của bạn..." class="w-full bg-slate-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-violet-500">
+                        `}
+                        <div id="l-qfb-${qi}" class="hidden text-xs pt-2 border-t border-white/10"></div>
+                    </div>
+                `;
+            }).join("")}
+        </div>
+        <button id="l-submit-mc-btn" onclick="gradeListeningMCQuestions()" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold text-sm shadow-lg mt-4">
+            Nộp ${escHtml(activeSet.label)} &amp; Xem đáp án + Transcript
+        </button>
+    ` : `
+        <div class="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
+            <label class="text-xs font-extrabold uppercase text-cyan-300 block">📝 Ghi chép nội dung bạn nghe được (hoặc bấm ➕ AI – Generate More Questions phía trên):</label>
+            <textarea id="custom-listening-notes" rows="5" placeholder="Nghe đoạn âm thanh phía trên và ghi lại ý chính, câu thoại hoặc từ mới bạn nghe được..." class="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-cyan-500"></textarea>
+            <div class="flex flex-wrap gap-2">
+                <button onclick="finalizeListeningCompletion(100); showToast('Đã đánh dấu hoàn thành bài nghe cá nhân!');" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs">
+                    ✅ Đánh dấu đã hoàn thành
+                </button>
+            </div>
+        </div>
+    `;
+    updateListeningTestProgress();
+}
+
 function renderListenChooseView(isFullTest = false) {
     const ex = activeListeningItem;
-    const questions = ex.questions || [];
+    const activeSet = getActiveListeningQuestionSet();
+    const questions = activeSet.questions || [];
     const content = document.getElementById("listening-exercise-content");
 
     content.innerHTML = `
@@ -639,41 +900,27 @@ function renderListenChooseView(isFullTest = false) {
 
         ${renderAudioPlayerControls(ex, false)}
 
-        ${questions.length > 0 ? `
-            <div class="space-y-4">
-                ${questions.map((q, qi) => `
-                    <div class="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-2.5" id="l-qbox-${qi}">
-                        <p class="text-sm font-bold text-white"><span class="text-violet-400 mr-1">Question ${qi + 1}:</span> ${escHtml(q.question)}</p>
-                        <div class="grid gap-2">
-                            ${(q.options || []).map(opt => `
-                                <label class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-900 border border-white/10 cursor-pointer hover:border-violet-500/40 text-xs text-slate-200">
-                                    <input type="radio" name="l-mc-${qi}" value="${escHtml(opt)}" onchange="updateListeningTestProgress()" class="accent-violet-500">
-                                    <span>${escHtml(opt)}</span>
-                                </label>
-                            `).join("")}
-                        </div>
-                        <div id="l-qfb-${qi}" class="hidden text-xs pt-2 border-t border-white/10"></div>
-                    </div>
-                `).join("")}
-            </div>
+        <div id="listening-qsets-bar"></div>
+        <div id="listening-questions-wrap"></div>
 
-            <button id="l-submit-mc-btn" onclick="gradeListeningMCQuestions()" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold text-sm shadow-lg">
-                Nộp bài nghe & Xem đáp án + Transcript
-            </button>
-        ` : `
-            <div class="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
-                <label class="text-xs font-extrabold uppercase text-cyan-300 block">📝 Ghi chép nội dung bạn nghe được (Listening Notes / Dictation Scratchpad):</label>
-                <textarea id="custom-listening-notes" rows="5" placeholder="Nghe đoạn âm thanh phía trên và ghi lại ý chính, câu thoại hoặc từ mới bạn nghe được..." class="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-cyan-500"></textarea>
-                <div class="flex flex-wrap gap-2">
-                    <button onclick="finalizeListeningCompletion(100); showToast('Đã đánh dấu hoàn thành bài nghe cá nhân!');" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs">
-                        ✅ Đánh dấu đã hoàn thành
-                    </button>
-                </div>
-            </div>
-        `}
         <div id="listening-result-box" class="hidden"></div>
         <div id="listening-transcript-box" class="hidden p-4 rounded-2xl bg-slate-950/80 border border-cyan-500/25 space-y-2"></div>
     `;
+
+    listeningBindExternalAudioSync();
+    if (typeof LearningHub !== "undefined") {
+        LearningHub.renderQuestionSetsBar("listening", ex.id, ex.questions || [], "listening-qsets-bar", {
+            lessonTitle: ex.title,
+            lessonLevel: ex.level || "B1",
+            lessonContent: { title: ex.title, transcript: ex.transcript || ex.audioText || (ex.sentences || []).join(" ") },
+            onSelect: () => {
+                listeningStartedAt = Date.now();
+                document.getElementById("listening-result-box")?.classList.add("hidden");
+                renderListeningQuestionsSectionOnly();
+            }
+        });
+    }
+    renderListeningQuestionsSectionOnly();
 }
 
 function renderFullListeningTestView() {
@@ -702,12 +949,17 @@ function updateFullTestTimerUI() {
 
 function updateListeningTestProgress() {
     if (!activeListeningItem) return;
-    const total = (activeListeningItem.questions || []).length;
+    const questions = getActiveListeningQuestionSet().questions || [];
+    const total = questions.length;
     if (!total) return;
     let answered = 0;
-    for (let i = 0; i < total; i++) {
-        if (document.querySelector(`input[name="l-mc-${i}"]:checked`)) answered++;
-    }
+    questions.forEach((q, i) => {
+        if (Array.isArray(q.options) && q.options.length > 0) {
+            if (document.querySelector(`input[name="l-mc-${i}"]:checked`)) answered++;
+        } else {
+            if ((document.getElementById(`l-mc-input-${i}`)?.value || "").trim() !== "") answered++;
+        }
+    });
     const lbl = document.getElementById("l-test-prog-label");
     const bar = document.getElementById("l-test-prog-bar");
     if (lbl) lbl.textContent = `${answered} / ${total}`;
@@ -717,13 +969,28 @@ function updateListeningTestProgress() {
 function gradeListeningMCQuestions() {
     clearInterval(fullTestTimerId);
     if (!activeListeningItem) return;
-    const questions = activeListeningItem.questions || [];
+    const activeSet = getActiveListeningQuestionSet();
+    const questions = activeSet.questions || [];
     let correct = 0;
+    const detailedAnswers = [];
 
     questions.forEach((q, qi) => {
-        const picked = document.querySelector(`input[name="l-mc-${qi}"]:checked`)?.value || "";
-        const ok = picked.trim().toLowerCase() === String(q.answer).trim().toLowerCase();
+        const hasOpts = Array.isArray(q.options) && q.options.length > 0;
+        const picked = hasOpts
+            ? (document.querySelector(`input[name="l-mc-${qi}"]:checked`)?.value || "")
+            : ((document.getElementById(`l-mc-input-${qi}`)?.value || "").trim());
+        const accepted = [q.answer, ...(q.acceptableAnswers || [])].map(a => normalizeWords(a)).filter(Boolean);
+        const normP = normalizeWords(picked);
+        const ok = Boolean(normP) && accepted.includes(normP);
         if (ok) correct++;
+        const expText = q.explanationVi || q.explanation || "";
+        detailedAnswers.push({
+            question: q.question,
+            userAnswer: picked,
+            correctAnswer: q.answer,
+            isCorrect: ok,
+            explanationVi: expText
+        });
 
         const box = document.getElementById(`l-qbox-${qi}`);
         const fb = document.getElementById(`l-qfb-${qi}`);
@@ -737,7 +1004,7 @@ function gradeListeningMCQuestions() {
                 <p class="font-bold ${ok ? "text-emerald-300" : "text-rose-300"}">
                     ${ok ? "✅ Chính xác!" : `❌ Bạn chọn: "${escHtml(picked || "Chưa chọn")}" — Đáp án đúng: "${escHtml(q.answer)}"`}
                 </p>
-                <p class="text-slate-300 mt-1">💡 ${escHtml(q.explanationVi || q.explanation || "")}</p>
+                <p class="text-slate-300 mt-1">💡 ${escHtml(expText)}</p>
             `;
         }
     });
@@ -748,14 +1015,33 @@ function gradeListeningMCQuestions() {
         resBox.classList.remove("hidden");
         resBox.innerHTML = `
             <div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-center">
-                <h4 class="text-lg font-black text-white">Điểm bài nghe: <span class="text-amber-300">${correct} / ${questions.length} (${pct}%)</span></h4>
+                <h4 class="text-lg font-black text-white">Điểm ${escHtml(activeSet.label)}: <span class="text-amber-300">${correct} / ${questions.length} (${pct}%)</span></h4>
             </div>
         `;
     }
-    finalizeListeningCompletion(pct);
+    finalizeListeningCompletion(pct, {
+        questionSetId: activeSet.id,
+        questionSetLabel: activeSet.label,
+        cefrLevel: activeSet.cefrLevel || activeListeningItem.level || "B1",
+        correctCount: correct,
+        totalCount: questions.length,
+        answers: detailedAnswers
+    });
+    if (typeof LearningHub !== "undefined") {
+        LearningHub.renderQuestionSetsBar("listening", activeListeningItem.id, activeListeningItem.questions || [], "listening-qsets-bar", {
+            lessonTitle: activeListeningItem.title,
+            lessonLevel: activeListeningItem.level || "B1",
+            lessonContent: { title: activeListeningItem.title, transcript: activeListeningItem.transcript || activeListeningItem.audioText || "" },
+            onSelect: () => {
+                listeningStartedAt = Date.now();
+                document.getElementById("listening-result-box")?.classList.add("hidden");
+                renderListeningQuestionsSectionOnly();
+            }
+        });
+    }
 }
 
-function finalizeListeningCompletion(scorePct) {
+function finalizeListeningCompletion(scorePct, meta = {}) {
     if (!activeListeningItem) return;
     // Reveal full transcript upon completion (PHẦN 3.3.D)
     const trBox = document.getElementById("listening-transcript-box");
@@ -790,7 +1076,26 @@ function finalizeListeningCompletion(scorePct) {
         },
         { type: "listening", skill: "listening", title: `Hoàn thành bài nghe: ${activeListeningItem.title}`, scorePct }
     );
-    showToast(`Hoàn thành bài nghe (${scorePct}%)! Đã mở Transcript.`);
+    if (typeof LearningHub !== "undefined") {
+        const durationSec = Math.max(1, Math.round((Date.now() - (listeningStartedAt || Date.now())) / 1000));
+        LearningHub.recordAttempt({
+            skill: "listening",
+            sourceScope: "standalone",
+            lessonId: activeListeningItem.id,
+            lessonTitle: activeListeningItem.title,
+            questionSetId: meta.questionSetId || "set-1",
+            questionSetLabel: meta.questionSetLabel || "Bộ câu hỏi 1",
+            exerciseType: activeListeningItem.type || "listening",
+            cefrLevel: meta.cefrLevel || activeListeningItem.level || "B1",
+            score10: Math.round((scorePct / 10) * 10) / 10,
+            scorePct,
+            correctCount: Number.isFinite(meta.correctCount) ? meta.correctCount : 1,
+            totalCount: Number.isFinite(meta.totalCount) ? meta.totalCount : 1,
+            durationSec,
+            answers: Array.isArray(meta.answers) ? meta.answers : []
+        });
+    }
+    showToast(`Hoàn thành bài nghe (${scorePct}%)! Đã lưu vào Learning History & mở Transcript.`);
 }
 
 /* ==================== AI LISTENING COACH ==================== */

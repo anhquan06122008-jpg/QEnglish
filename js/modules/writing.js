@@ -347,7 +347,48 @@ function openWritingEditor(topicId, customTopic) {
     clearInterval(writingTimerId);
     const timerEl = document.getElementById("writing-timer");
     if (timerEl) timerEl.textContent = `⏱ ${t.timeLimit || 25}:00`;
+    window._writingStartedAt = Date.now();
+    if (typeof LearningHub !== "undefined") {
+        LearningHub.renderQuestionSetsBar("writing", t.id, t.questions || [], "writing-qsets-bar", {
+            lessonTitle: t.title,
+            lessonLevel: t.level || "B1",
+            lessonContent: { title: t.title, prompt: t.prompt, guidelines: t.guidelines },
+            onSelect: (setObj) => renderWritingExtraQuestionSet(setObj)
+        });
+        renderWritingExtraQuestionSet(LearningHub.getActiveQuestionSet("writing", t.id, t.questions || []));
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function renderWritingExtraQuestionSet(setObj) {
+    const runner = document.getElementById("writing-extra-qset-runner");
+    if (!runner || !activeWritingTopic || typeof LearningHub === "undefined") return;
+    const qs = setObj?.questions || [];
+    if (!qs.length || (setObj.id === "set-1" && qs.length === 0)) {
+        runner.classList.add("hidden");
+        runner.innerHTML = "";
+        return;
+    }
+    const draft = LearningHub.getSetDraft("writing", activeWritingTopic.id, setObj.id);
+    runner.classList.remove("hidden");
+    runner.innerHTML = `
+        <div class="glass-panel rounded-3xl p-5 sm:p-6 border border-emerald-500/35 space-y-4 text-xs">
+            <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-white/10">
+                <div>
+                    <span class="text-[10px] font-extrabold uppercase text-emerald-300">✍️ Luyện tập bổ sung • ${escHtml(setObj.label)}</span>
+                    <h4 class="text-base font-black text-white mt-0.5">${escHtml(setObj.title || setObj.label)} (${qs.length} câu)</h4>
+                </div>
+                <span class="px-2.5 py-1 rounded-full bg-violet-500/15 text-violet-300 font-bold">CEFR ${escHtml(setObj.cefrLevel || activeWritingTopic.level || "B1")}</span>
+            </div>
+            <div class="space-y-3">
+                ${qs.map((q, qi) => LearningHub.renderGenericQuestionCard("writing", activeWritingTopic.id, setObj.id, q, qi, qs.length, draft[q.id])).join("")}
+            </div>
+            <button type="button" onclick="LearningHub.submitStandaloneSet('writing', ${JSON.stringify(String(activeWritingTopic.id))}, ${JSON.stringify(activeWritingTopic.title)}, ${JSON.stringify(activeWritingTopic.level || "B1")}, ${JSON.stringify(setObj.id)}, activeWritingTopic.questions || [])" class="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold shadow-lg">
+                ✅ Nộp ${escHtml(setObj.label)} &amp; Lưu Lịch Sử
+            </button>
+            <div id="lh-set-result-writing-${escHtml(activeWritingTopic.id)}" class="hidden"></div>
+        </div>
+    `;
 }
 
 function insertPhraseIntoWriting(phrase) {
@@ -962,6 +1003,28 @@ function renderWritingEvaluationResult(originalText, wordCount, r, evalMode, gra
         },
         { type: "writing", skill: "writing", title: `Nộp bài Writing: ${activeWritingTopic.title} (${wordCount} từ)`, scorePct: r.scorePct ?? 75 }
     );
+    if (typeof LearningHub !== "undefined") {
+        const wScorePct = typeof r.totalScore10 === "number" ? Math.round(r.totalScore10 * 10) : (r.scorePct ?? 75);
+        const wScore10 = typeof r.totalScore10 === "number" ? r.totalScore10 : Math.round((wScorePct / 10) * 10) / 10;
+        const durationSec = Math.max(1, Math.round((Date.now() - (window._writingStartedAt || Date.now())) / 1000));
+        LearningHub.recordAttempt({
+            skill: "writing",
+            sourceScope: "standalone",
+            lessonId: activeWritingTopic.id,
+            lessonTitle: activeWritingTopic.title,
+            questionSetId: "set-1",
+            questionSetLabel: "Bài viết gốc",
+            exerciseType: activeWritingTopic.type || "essay",
+            cefrLevel: activeWritingTopic.level || "B1",
+            score10: wScore10,
+            scorePct: wScorePct,
+            correctCount: 1,
+            totalCount: 1,
+            durationSec,
+            userText: originalText,
+            aiFeedback: r
+        });
+    }
     showToast("Đã đánh giá và lưu bài viết vào Lịch sử & Writing Notebook!");
 }
 

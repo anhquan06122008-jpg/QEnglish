@@ -1008,6 +1008,12 @@ const CloudClient = {
         ].map(String).filter(Boolean))).slice(-200);
         const deletedSubSet = new Set(mergedDeletedSubIds);
 
+        const mergedDeletedTransHistIds = Array.from(new Set([
+            ...(Array.isArray(remoteT.deletedHistoryIds) ? remoteT.deletedHistoryIds : []),
+            ...(Array.isArray(localT.deletedHistoryIds) ? localT.deletedHistoryIds : [])
+        ].map(String).filter(Boolean))).slice(-300);
+        const deletedTransHistSet = new Set(mergedDeletedTransHistIds);
+
         const mergedWriting = {
             drafts: { ...(remoteW.drafts || {}), ...(localW.drafts || {}) },
             deletedSubmissionIds: mergedDeletedSubIds,
@@ -1022,7 +1028,9 @@ const CloudClient = {
                 revisions: mergedRevisions,
                 completedIds: mergedCompletedIds,
                 scores: mergedTransScores,
+                deletedHistoryIds: mergedDeletedTransHistIds,
                 history: mergeByKey(localT.history, remoteT.history, h => String(h.id || h.at))
+                    .filter(h => !deletedTransHistSet.has(String(h.id || "")))
                     .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
                     .slice(0, 120),
                 lastLessonId: (localT.lastLessonId && localT.lastLessonId !== 1) ? localT.lastLessonId : (remoteT.lastLessonId || localT.lastLessonId || 1),
@@ -1127,6 +1135,47 @@ const CloudClient = {
             remoteSnap.dashboard_state && remoteSnap.dashboard_state.pdfStudio
         );
 
+        const mergeLearningHub = (lHub, rHub) => {
+            if (!lHub && !rHub) return undefined;
+            const a = (lHub && typeof lHub === "object") ? lHub : {};
+            const b = (rHub && typeof rHub === "object") ? rHub : {};
+            const delHist = Array.from(new Set([...(b.deletedHistoryIds || []), ...(a.deletedHistoryIds || [])].map(String))).slice(-400);
+            const delEx = Array.from(new Set([...(b.deletedExerciseIds || []), ...(a.deletedExerciseIds || [])].map(String))).slice(-400);
+            const delHistSet = new Set(delHist);
+            const delExSet = new Set(delEx);
+
+            const history = mergeByKey(a.history, b.history, h => String(h.id || h.completedAt))
+                .filter(h => !delHistSet.has(String(h.id || "")))
+                .sort((x, y) => new Date(y.completedAt || 0) - new Date(x.completedAt || 0))
+                .slice(0, 500);
+
+            const aiExercises = mergeByKey(a.aiExercises, b.aiExercises, e => String(e.id || e.createdAt))
+                .filter(e => !delExSet.has(String(e.id || "")))
+                .sort((x, y) => new Date(y.createdAt || 0) - new Date(x.createdAt || 0))
+                .slice(0, 300);
+
+            const mergedQS = { ...(b.questionSetsByLesson || {}) };
+            Object.entries(a.questionSetsByLesson || {}).forEach(([lessonKey, arr]) => {
+                const combined = mergeByKey(arr, mergedQS[lessonKey], s => String(s.id || s.setNumber));
+                combined.sort((x, y) => (Number(x.setNumber) || 0) - (Number(y.setNumber) || 0));
+                mergedQS[lessonKey] = combined;
+            });
+
+            return {
+                history,
+                aiExercises,
+                questionSetsByLesson: mergedQS,
+                deletedHistoryIds: delHist,
+                deletedExerciseIds: delEx,
+                updatedAt: new Date(Math.max(new Date(a.updatedAt || 0).getTime(), new Date(b.updatedAt || 0).getTime()) || Date.now()).toISOString()
+            };
+        };
+
+        const mergedLearningHub = mergeLearningHub(
+            localSnap.dashboard_state && localSnap.dashboard_state.learningHub,
+            remoteSnap.dashboard_state && remoteSnap.dashboard_state.learningHub
+        );
+
         return {
             settings: { ...(remoteSnap.settings || {}), ...(localSnap.settings || {}) },
             deck_v2: mergedDeck,
@@ -1145,7 +1194,8 @@ const CloudClient = {
                     ...((remoteSnap.dashboard_state && remoteSnap.dashboard_state.tasksByDate) || {}),
                     ...((localSnap.dashboard_state && localSnap.dashboard_state.tasksByDate) || {})
                 },
-                ...(mergedPdfStudio ? { pdfStudio: mergedPdfStudio } : {})
+                ...(mergedPdfStudio ? { pdfStudio: mergedPdfStudio } : {}),
+                ...(mergedLearningHub ? { learningHub: mergedLearningHub } : {})
             },
             grammar_state: mergeCompletedObj(localSnap.grammar_state, remoteSnap.grammar_state),
             listening_state: mergeCompletedObj(localSnap.listening_state, remoteSnap.listening_state),

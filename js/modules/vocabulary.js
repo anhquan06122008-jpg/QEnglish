@@ -577,6 +577,29 @@ function showQuizResults() {
         { scoreEntry: { skill: "vocabulary", scorePct: pct, level: appSettings?.selectedLevel || "B1", title: "Trắc nghiệm Từ vựng" } },
         { type: "quiz", skill: "vocabulary", title: `Hoàn thành Trắc nghiệm Từ vựng (${quizScore}/${quizQuestions.length})`, scorePct: pct }
     );
+    if (typeof LearningHub !== "undefined") {
+        LearningHub.recordAttempt({
+            skill: "vocabulary",
+            sourceScope: "standalone",
+            lessonId: "vocab-quiz",
+            lessonTitle: `Trắc nghiệm Từ vựng (${quizQuestions.length} từ)`,
+            questionSetId: "set-1",
+            questionSetLabel: "Vocabulary Quiz",
+            exerciseType: "vocab_quiz",
+            cefrLevel: appSettings?.selectedLevel || "B1",
+            score10: Math.round((pct / 10) * 10) / 10,
+            scorePct: pct,
+            correctCount: quizScore,
+            totalCount: quizQuestions.length,
+            answers: quizHistoryLog.map(h => ({
+                question: `Nghĩa của từ "${h.word}"`,
+                userAnswer: h.firstTryCorrect ? h.correctDef : (h.wrongPick || ""),
+                correctAnswer: h.correctDef,
+                isCorrect: Boolean(h.firstTryCorrect),
+                explanationVi: `${h.word} = ${h.correctDef}`
+            }))
+        });
+    }
 }
 
 /* ==================== 4. IMPORT & VOCABULARY BANK MANAGEMENT ==================== */

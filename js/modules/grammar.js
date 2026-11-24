@@ -71,11 +71,14 @@ function filterGrammarLessons() {
     }).join("");
 }
 
-function openGrammarLesson(lessonId) {
+function openGrammarLesson(lessonId, customLesson = null) {
     const allLessons = getAllContentForSkill("grammar");
-    const lesson = allLessons.find(l => l.id === lessonId);
+    if (customLesson) window.lastCustomGrammarLesson = customLesson;
+    const lesson = customLesson || allLessons.find(l => l.id === lessonId) ||
+        (String(lessonId || "").startsWith("aiex-grammar-") ? window.lastCustomGrammarLesson : null);
     if (!lesson) return;
     activeGrammarLesson = lesson;
+    window._grammarStartedAt = Date.now();
 
     document.getElementById("grammar-list")?.classList.add("hidden");
     document.getElementById("grammar-filter-bar")?.classList.add("hidden");
@@ -148,35 +151,84 @@ function openGrammarLesson(lessonId) {
         </div>
     `;
 
-    // 7. Bài tập thực hành
+    // 7. Bài tập thực hành + QUESTION SETS (Bộ câu hỏi 1, 2, 3... N)
+    renderGrammarQuestionSetsAndExercises();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function getActiveGrammarQuestionSet() {
+    const lesson = activeGrammarLesson;
+    if (!lesson) return { id: "set-1", label: "Bộ câu hỏi 1", sourceType: "original", cefrLevel: "B1", questions: [] };
+    const orig = lesson.exercises || lesson.questions || [];
+    if (typeof LearningHub !== "undefined") {
+        return LearningHub.getActiveQuestionSet("grammar", lesson.id, orig);
+    }
+    return { id: "set-1", label: "Bộ câu hỏi 1", sourceType: "original", cefrLevel: lesson.level || "B1", questions: orig };
+}
+
+function onGrammarDraftInput(i, val) {
+    if (!activeGrammarLesson || typeof LearningHub === "undefined") return;
+    const activeSet = getActiveGrammarQuestionSet();
+    const q = (activeSet.questions || [])[i];
+    if (q) LearningHub.setDraftAnswer("grammar", activeGrammarLesson.id, activeSet.id, q.id || `gq-${i}`, val);
+}
+
+function renderGrammarQuestionSetsAndExercises() {
+    const lesson = activeGrammarLesson;
+    if (!lesson) return;
+    const orig = lesson.exercises || lesson.questions || [];
+    if (typeof LearningHub !== "undefined") {
+        LearningHub.renderQuestionSetsBar("grammar", lesson.id, orig, "grammar-qsets-bar", {
+            lessonTitle: lesson.title,
+            lessonLevel: lesson.level || "B1",
+            lessonContent: { title: lesson.title, formula: lesson.formula, explanation: lesson.explanation, examples: lesson.examples },
+            onSelect: () => {
+                window._grammarStartedAt = Date.now();
+                document.getElementById("grammar-exercise-result")?.classList.add("hidden");
+                renderGrammarExercisesOnly();
+            }
+        });
+    }
+    renderGrammarExercisesOnly();
+}
+
+function renderGrammarExercisesOnly() {
+    const lesson = activeGrammarLesson;
+    if (!lesson) return;
     const exEl = document.getElementById("grammar-exercises");
-    const exercises = lesson.exercises || [];
+    if (!exEl) return;
+    const activeSet = getActiveGrammarQuestionSet();
+    const exercises = activeSet.questions || [];
+    const draft = (typeof LearningHub !== "undefined")
+        ? LearningHub.getSetDraft("grammar", lesson.id, activeSet.id)
+        : {};
+
     exEl.innerHTML = `
         <div class="glass-panel rounded-3xl p-6 md:p-8 space-y-5">
-            <div class="flex items-center justify-between">
-                <h3 class="text-lg font-black text-white">7. Bài tập thực hành (${exercises.length} câu)</h3>
-                <span class="text-xs text-slate-400">${exercises.length > 0 ? "Hoàn thành tất cả câu rồi bấm Chấm bài" : "Tài liệu lý thuyết cá nhân"}</span>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <h3 class="text-lg font-black text-white">7. Bài tập thực hành — <span class="text-cyan-300">${escHtml(activeSet.label)}</span> (${exercises.length} câu)</h3>
+                <span class="text-xs text-slate-400">${exercises.length > 0 ? "Hoàn thành tất cả câu rồi bấm Chấm bài" : "Bấm ➕ AI – Generate More Questions phía trên để tạo bộ câu hỏi"}</span>
             </div>
             ${exercises.length > 0
-                ? `<div class="space-y-5">${exercises.map((ex, i) => renderGrammarExerciseItem(ex, i)).join("")}</div>`
-                : `<p class="text-xs text-slate-400 italic">Bài học này chưa có câu hỏi trắc nghiệm đính kèm. Sau khi đọc xong lý thuyết và ví dụ, bạn có thể bấm nút bên dưới để ghi nhận đã hoàn thành.</p>`}
+                ? `<div class="space-y-5">${exercises.map((ex, i) => renderGrammarExerciseItem(ex, i, draft[ex.id || `gq-${i}`] || "")).join("")}</div>`
+                : `<p class="text-xs text-slate-400 italic">Bài học này chưa có câu hỏi trắc nghiệm đính kèm. Bạn có thể bấm <strong>➕ AI – Generate More Questions</strong> ở thanh Question Sets phía trên hoặc đánh dấu hoàn thành bên dưới.</p>`}
             <button onclick="gradeGrammarExercises()" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold text-sm shadow-xl shadow-violet-600/25 active:scale-99 transition">
                 ${exercises.length > 0 ? "✅ Chấm bài & Xem giải thích chi tiết" : "✅ Đánh dấu đã học xong bài ngữ pháp"}
             </button>
         </div>
     `;
-    window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function renderGrammarExerciseItem(ex, i) {
-    if (ex.type === "multiple_choice") {
+function renderGrammarExerciseItem(ex, i, savedVal = "") {
+    const hasOpts = Array.isArray(ex.options) && ex.options.length > 0;
+    if (hasOpts) {
         return `
             <div class="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3" id="g-ex-box-${i}">
                 <p class="text-sm font-bold text-white"><span class="text-violet-400 mr-1">Câu ${i + 1}:</span> ${escHtml(ex.question)}</p>
                 <div class="grid sm:grid-cols-2 gap-2">
-                    ${(ex.options || []).map((opt, optIdx) => `
-                        <label class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-900/90 border border-white/10 cursor-pointer hover:border-violet-500/40 text-xs text-slate-200">
-                            <input type="radio" name="g-ex-${i}" value="${escHtml(opt)}" class="accent-violet-500">
+                    ${(ex.options || []).map((opt) => `
+                        <label class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-900/90 border ${savedVal === opt ? "border-violet-400 bg-violet-500/15" : "border-white/10"} cursor-pointer hover:border-violet-500/40 text-xs text-slate-200">
+                            <input type="radio" name="g-ex-${i}" value="${escHtml(opt)}" ${savedVal === opt ? "checked" : ""} onchange="onGrammarDraftInput(${i}, this.value)" class="accent-violet-500">
                             <span>${escHtml(opt)}</span>
                         </label>
                     `).join("")}
@@ -187,8 +239,8 @@ function renderGrammarExerciseItem(ex, i) {
     }
     return `
         <div class="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3" id="g-ex-box-${i}">
-            <p class="text-sm font-bold text-white"><span class="text-cyan-400 mr-1">Câu ${i + 1} (${ex.type === "rewrite" ? "Viết lại / Sửa câu" : "Điền từ"}):</span> ${escHtml(ex.question)}</p>
-            <input type="text" id="g-ex-input-${i}" placeholder="Nhập câu trả lời của bạn..." class="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500">
+            <p class="text-sm font-bold text-white"><span class="text-cyan-400 mr-1">Câu ${i + 1} (${ex.type === "rewrite" || ex.type === "sentence_transformation" ? "Viết lại / Sửa câu" : "Điền từ"}):</span> ${escHtml(ex.question)}</p>
+            <input type="text" id="g-ex-input-${i}" value="${escHtml(savedVal)}" oninput="onGrammarDraftInput(${i}, this.value)" placeholder="Nhập câu trả lời của bạn..." class="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500">
             <div id="g-ex-fb-${i}" class="hidden text-xs pt-2 border-t border-white/10"></div>
         </div>
     `;
@@ -196,27 +248,38 @@ function renderGrammarExerciseItem(ex, i) {
 
 function gradeGrammarExercises() {
     if (!activeGrammarLesson) return;
-    const exercises = activeGrammarLesson.exercises || [];
+    const activeSet = getActiveGrammarQuestionSet();
+    const exercises = activeSet.questions || [];
     let correct = 0;
+    const detailedAnswers = [];
 
     exercises.forEach((ex, i) => {
         let userAns = "";
-        if (ex.type === "multiple_choice") {
+        const hasOpts = Array.isArray(ex.options) && ex.options.length > 0;
+        if (hasOpts) {
             const checked = document.querySelector(`input[name="g-ex-${i}"]:checked`);
             userAns = checked ? checked.value.trim() : "";
         } else {
             userAns = (document.getElementById(`g-ex-input-${i}`)?.value || "").trim();
         }
 
-        const acceptedList = [ex.answer, ...(ex.acceptAlt || [])].map(a => normalizeWords(a));
+        const acceptedList = [ex.answer, ...(ex.acceptAlt || ex.acceptableAnswers || [])].map(a => normalizeWords(a)).filter(Boolean);
         const isRight = userAns !== "" && acceptedList.includes(normalizeWords(userAns));
+        const expText = ex.explanationVi || ex.explanation || "";
+        detailedAnswers.push({
+            question: ex.question,
+            userAnswer: userAns,
+            correctAnswer: ex.answer,
+            isCorrect: isRight,
+            explanationVi: expText
+        });
         if (isRight) correct++;
         else {
             autoLogMistake({
                 errorCategory: "Sai ngữ pháp",
                 wrongText: userAns || `(Chưa trả lời: ${ex.question})`,
                 correctText: ex.answer,
-                explanation: `[${activeGrammarLesson.title}] ${ex.explanationVi}`,
+                explanation: `[${activeGrammarLesson.title}] ${expText}`,
                 skill: "grammar"
             });
         }
@@ -233,16 +296,47 @@ function gradeGrammarExercises() {
                 <p class="font-bold ${isRight ? "text-emerald-300" : "text-rose-300"}">
                     ${isRight ? "✅ Chính xác!" : `❌ Chưa đúng (Đáp án của bạn: "${escHtml(userAns || "Trống")}") — Đáp án đúng: "${escHtml(ex.answer)}"`}
                 </p>
-                <p class="text-slate-300 mt-1">💡 <strong>Giải thích:</strong> ${escHtml(ex.explanationVi)}</p>
+                <p class="text-slate-300 mt-1">💡 <strong>Giải thích:</strong> ${escHtml(expText)}</p>
             `;
         }
     });
 
     const pct = exercises.length > 0 ? Math.round((correct / exercises.length) * 100) : 100;
+    const score10 = Math.round((pct / 10) * 10) / 10;
+    const durationSec = Math.max(1, Math.round((Date.now() - (window._grammarStartedAt || Date.now())) / 1000));
     const st = getGrammarSavedState();
     if (!st.completedIds.includes(activeGrammarLesson.id)) st.completedIds.push(activeGrammarLesson.id);
     st.scoresById[activeGrammarLesson.id] = Math.max(st.scoresById[activeGrammarLesson.id] || 0, pct);
     saveGrammarSavedState(st);
+
+    if (typeof LearningHub !== "undefined") {
+        LearningHub.recordAttempt({
+            skill: "grammar",
+            sourceScope: "standalone",
+            lessonId: activeGrammarLesson.id,
+            lessonTitle: activeGrammarLesson.title,
+            questionSetId: activeSet.id,
+            questionSetLabel: activeSet.label,
+            exerciseType: activeSet.sourceType === "original" ? "grammar_practice" : "ai_question_set",
+            cefrLevel: activeSet.cefrLevel || activeGrammarLesson.level || "B1",
+            score10,
+            scorePct: pct,
+            correctCount: correct,
+            totalCount: exercises.length,
+            durationSec,
+            answers: detailedAnswers
+        });
+        LearningHub.renderQuestionSetsBar("grammar", activeGrammarLesson.id, activeGrammarLesson.exercises || activeGrammarLesson.questions || [], "grammar-qsets-bar", {
+            lessonTitle: activeGrammarLesson.title,
+            lessonLevel: activeGrammarLesson.level || "B1",
+            lessonContent: { title: activeGrammarLesson.title, formula: activeGrammarLesson.formula, explanation: activeGrammarLesson.explanation, examples: activeGrammarLesson.examples },
+            onSelect: () => {
+                window._grammarStartedAt = Date.now();
+                document.getElementById("grammar-exercise-result")?.classList.add("hidden");
+                renderGrammarExercisesOnly();
+            }
+        });
+    }
 
     logStudyMetrics(
         {

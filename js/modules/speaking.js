@@ -373,6 +373,48 @@ function openTopicSpeakingWorkspace(topicId, customTopic = null) {
         </div>
 
         <div id="speaking-eval-output" class="hidden mt-6"></div>
+        <div id="speaking-qsets-bar" class="mt-6"></div>
+        <div id="speaking-extra-qset-runner" class="hidden mt-4"></div>
+    `;
+    if (typeof LearningHub !== "undefined") {
+        LearningHub.renderQuestionSetsBar("speaking", t.id, t.questions || [], "speaking-qsets-bar", {
+            lessonTitle: t.title,
+            lessonLevel: t.level || "B1",
+            lessonContent: { title: t.title, prompt: t.prompt, suggestedQuestions: t.suggestedQuestions, usefulPhrases: t.usefulPhrases },
+            onSelect: (setObj) => renderSpeakingExtraQuestionSet(setObj)
+        });
+        renderSpeakingExtraQuestionSet(LearningHub.getActiveQuestionSet("speaking", t.id, t.questions || []));
+    }
+}
+
+function renderSpeakingExtraQuestionSet(setObj) {
+    const runner = document.getElementById("speaking-extra-qset-runner");
+    if (!runner || !activeSpeakingTopic || typeof LearningHub === "undefined") return;
+    const qs = setObj?.questions || [];
+    if (!qs.length) {
+        runner.classList.add("hidden");
+        runner.innerHTML = "";
+        return;
+    }
+    const draft = LearningHub.getSetDraft("speaking", activeSpeakingTopic.id, setObj.id);
+    runner.classList.remove("hidden");
+    runner.innerHTML = `
+        <div class="glass-panel rounded-3xl p-5 sm:p-6 border border-emerald-500/35 space-y-4 text-xs">
+            <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-white/10">
+                <div>
+                    <span class="text-[10px] font-extrabold uppercase text-emerald-300">🎙️ Câu hỏi luyện phản xạ nói • ${escHtml(setObj.label)}</span>
+                    <h4 class="text-base font-black text-white mt-0.5">${escHtml(setObj.title || setObj.label)} (${qs.length} câu)</h4>
+                </div>
+                <span class="px-2.5 py-1 rounded-full bg-violet-500/15 text-violet-300 font-bold">CEFR ${escHtml(setObj.cefrLevel || activeSpeakingTopic.level || "B1")}</span>
+            </div>
+            <div class="space-y-3">
+                ${qs.map((q, qi) => LearningHub.renderGenericQuestionCard("speaking", activeSpeakingTopic.id, setObj.id, q, qi, qs.length, draft[q.id])).join("")}
+            </div>
+            <button type="button" onclick="LearningHub.submitStandaloneSet('speaking', ${JSON.stringify(String(activeSpeakingTopic.id))}, ${JSON.stringify(activeSpeakingTopic.title)}, ${JSON.stringify(activeSpeakingTopic.level || "B1")}, ${JSON.stringify(setObj.id)}, activeSpeakingTopic.questions || [])" class="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold shadow-lg">
+                ✅ Nộp ${escHtml(setObj.label)} &amp; Lưu Lịch Sử
+            </button>
+            <div id="lh-set-result-speaking-${escHtml(activeSpeakingTopic.id)}" class="hidden"></div>
+        </div>
     `;
 }
 
@@ -675,5 +717,27 @@ async function evaluateSpeakingSession(sessionTitle, sampleAnswer = "") {
         },
         { type: "speaking", skill: "speaking", title: `Hoàn thành Speaking: ${sessionTitle}`, scorePct: overallScore }
     );
+    if (typeof LearningHub !== "undefined") {
+        LearningHub.recordAttempt({
+            skill: "speaking",
+            sourceScope: "standalone",
+            lessonId: activeSpeakingTopic?.id || "live-conv",
+            lessonTitle: sessionTitle,
+            questionSetId: "set-1",
+            questionSetLabel: "Luyện nói gốc",
+            exerciseType: activeSpeakingTopic ? "topic_speaking" : "live_conversation",
+            cefrLevel: activeSpeakingTopic?.level || appSettings?.selectedLevel || "B1",
+            score10: Math.round((overallScore / 10) * 10) / 10,
+            scorePct: overallScore,
+            correctCount: 1,
+            totalCount: 1,
+            durationSec: totalSec,
+            userText: fullTranscript,
+            aiFeedback: aiResult || {
+                overviewVi: `Điểm tổng hợp: ${overallScore}/100 (~${wpm} WPM), phát hiện ${finalErrors.length} lỗi cần chỉnh sửa.`,
+                errors: finalErrors
+            }
+        });
+    }
     showToast("Đã hoàn thành đánh giá bài nói và lưu vào Speaking Notebook!");
 }

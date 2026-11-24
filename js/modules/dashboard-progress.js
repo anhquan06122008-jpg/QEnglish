@@ -113,6 +113,10 @@ function navigateTo(page, subTab = null) {
     if (page === "materials") renderMaterialsPageTable();
     if (page === "settings") renderSettingsAndCMSPage();
 
+    if (typeof LearningHub !== "undefined" && ["vocabulary", "grammar", "listening", "speaking", "reading", "writing"].includes(page)) {
+        LearningHub.refreshSkillWidgets(page);
+    }
+
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -1315,6 +1319,7 @@ async function bootAuthenticatedWorkspace(user, options = {}) {
     loadProgressState();
     loadNotebook();
     loadCMSItems();
+    if (typeof LearningHub !== "undefined") LearningHub.load();
 
     // Auto-migrate same-email Local Mode data (from before Cloud Sync was enabled) safely to Cloud
     if (window.__QENGLISH_ACTIVE_UID && user?.email && typeof autoMigrateSameEmailLocalData === "function") {
@@ -1478,6 +1483,10 @@ window.refreshUIAfterRemoteSync = function () {
     if (typeof loadPdfStudioState === "function") {
         loadPdfStudioState();
         if (activeMainPage === "pdf-studio" && typeof renderPdfStudioPage === "function") renderPdfStudioPage();
+    }
+    if (typeof LearningHub !== "undefined") {
+        LearningHub.reloadFromStorage();
+        LearningHub.refreshAllVisibleHistoryWidgets();
     }
 };
 
