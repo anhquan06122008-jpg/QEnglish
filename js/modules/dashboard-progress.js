@@ -579,11 +579,66 @@ async function renderStorageManagerWidget() {
     const lsPct = Math.min(100, (rep.localStorageBytes / rep.localStorageLimitBytes) * 100);
     const lsHealthy = lsPct < 50;
 
+    const providers = (typeof CloudClient !== "undefined" && typeof CloudClient.getCloudStorageProviders === "function")
+        ? CloudClient.getCloudStorageProviders()
+        : {
+            supabase: { configured: rep.cloud.enabled, quotaGB: 1, maxFileMB: 10 },
+            b2: { configured: false, quotaGB: 10, maxFileMB: 100 },
+            r2: { configured: false, quotaGB: 10, maxFileMB: 100 },
+            gdrive: { configured: false, clientOAuthReady: false, quotaGB: 15, maxFileMB: 100 }
+        };
+    const activeMediaProv = (typeof CloudClient !== "undefined" && typeof CloudClient.getActiveMediaProvider === "function")
+        ? CloudClient.getActiveMediaProvider()
+        : { id: "supabase", label: "Supabase Storage", maxFileMB: 10 };
+    const totalActiveCloudGB = Object.values(providers).reduce((s, p) => s + (p.configured ? (Number(p.quotaGB) || 0) : 0), 0);
+    const effectiveCloudLimitBytes = Math.max(1, totalActiveCloudGB) * 1024 * 1024 * 1024;
     const cloudDbPct = Math.min(100, (rep.cloud.dbBytes / rep.cloud.dbLimitBytes) * 100);
-    const cloudMediaPct = Math.min(100, (rep.cloud.mediaEstimatedBytes / rep.cloud.mediaLimitBytes) * 100);
+    const cloudMediaPct = Math.min(100, (rep.cloud.mediaEstimatedBytes / effectiveCloudLimitBytes) * 100);
+    const preferredProv = appSettings?.preferredCloudStorageProvider || "auto";
 
     const mod = rep.modules;
     const totalPdfLocal = mod.pdfCourseJsonBytes + mod.localVaultBinariesBytes;
+
+    const providerCards = [
+        {
+            id: "b2",
+            icon: "🔥",
+            name: "Backblaze B2",
+            quota: "10 GB Free",
+            note: "Không cần thẻ ngân hàng • Tối đa 100 MB/file",
+            configured: providers.b2.configured,
+            envHint: "B2_ENDPOINT, B2_BUCKET, B2_KEY_ID, B2_APP_KEY"
+        },
+        {
+            id: "r2",
+            icon: "⚡",
+            name: "Cloudflare R2",
+            quota: "10 GB Free",
+            note: "Tốc độ CDN cực nhanh, 0đ băng thông • 100 MB/file",
+            configured: providers.r2.configured,
+            envHint: "R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY"
+        },
+        {
+            id: "gdrive",
+            icon: "📁",
+            name: "Google Drive",
+            quota: "15 GB Free",
+            note: "Dùng Drive Gmail cá nhân • Tối đa 100 MB/file",
+            configured: providers.gdrive.configured,
+            canBrowserConnect: Boolean(providers.gdrive.clientOAuthReady && !providers.gdrive.serverConfigured),
+            browserConnected: Boolean(providers.gdrive.browserConnected),
+            envHint: "GDRIVE_CLIENT_ID, GDRIVE_CLIENT_SECRET, GDRIVE_REFRESH_TOKEN"
+        },
+        {
+            id: "supabase",
+            icon: "☁️",
+            name: "Supabase Storage",
+            quota: "1 GB Free",
+            note: "Kho mặc định đang lưu PEN-LV3 • 10 MB/file",
+            configured: providers.supabase.configured,
+            envHint: "SUPABASE_URL, SUPABASE_ANON_KEY"
+        }
+    ];
 
     box.innerHTML = `
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
@@ -645,48 +700,92 @@ async function renderStorageManagerWidget() {
                 </div>
             </div>
 
-            <!-- SUPABASE CLOUD STORAGE & DB QUOTA -->
+            <!-- MULTI-CLOUD STORAGE HUB (UP TO 36 GB FREE!) -->
             <div class="p-5 rounded-2xl bg-slate-950/80 border border-violet-500/25 space-y-4">
                 <div class="flex items-start justify-between gap-2 flex-wrap">
                     <div>
-                        <span class="text-[10px] font-extrabold uppercase tracking-wider text-violet-400">Đồng Bộ Đa Thiết Bị (Supabase Cloud)</span>
-                        <h4 class="text-sm font-extrabold text-white mt-0.5">☁️ Trạng Thái Dung Lượng Cloud</h4>
+                        <span class="text-[10px] font-extrabold uppercase tracking-wider text-violet-400">Multi-Cloud Storage Router (Tối đa 36 GB Free)</span>
+                        <h4 class="text-sm font-extrabold text-white mt-0.5">☁️ Kho Cloud Đang Kích Hoạt: ${totalActiveCloudGB} GB / 36 GB</h4>
                     </div>
                     <span class="px-2.5 py-1 rounded-full text-[10px] font-bold border ${rep.cloud.enabled ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" : "bg-slate-800 text-slate-400 border-white/10"}">
-                        ${rep.cloud.enabled ? "🟢 Đang kết nối Cloud" : "💾 Chế độ cục bộ"}
+                        Đang ưu tiên: ${escHtml(activeMediaProv.label)}
                     </span>
                 </div>
 
                 <div class="space-y-1.5">
                     <div class="flex justify-between text-[11px] text-slate-300">
-                        <span>🗄️ Cơ sở dữ liệu học tập (Database Free 500 MB)</span>
+                        <span>🗄️ Database học tập (Supabase Free 500 MB)</span>
                         <strong class="text-emerald-300">${formatStorageBytesPretty(rep.cloud.dbBytes)} / 500 MB (${cloudDbPct < 0.1 ? "<0.1" : cloudDbPct.toFixed(2)}%)</strong>
                     </div>
                     <div class="h-2 rounded-full bg-slate-800 overflow-hidden">
                         <div class="h-full bg-gradient-to-r from-violet-500 to-indigo-400 rounded-full" style="width:${Math.max(1.5, cloudDbPct)}%"></div>
                     </div>
-                    <p class="text-[10px] text-slate-500">Chứa toàn bộ từ vựng, bài viết, tiến độ và cấu trúc Unit/Bài tập của mọi khóa học PDF.</p>
                 </div>
 
                 <div class="space-y-1.5">
                     <div class="flex justify-between text-[11px] text-slate-300">
-                        <span>🎧 Kho File Media Cloud (Storage Free 1 GB)</span>
-                        <strong class="text-cyan-300">~${formatStorageBytesPretty(rep.cloud.mediaEstimatedBytes)} / 1 GB (~${cloudMediaPct.toFixed(1)}%)</strong>
+                        <span>🎧 Kho File Media Đa Đám Mây (${totalActiveCloudGB} GB đang bật)</span>
+                        <strong class="text-cyan-300">~${formatStorageBytesPretty(rep.cloud.mediaEstimatedBytes)} / ${totalActiveCloudGB} GB (~${cloudMediaPct.toFixed(1)}%)</strong>
                     </div>
                     <div class="h-2 rounded-full bg-slate-800 overflow-hidden">
                         <div class="h-full bg-gradient-to-r from-cyan-500 to-emerald-400 rounded-full" style="width:${Math.max(1.5, cloudMediaPct)}%"></div>
                     </div>
                     <p class="text-[10px] text-slate-400">
-                        Đang lưu: <strong class="text-white">${rep.cloud.cloudAudioCount}</strong> file MP3 Listening • <strong class="text-white">${rep.cloud.cloudPagesTotal}</strong> trang sách HD (${rep.cloud.cloudPageSets} giáo trình) • <strong class="text-white">${rep.cloud.cloudMaterialFiles}</strong> tài liệu tải lên.
+                        Đang lưu: <strong class="text-white">${rep.cloud.cloudAudioCount}</strong> MP3 • <strong class="text-white">${rep.cloud.cloudPagesTotal}</strong> trang sách HD • <strong class="text-white">${rep.cloud.cloudMaterialFiles}</strong> tài liệu tải lên • Tối đa <strong class="text-emerald-300">${activeMediaProv.maxFileMB} MB/file</strong>.
                     </p>
                 </div>
 
-                <div class="p-3 rounded-xl bg-violet-500/10 border border-violet-500/20 text-[11px] text-slate-300 leading-relaxed">
-                    💡 <strong>Mẹo mở rộng lâu dài:</strong> Trên máy cá nhân QEnglish đã tự động lưu không giới hạn 5 MB bằng <strong>IndexedDB</strong>. Trên Cloud Free (1 GB) bạn vẫn còn dư hơn <strong>${formatStorageBytesPretty(Math.max(0, rep.cloud.mediaLimitBytes - rep.cloud.mediaEstimatedBytes))}</strong> cho thêm nhiều giáo trình kèm Audio!
+                <div class="flex items-center justify-between gap-2 flex-wrap pt-1 border-t border-white/10">
+                    <label for="setting-cloud-storage-provider" class="text-[11px] font-bold text-slate-300">Kho tải file mới ưu tiên:</label>
+                    <select id="setting-cloud-storage-provider" onchange="handleChangePreferredCloudProvider(this.value)" class="bg-slate-900 border border-white/15 rounded-xl px-3 py-1.5 text-[11px] font-bold text-cyan-300">
+                        <option value="auto" ${preferredProv === "auto" ? "selected" : ""}>✨ Tự động (R2 → B2 → Drive → Supabase)</option>
+                        <option value="b2" ${preferredProv === "b2" ? "selected" : ""} ${providers.b2.configured ? "" : "disabled"}>🔥 Backblaze B2 (10 GB)${providers.b2.configured ? "" : " — Chưa cấu hình"}</option>
+                        <option value="r2" ${preferredProv === "r2" ? "selected" : ""} ${providers.r2.configured ? "" : "disabled"}>⚡ Cloudflare R2 (10 GB)${providers.r2.configured ? "" : " — Chưa cấu hình"}</option>
+                        <option value="gdrive" ${preferredProv === "gdrive" ? "selected" : ""} ${providers.gdrive.configured ? "" : "disabled"}>📁 Google Drive (15 GB)${providers.gdrive.configured ? "" : " — Chưa cấu hình"}</option>
+                        <option value="supabase" ${preferredProv === "supabase" ? "selected" : ""}>☁️ Supabase Storage (1 GB)</option>
+                    </select>
                 </div>
             </div>
         </div>
+
+        <!-- 4 CLOUD PROVIDERS GRID (36 GB COMBINED FREE) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs pt-2">
+            ${providerCards.map(p => `
+                <div class="p-3.5 rounded-2xl bg-slate-950/75 border ${p.configured ? "border-emerald-500/35" : "border-white/10"} space-y-2">
+                    <div class="flex items-center justify-between gap-1.5">
+                        <span class="font-extrabold text-white">${p.icon} ${escHtml(p.name)}</span>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${p.configured ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30" : "bg-slate-800 text-slate-400 border border-white/10"}">
+                            ${p.configured ? "🟢 Đã bật" : "⚪ Chưa bật"}
+                        </span>
+                    </div>
+                    <p class="text-[11px] font-black text-cyan-300">${escHtml(p.quota)}</p>
+                    <p class="text-[10px] text-slate-400 leading-relaxed">${escHtml(p.note)}</p>
+                    ${p.canBrowserConnect ? `
+                        <button onclick="handleConnectGoogleDriveBrowser()" class="w-full py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-[11px]">
+                            ${p.browserConnected ? "✅ Đã kết nối Drive" : "🔗 Kết nối Google Drive ngay"}
+                        </button>
+                    ` : (!p.configured ? `<p class="text-[9px] font-mono text-slate-500 break-all">Vercel Env: ${escHtml(p.envHint)}</p>` : "")}
+                </div>
+            `).join("")}
+        </div>
     `;
+}
+
+function handleChangePreferredCloudProvider(providerId) {
+    saveSettings({ preferredCloudStorageProvider: String(providerId || "auto") });
+    renderStorageManagerWidget();
+    showToast(`☁️ Đã cập nhật kho Cloud ưu tiên: ${providerId.toUpperCase()}`);
+}
+
+async function handleConnectGoogleDriveBrowser() {
+    if (typeof CloudClient === "undefined") return;
+    const res = await CloudClient.connectGoogleDriveBrowser();
+    if (res.ok) {
+        await renderStorageManagerWidget();
+        showToast("✅ Đã kết nối Google Drive (15 GB) thành công!");
+    } else {
+        showToast(res.error || "Không thể kết nối Google Drive.", "error");
+    }
 }
 
 async function handleOptimizeStorageClick() {
@@ -1817,9 +1916,13 @@ function handleMaterialFileUpload(event) {
     const file = event?.target?.files?.[0];
     if (!file) return;
 
-    // File limit check (10MB Cloud / 15MB Local)
-    if (file.size > 15 * 1024 * 1024) {
-        showToast("Dung lượng file vượt quá giới hạn 15MB cho phép!", "error");
+    // File limit check (100MB on B2/R2/Google Drive, 15MB default local/Supabase)
+    const activeProv = (typeof CloudClient !== "undefined" && typeof CloudClient.getActiveMediaProvider === "function")
+        ? CloudClient.getActiveMediaProvider()
+        : { maxFileMB: 15 };
+    const maxAllowedMB = Math.max(15, Number(activeProv.maxFileMB) || 15);
+    if (file.size > maxAllowedMB * 1024 * 1024) {
+        showToast(`Dung lượng file vượt quá giới hạn ${maxAllowedMB}MB cho phép!`, "error");
         if (event?.target) event.target.value = "";
         return;
     }

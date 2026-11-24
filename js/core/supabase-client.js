@@ -84,8 +84,19 @@ const CloudClient = {
         supabaseUrl: "",
         supabaseAnonKey: "",
         storageBucket: "qenglish-materials",
-        requireAuthForAi: false
+        requireAuthForAi: false,
+        gdriveClientId: "",
+        apiOrigin: "",
+        cloudStorageProviders: {
+            supabase: { configured: false, quotaGB: 1, maxFileMB: 10 },
+            b2: { configured: false, quotaGB: 10, maxFileMB: 100 },
+            r2: { configured: false, quotaGB: 10, maxFileMB: 100 },
+            gdrive: { configured: false, clientOAuthReady: false, quotaGB: 15, maxFileMB: 100 }
+        }
     },
+    _gdriveClientAccessToken: "",
+    _gdriveClientExpiresAt: 0,
+    _gdriveClientEmail: "",
     session: null, // { access_token, refresh_token, expires_at, user }
     syncStatus: {
         state: "idle", // idle | syncing | synced | offline | error
@@ -124,15 +135,18 @@ const CloudClient = {
         };
 
         try {
+            let usedDefaultOrigin = isStaticHost;
             let res = await fetchConfigFrom(isStaticHost ? DEFAULT_CLOUD_CONFIG_URL : "/api/config");
             // Static local dev servers (e.g., Live Server / http.server) return 404/405/501 on /api/config -> fall back to Vercel Cloud config
             if (!res.ok && !isStaticHost && (res.status === 404 || res.status === 405 || res.status === 501)) {
+                usedDefaultOrigin = true;
                 res = await fetchConfigFrom(DEFAULT_CLOUD_CONFIG_URL);
             }
             if (res.ok) {
                 const data = await res.json();
                 if (data && data.ok) {
-                    this.config = { ...this.config, ...data, loaded: true };
+                    const resolvedOrigin = usedDefaultOrigin ? "https://q-english.vercel.app" : "";
+                    this.config = { ...this.config, ...data, apiOrigin: resolvedOrigin, loaded: true };
                     return this.config;
                 }
             }
@@ -1343,12 +1357,181 @@ const CloudClient = {
         }
     },
 
-    async uploadMaterialFile(file, materialId) {
+    getMediaApiBase() {
+        return `${this.config.apiOrigin || ""}/api/media`;
+    },
+
+    getCloudStorageProviders() {
+        const p = this.config.cloudStorageProviders || {};
+        const hasBrowserGdrive = Boolean(this._gdriveClientAccessToken && this._gdriveClientExpiresAt > Date.now() + 30000);
+        return {
+            supabase: { id: "supabase", label: "Supabase Storage", configured: Boolean(this.isCloudMode()), quotaGB: 1, maxFileMB: 10 },
+            b2: { id: "b2", label: "Backblaze B2", configured: Boolean(p.b2?.configured), quotaGB: 10, maxFileMB: 100 },
+            r2: { id: "r2", label: "Cloudflare R2", configured: Boolean(p.r2?.configured), quotaGB: 10, maxFileMB: 100 },
+            gdrive: {
+                id: "gdrive",
+                label: "Google Drive",
+                configured: Boolean(p.gdrive?.configured || hasBrowserGdrive),
+                serverConfigured: Boolean(p.gdrive?.configured),
+                clientOAuthReady: Boolean(p.gdrive?.clientOAuthReady || this.config.gdriveClientId),
+                browserConnected: hasBrowserGdrive,
+                quotaGB: 15,
+                maxFileMB: 100
+            }
+        };
+    },
+
+    getActiveMediaProvider(preferredOverride = "") {
+        const providers = this.getCloudStorageProviders();
+        const pref = String(preferredOverride || (typeof appSettings !== "undefined" && appSettings?.preferredCloudStorageProvider) || "auto").toLowerCase();
+        if (pref !== "auto" && providers[pref]?.configured) {
+            return { ...providers[pref], maxFileBytes: (providers[pref].maxFileMB || 10) * 1024 * 1024 };
+        }
+        // Smart Auto Priority: Cloudflare R2 (10GB, zero egress) -> Backblaze B2 (10GB) -> Google Drive (15GB) -> Supabase (1GB)
+        for (const id of ["r2", "b2", "gdrive", "supabase"]) {
+            if (providers[id]?.configured) {
+                return { ...providers[id], maxFileBytes: (providers[id].maxFileMB || 10) * 1024 * 1024 };
+            }
+        }
+        return { id: "local", label: "IndexedDB Cục bộ", configured: false, quotaGB: 0, maxFileMB: 10, maxFileBytes: 10 * 1024 * 1024 };
+    },
+
+    async ensureGoogleGisScript() {
+        if (window.google?.accounts?.oauth2) return window.google.accounts.oauth2;
+        return new Promise((resolve, reject) => {
+            const sc = document.createElement("script");
+            sc.src = "https://accounts.google.com/gsi/client";
+            sc.async = true;
+            sc.onload = () => (window.google?.accounts?.oauth2 ? resolve(window.google.accounts.oauth2) : reject(new Error("GIS chưa tải được.")));
+            sc.onerror = () => reject(new Error("Không thể tải Google Identity Services."));
+            document.head.appendChild(sc);
+        });
+    },
+
+    async connectGoogleDriveBrowser() {
+        const clientId = (this.config.gdriveClientId || "").trim();
+        if (!clientId) {
+            return { ok: false, error: "Chưa cấu hình GDRIVE_CLIENT_ID trên máy chủ Vercel." };
+        }
+        try {
+            const oauth2 = await this.ensureGoogleGisScript();
+            return await new Promise(resolve => {
+                const tokenClient = oauth2.initTokenClient({
+                    client_id: clientId,
+                    scope: "https://www.googleapis.com/auth/drive.file",
+                    callback: (resp) => {
+                        if (resp && resp.access_token) {
+                            this._gdriveClientAccessToken = resp.access_token;
+                            this._gdriveClientExpiresAt = Date.now() + ((Number(resp.expires_in) || 3500) * 1000);
+                            resolve({ ok: true });
+                        } else {
+                            resolve({ ok: false, error: resp?.error || "Người dùng đã hủy kết nối Google Drive." });
+                        }
+                    }
+                });
+                tokenClient.requestAccessToken({ prompt: "consent" });
+            });
+        } catch (err) {
+            return { ok: false, error: err.message || "Không thể mở cửa sổ đăng nhập Google Drive." };
+        }
+    },
+
+    async uploadToGoogleDriveBrowser(file, folder = "materials") {
+        if (!this._gdriveClientAccessToken || this._gdriveClientExpiresAt <= Date.now() + 30000) {
+            return { ok: false, error: "Phiên Google Drive trên trình duyệt đã hết hạn. Hãy bấm kết nối lại trong Settings." };
+        }
+        try {
+            const safeName = String(file.name || "file").replace(/[^a-zA-Z0-9._-]/g, "_");
+            const meta = {
+                name: `QEnglish_${folder}_${Date.now()}_${safeName}`,
+                mimeType: file.type || "application/octet-stream"
+            };
+            const initRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${this._gdriveClientAccessToken}`,
+                    "Content-Type": "application/json; charset=UTF-8",
+                    "X-Upload-Content-Type": meta.mimeType
+                },
+                body: JSON.stringify(meta)
+            });
+            const uploadUrl = initRes.headers.get("location");
+            if (!initRes.ok || !uploadUrl) return { ok: false, error: `Google Drive HTTP ${initRes.status}` };
+            const putRes = await fetch(uploadUrl, {
+                method: "PUT",
+                headers: { "Content-Type": meta.mimeType },
+                body: file
+            });
+            if (!putRes.ok) return { ok: false, error: `Google Drive Upload HTTP ${putRes.status}` };
+            const created = await putRes.json().catch(() => ({}));
+            if (!created?.id) return { ok: false, error: "Google Drive không trả về mã tệp." };
+            return { ok: true, provider: "gdrive", storagePath: `gdrive_client::${created.id}` };
+        } catch (err) {
+            return { ok: false, error: err.message };
+        }
+    },
+
+    async uploadMaterialFile(file, materialId, preferredProvider = "") {
         if (!this.isCloudMode() || !window.__QENGLISH_ACTIVE_UID || !this.session?.access_token || !file) {
             return { ok: false, offline: true };
         }
+        const active = this.getActiveMediaProvider(preferredProvider);
+        if (file.size > active.maxFileBytes) {
+            return { ok: false, error: `File vượt quá giới hạn ${active.maxFileMB}MB của kho ${active.label}.` };
+        }
+
+        // Route 1: Cloudflare R2 (10GB), Backblaze B2 (10GB), or Google Drive Server (15GB) via /api/media
+        if (active.id === "r2" || active.id === "b2" || (active.id === "gdrive" && active.serverConfigured)) {
+            try {
+                const preRes = await fetch(`${this.getMediaApiBase()}/presign-upload`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${this.session.access_token}`
+                    },
+                    body: JSON.stringify({
+                        provider: active.id,
+                        fileName: file.name || "file.bin",
+                        folder: materialId || "materials",
+                        contentType: file.type || "application/octet-stream",
+                        fileSize: file.size
+                    })
+                });
+                const pre = await preRes.json().catch(() => ({}));
+                if (preRes.ok && pre.ok && pre.uploadUrl) {
+                    const putRes = await fetch(pre.uploadUrl, {
+                        method: pre.method || "PUT",
+                        headers: pre.headers || { "Content-Type": file.type || "application/octet-stream" },
+                        body: file
+                    });
+                    if (putRes.ok) {
+                        if (active.id === "gdrive") {
+                            const gdFile = await putRes.json().catch(() => ({}));
+                            if (gdFile?.id) return { ok: true, provider: "gdrive", storagePath: `gdrive::${gdFile.id}` };
+                        } else if (pre.storagePath) {
+                            return { ok: true, provider: active.id, storagePath: pre.storagePath };
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn(`[QEnglish Multi-Cloud] ${active.id} upload fallback:`, err);
+            }
+            // Fallback cleanly to Supabase ONLY if file <= 10MB
+            if (file.size > 10 * 1024 * 1024) {
+                return { ok: false, error: `Không thể tải file >10MB lên ${active.label}. Kiểm tra lại cấu hình CORS/key.` };
+            }
+        }
+
+        // Route 2: Browser-connected Google Drive (15GB)
+        if (active.id === "gdrive" && active.browserConnected) {
+            const gdRes = await this.uploadToGoogleDriveBrowser(file, materialId);
+            if (gdRes.ok) return gdRes;
+            if (file.size > 10 * 1024 * 1024) return gdRes;
+        }
+
+        // Route 3: Default Supabase Storage (1GB Free, <=10MB/file)
         if (file.size > 10 * 1024 * 1024) {
-            return { ok: false, error: "File vượt quá giới hạn 10MB trên Cloud Storage." };
+            return { ok: false, error: "File vượt quá giới hạn 10MB trên Supabase Storage (hãy bật Backblaze B2 / Cloudflare R2 / Google Drive trong Settings để tải tới 100MB)." };
         }
         const safeName = String(file.name || "file").replace(/[^a-zA-Z0-9._-]/g, "_");
         const objectPath = `${window.__QENGLISH_ACTIVE_UID}/${materialId}/${safeName}`;
@@ -1368,14 +1551,53 @@ const CloudClient = {
                 const errJson = await res.json().catch(() => ({}));
                 return { ok: false, error: errJson.message || `Upload HTTP ${res.status}` };
             }
-            return { ok: true, storagePath: objectPath };
+            return { ok: true, provider: "supabase", storagePath: objectPath };
         } catch (err) {
             return { ok: false, error: err.message };
         }
     },
 
     async getSignedStorageUrl(storagePath) {
-        if (!this.isCloudMode() || !this.session?.access_token || !storagePath) return "";
+        if (!storagePath) return "";
+
+        // 1. Multi-Cloud prefixed paths (`b2::`, `r2::`, `gdrive::`) resolved securely via /api/media/presign-download
+        if (storagePath.startsWith("b2::") || storagePath.startsWith("r2::") || storagePath.startsWith("gdrive::")) {
+            if (!this.session?.access_token) return "";
+            try {
+                const res = await fetch(`${this.getMediaApiBase()}/presign-download`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${this.session.access_token}`
+                    },
+                    body: JSON.stringify({ storagePath })
+                });
+                if (!res.ok) return "";
+                const d = await res.json().catch(() => ({}));
+                return d?.ok && d.url ? d.url : "";
+            } catch {
+                return "";
+            }
+        }
+
+        // 2. Browser-connected Google Drive (`gdrive_client::<fileId>`)
+        if (storagePath.startsWith("gdrive_client::")) {
+            if (!this._gdriveClientAccessToken || this._gdriveClientExpiresAt <= Date.now() + 30000) return "";
+            try {
+                const fileId = storagePath.slice("gdrive_client::".length);
+                const r = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`, {
+                    headers: { "Authorization": `Bearer ${this._gdriveClientAccessToken}` }
+                });
+                if (!r.ok) return "";
+                const blob = await r.blob();
+                return URL.createObjectURL(blob);
+            } catch {
+                return "";
+            }
+        }
+
+        // 3. Default Supabase Storage (100% backward-compatible with all existing PEN-LV3 audio & HD pages!)
+        if (!this.isCloudMode() || !this.session?.access_token) return "";
         try {
             const res = await fetch(`${this.config.supabaseUrl}/storage/v1/object/sign/${this.config.storageBucket}/${storagePath}`, {
                 method: "POST",

@@ -373,8 +373,8 @@ async function computeStorageDiagnosticsReport() {
         (pdfRawObj.documents || []).forEach(d => {
             if (d.cloudPagesPrefix) {
                 cloudPageSets++;
-                const pStart = Number(d.cloudPagesRange?.start || 1);
-                const pEnd = Number(d.cloudPagesRange?.end || d.totalPages || 0);
+                const pStart = Number(d.cloudPagesRange?.start || d.cloudPagesStart || 1);
+                const pEnd = Number(d.cloudPagesRange?.end || d.cloudPagesEnd || d.cloudPagesCount || d.pageCount || d.totalPages || 0);
                 if (pEnd >= pStart) cloudPagesTotal += (pEnd - pStart + 1);
             }
         });

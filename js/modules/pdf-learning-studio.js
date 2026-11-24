@@ -589,7 +589,11 @@ async function handlePdfStudioFilesSelected(files) {
             }
 
             let cloudStoragePath = "";
-            if (file.size <= PDF_STUDIO_CLOUD_UPLOAD_MAX && typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) {
+            const activeCloudMedia = (typeof CloudClient !== "undefined" && typeof CloudClient.getActiveMediaProvider === "function")
+                ? CloudClient.getActiveMediaProvider()
+                : { label: "Supabase Storage", maxFileMB: 10, maxFileBytes: PDF_STUDIO_CLOUD_UPLOAD_MAX };
+            const effectiveCloudMax = activeCloudMedia.maxFileBytes || PDF_STUDIO_CLOUD_UPLOAD_MAX;
+            if (file.size <= effectiveCloudMax && typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) {
                 const up = await CloudClient.uploadMaterialFile(file, `pdf-studio/${docId}`);
                 if (up && up.ok) cloudStoragePath = up.storagePath || "";
             }
@@ -610,9 +614,9 @@ async function handlePdfStudioFilesSelected(files) {
                 outlineChapters,
                 companionAudioNames: audioFiles.map(a => a.name),
                 status: "uploaded", // uploaded | analyzing | building | completed | error
-                statusNote: file.size > PDF_STUDIO_CLOUD_UPLOAD_MAX
-                    ? "PDF lớn (>10MB): lưu gốc trên thiết bị & đồng bộ toàn bộ khóa học + trích đoạn trang nguồn lên Cloud."
-                    : (cloudStoragePath ? "Đã lưu an toàn trên Cloud Storage & thiết bị." : "Đã lưu an toàn trên thiết bị."),
+                statusNote: file.size > effectiveCloudMax
+                    ? `PDF lớn (>${activeCloudMedia.maxFileMB}MB): lưu gốc trên thiết bị & đồng bộ toàn bộ khóa học + trích đoạn trang nguồn lên Cloud.`
+                    : (cloudStoragePath ? `Đã lưu an toàn trên ${activeCloudMedia.label} & thiết bị.` : "Đã lưu an toàn trên thiết bị."),
                 rangeStart: 1,
                 rangeEnd: defaultEnd,
                 enableOcr: true,

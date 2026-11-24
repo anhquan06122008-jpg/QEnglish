@@ -17,6 +17,25 @@ function getPublicConfig() {
     const authConfigured = Boolean(supabaseUrl && supabaseAnonKey);
     const requireAuthForAi = process.env.REQUIRE_AUTH_FOR_AI === "true" && authConfigured;
 
+    const b2Configured = Boolean(
+        (process.env.B2_ENDPOINT || "").trim() &&
+        (process.env.B2_BUCKET || "").trim() &&
+        (process.env.B2_KEY_ID || "").trim() &&
+        (process.env.B2_APP_KEY || "").trim()
+    );
+    const r2Configured = Boolean(
+        ((process.env.R2_ENDPOINT || "").trim() || (process.env.R2_ACCOUNT_ID || "").trim()) &&
+        (process.env.R2_BUCKET || "").trim() &&
+        (process.env.R2_ACCESS_KEY_ID || "").trim() &&
+        (process.env.R2_SECRET_ACCESS_KEY || "").trim()
+    );
+    const gdriveClientId = (process.env.GDRIVE_CLIENT_ID || "").trim();
+    const gdriveServerConfigured = Boolean(
+        gdriveClientId &&
+        (process.env.GDRIVE_CLIENT_SECRET || "").trim() &&
+        (process.env.GDRIVE_REFRESH_TOKEN || "").trim()
+    );
+
     return {
         ok: true,
         aiConfigured,
@@ -29,6 +48,13 @@ function getPublicConfig() {
         supabaseAnonKey: authConfigured ? supabaseAnonKey : "",
         requireAuthForAi,
         storageBucket: "qenglish-materials",
+        gdriveClientId,
+        cloudStorageProviders: {
+            supabase: { configured: authConfigured, quotaGB: 1, maxFileMB: 10 },
+            b2: { configured: b2Configured, quotaGB: 10, maxFileMB: 100 },
+            r2: { configured: r2Configured, quotaGB: 10, maxFileMB: 100 },
+            gdrive: { configured: gdriveServerConfigured, clientOAuthReady: Boolean(gdriveClientId), quotaGB: 15, maxFileMB: 100 }
+        },
         checkedAt: new Date().toISOString()
     };
 }
