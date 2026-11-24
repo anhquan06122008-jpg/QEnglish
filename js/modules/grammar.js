@@ -82,6 +82,7 @@ function openGrammarLesson(lessonId, customLesson = null) {
 
     document.getElementById("grammar-list")?.classList.add("hidden");
     document.getElementById("grammar-filter-bar")?.classList.add("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("grammar", false);
     const view = document.getElementById("grammar-lesson");
     view?.classList.remove("hidden");
     document.getElementById("grammar-exercise-result")?.classList.add("hidden");
@@ -388,6 +389,7 @@ function closeGrammarLesson() {
     document.getElementById("grammar-lesson")?.classList.add("hidden");
     document.getElementById("grammar-list")?.classList.remove("hidden");
     document.getElementById("grammar-filter-bar")?.classList.remove("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("grammar", true);
     filterGrammarLessons();
 }
 

@@ -114,7 +114,7 @@ function navigateTo(page, subTab = null) {
     if (page === "settings") renderSettingsAndCMSPage();
 
     if (typeof LearningHub !== "undefined" && ["vocabulary", "grammar", "listening", "speaking", "reading", "writing"].includes(page)) {
-        LearningHub.refreshSkillWidgets(page);
+        LearningHub.setSkillOuterPanelsVisible(page, true);
     }
 
     window.scrollTo({ top: 0, behavior: "smooth" });

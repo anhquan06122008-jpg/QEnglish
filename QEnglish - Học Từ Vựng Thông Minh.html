@@ -1731,7 +1731,8 @@ select optgroup {
                                     <button data-hl="highlight-blue" onclick="setHighlightColor('highlight-blue')" class="hl-swatch-btn w-5 h-5 rounded-full bg-cyan-400" title="Xanh dương"></button>
                                     <button data-hl="highlight-pink" onclick="setHighlightColor('highlight-pink')" class="hl-swatch-btn w-5 h-5 rounded-full bg-rose-400" title="Hồng"></button>
                                     <button onclick="applySelectionHighlight()" class="ml-1 px-2.5 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 text-[11px] font-bold text-white">🖍️ Tô màu</button>
-                                    <button onclick="clearPassageHighlights()" class="px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-[11px] text-slate-400" title="Xóa highlight">↺</button>
+                                    <button id="reading-hl-erase-btn" onclick="removeSelectedHighlight()" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-rose-500/20 border border-white/10 text-[11px] font-bold text-rose-300 transition" title="Bỏ tô màu đoạn đang chọn hoặc bấm bật chế độ tẩy rồi nhấp vào từng chỗ đã tô">🧹 Bỏ tô</button>
+                                    <button onclick="clearPassageHighlights()" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-white/10 text-[11px] font-bold text-slate-300 transition" title="Xóa toàn bộ highlight trong bài đọc này">↺ Xóa hết</button>
                                 </div>
                                 <div class="flex flex-wrap gap-1.5">
                                     <button onclick="handlePassageWordLookup()" class="px-3 py-1 rounded-lg bg-cyan-500/20 border border-cyan-500/30 text-[11px] font-bold text-cyan-300">🔍 Tra từ đang bôi đen</button>
@@ -14664,6 +14665,7 @@ function openGrammarLesson(lessonId, customLesson = null) {
 
     document.getElementById("grammar-list")?.classList.add("hidden");
     document.getElementById("grammar-filter-bar")?.classList.add("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("grammar", false);
     const view = document.getElementById("grammar-lesson");
     view?.classList.remove("hidden");
     document.getElementById("grammar-exercise-result")?.classList.add("hidden");
@@ -14970,6 +14972,7 @@ function closeGrammarLesson() {
     document.getElementById("grammar-lesson")?.classList.add("hidden");
     document.getElementById("grammar-list")?.classList.remove("hidden");
     document.getElementById("grammar-filter-bar")?.classList.remove("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("grammar", true);
     filterGrammarLessons();
 }
 
@@ -15573,6 +15576,7 @@ function openListeningExercise(id, customItem = null) {
     document.getElementById("listening-custom-panel")?.classList.add("hidden");
     document.getElementById("listening-list")?.classList.add("hidden");
     document.getElementById("listening-filter-bar")?.classList.add("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("listening", false);
     document.getElementById("listening-exercise")?.classList.remove("hidden");
 
     if (ex.type === "dictation") {
@@ -15597,6 +15601,7 @@ function closeListeningExercise() {
     document.getElementById("listening-custom-panel")?.classList.remove("hidden");
     document.getElementById("listening-list")?.classList.remove("hidden");
     document.getElementById("listening-filter-bar")?.classList.remove("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("listening", true);
     filterListeningExercises();
 }
 
@@ -16281,9 +16286,11 @@ function openReadingPassage(id, customPassage = null) {
     document.getElementById("reading-custom-panel")?.classList.add("hidden");
     document.getElementById("reading-list")?.classList.add("hidden");
     document.getElementById("reading-filter-bar")?.classList.add("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("reading", false);
     document.getElementById("reading-session")?.classList.remove("hidden");
     document.getElementById("reading-results")?.classList.add("hidden");
     document.getElementById("reading-lookup-box")?.classList.add("hidden");
+    setHighlightEraseMode(false);
 
     document.getElementById("reading-title").innerHTML = `${renderLevelBadge(p.level)} <span class="ml-1">${escHtml(p.title)}</span>`;
 
@@ -16308,6 +16315,7 @@ function openReadingPassage(id, customPassage = null) {
             </p>
         `).join("");
     }
+    bindPassageHighlightClickErase();
 
     // Passage personal note
     const noteArea = document.getElementById("reading-passage-note");
@@ -16334,8 +16342,72 @@ function openReadingPassage(id, customPassage = null) {
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+let isHighlightEraseMode = false;
+
+function setHighlightEraseMode(enabled) {
+    isHighlightEraseMode = Boolean(enabled);
+    const btn = document.getElementById("reading-hl-erase-btn");
+    const passageBox = document.getElementById("reading-passage-text");
+    if (btn) {
+        btn.classList.toggle("bg-rose-600", isHighlightEraseMode);
+        btn.classList.toggle("text-white", isHighlightEraseMode);
+        btn.classList.toggle("ring-2", isHighlightEraseMode);
+        btn.classList.toggle("ring-rose-300", isHighlightEraseMode);
+        btn.classList.toggle("bg-slate-900", !isHighlightEraseMode);
+        btn.classList.toggle("text-rose-300", !isHighlightEraseMode);
+        btn.textContent = isHighlightEraseMode ? "🧹 Đang tẩy (Bấm chỗ tô)" : "🧹 Bỏ tô";
+    }
+    if (passageBox) {
+        passageBox.classList.toggle("cursor-crosshair", isHighlightEraseMode);
+    }
+}
+
+function unwrapMarkElement(markEl) {
+    if (!markEl || !markEl.parentNode) return;
+    const parent = markEl.parentNode;
+    while (markEl.firstChild) {
+        parent.insertBefore(markEl.firstChild, markEl);
+    }
+    parent.removeChild(markEl);
+    parent.normalize();
+}
+
+function persistPassageHighlightsState() {
+    if (!activeReadingPassage) return;
+    const passageBox = document.getElementById("reading-passage-text");
+    if (!passageBox) return;
+    const st = getReadingState();
+    if (!st.highlightsById) st.highlightsById = {};
+    const hasAnyMarks = passageBox.querySelectorAll("mark").length > 0;
+    if (hasAnyMarks) {
+        st.highlightsById[activeReadingPassage.id] = passageBox.innerHTML;
+    } else {
+        delete st.highlightsById[activeReadingPassage.id];
+    }
+    saveReadingState(st);
+}
+
+function bindPassageHighlightClickErase() {
+    const passageBox = document.getElementById("reading-passage-text");
+    if (!passageBox || passageBox.dataset.hlClickBound === "1") return;
+    passageBox.dataset.hlClickBound = "1";
+    passageBox.addEventListener("click", (e) => {
+        const markEl = e.target?.closest ? e.target.closest("mark") : null;
+        if (!markEl || !passageBox.contains(markEl)) return;
+        if (isHighlightEraseMode || e.altKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            unwrapMarkElement(markEl);
+            persistPassageHighlightsState();
+            showToast("🧹 Đã xóa vùng highlight vừa chọn!");
+        }
+    });
+}
+
 function applySelectionHighlight() {
     if (!activeReadingPassage) return;
+    setHighlightEraseMode(false);
+    bindPassageHighlightClickErase();
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.toString().trim()) {
         showToast("Hãy bôi đen cụm từ hoặc câu trong Bài đọc trước khi bấm Highlight!", "warning");
@@ -16350,28 +16422,81 @@ function applySelectionHighlight() {
     try {
         const range = sel.getRangeAt(0);
         const mark = document.createElement("mark");
-        mark.className = `${currentHighlightColor} text-white px-0.5 rounded`;
+        mark.className = `${currentHighlightColor} reading-hl-mark text-white px-0.5 rounded`;
+        mark.title = "Bấm 🧹 Bỏ tô rồi nhấp vào đây (hoặc giữ Alt + Click) để xóa highlight";
         mark.appendChild(range.extractContents());
+        // Flatten any nested <mark> inside the new mark
+        mark.querySelectorAll("mark").forEach(inner => unwrapMarkElement(inner));
         range.insertNode(mark);
         sel.removeAllRanges();
 
-        const st = getReadingState();
-        if (!st.highlightsById) st.highlightsById = {};
-        st.highlightsById[activeReadingPassage.id] = passageBox.innerHTML;
-        saveReadingState(st);
+        persistPassageHighlightsState();
         showToast("Đã đánh dấu Highlight!");
     } catch (e) {
         showToast("Hãy bôi đen trong phạm vi một đoạn văn để Highlight mượt nhất.", "warning");
     }
 }
 
+function removeSelectedHighlight() {
+    if (!activeReadingPassage) return;
+    const passageBox = document.getElementById("reading-passage-text");
+    if (!passageBox) return;
+    bindPassageHighlightClickErase();
+
+    // 1. Check if current selection or caret touches any <mark> inside the passage
+    const sel = window.getSelection();
+    let removed = 0;
+    if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        if (passageBox.contains(range.commonAncestorContainer)) {
+            const marks = Array.from(passageBox.querySelectorAll("mark"));
+            marks.forEach(m => {
+                let touches = false;
+                try {
+                    touches = range.intersectsNode(m);
+                } catch {
+                    touches = m.contains(range.startContainer) || m.contains(range.endContainer);
+                }
+                if (touches) {
+                    unwrapMarkElement(m);
+                    removed++;
+                }
+            });
+            if (removed > 0) {
+                sel.removeAllRanges();
+                persistPassageHighlightsState();
+                setHighlightEraseMode(false);
+                showToast(`🧹 Đã xóa ${removed} vùng highlight đã chọn!`);
+                return;
+            }
+        }
+    }
+
+    // 2. Otherwise toggle 1-click Erase Mode so user can tap directly on ANY highlight to remove it!
+    const totalMarks = passageBox.querySelectorAll("mark").length;
+    if (totalMarks === 0) {
+        setHighlightEraseMode(false);
+        showToast("Bài đọc hiện không có vùng highlight nào để xóa.", "info");
+        return;
+    }
+    setHighlightEraseMode(!isHighlightEraseMode);
+    if (isHighlightEraseMode) {
+        showToast("🧹 Đã bật chế độ tẩy: nhấp trực tiếp vào bất kỳ đoạn tô màu nào để xóa (hoặc bấm ↺ Xóa hết)!");
+    }
+}
+
 function clearPassageHighlights() {
     if (!activeReadingPassage) return;
+    setHighlightEraseMode(false);
+    const passageBox = document.getElementById("reading-passage-text");
+    if (passageBox) {
+        const marks = Array.from(passageBox.querySelectorAll("mark"));
+        marks.forEach(m => unwrapMarkElement(m));
+    }
     const st = getReadingState();
     if (st.highlightsById) delete st.highlightsById[activeReadingPassage.id];
     saveReadingState(st);
-    openReadingPassage(activeReadingPassage.id);
-    showToast("Đã xóa toàn bộ Highlight của bài đọc này.");
+    showToast("✅ Đã xóa toàn bộ Highlight của bài đọc này!");
 }
 
 function saveReadingNote(syncToNotebook = false) {
@@ -16453,14 +16578,6 @@ function showReadingWordPopup(wordRaw) {
 
 function saveLookupWordToBank(wordRaw, ipa, pos, level) {
     const defVal = (document.getElementById("lookup-custom-def")?.value || "").trim();
-    if (!defVal) {
-        showToast("Hãy nhập nghĩa tiếng Việt trước khi lưu vào Vocabulary Bank!", "error");
-        return;
-    }
-    if (deck.some(d => d.term.toLowerCase() === wordRaw.toLowerCase())) {
-        showToast(`Từ "${wordRaw}" đã có sẵn trong Vocabulary Bank!`, "warning");
-        return;
-    }
     // Extract sentence containing this word from active passage if available
     let contextSentence = "";
     if (activeReadingPassage && activeReadingPassage.passage) {
@@ -16469,6 +16586,28 @@ function saveLookupWordToBank(wordRaw, ipa, pos, level) {
         if (hit) contextSentence = hit.replace(/\[Paragraph [A-Z]\]/g, "").trim();
     }
 
+    if (typeof LearningHub !== "undefined" && typeof LearningHub.openSaveVocabWithDayModal === "function") {
+        LearningHub.openSaveVocabWithDayModal({
+            term: wordRaw,
+            ipa,
+            pos,
+            def: defVal,
+            example: contextSentence || DYNAMIC_EXAMPLE_TEMPLATES[0](wordRaw).en,
+            category: activeReadingPassage?.topic || "Reading",
+            level: String(level || "").startsWith("IELTS") ? "B2" : (level || "B1"),
+            source: "user-imported"
+        });
+        return;
+    }
+
+    if (!defVal) {
+        showToast("Hãy nhập nghĩa tiếng Việt trước khi lưu vào Vocabulary Bank!", "error");
+        return;
+    }
+    if (deck.some(d => d.term.toLowerCase() === wordRaw.toLowerCase())) {
+        showToast(`Từ "${wordRaw}" đã có sẵn trong Vocabulary Bank!`, "warning");
+        return;
+    }
     deck.push(normalizeWordItem({
         id: Date.now() + Math.random(),
         day: 1,
@@ -16768,11 +16907,13 @@ function extractKeyVocabFromPassage(passageText) {
 }
 
 function closeReadingSession() {
+    setHighlightEraseMode(false);
     activeReadingPassage = null;
     document.getElementById("reading-session")?.classList.add("hidden");
     document.getElementById("reading-custom-panel")?.classList.remove("hidden");
     document.getElementById("reading-list")?.classList.remove("hidden");
     document.getElementById("reading-filter-bar")?.classList.remove("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("reading", true);
     filterReadingPassages();
 }
 
@@ -17094,6 +17235,7 @@ function openWritingEditor(topicId, customTopic) {
     document.getElementById("writing-topics-list")?.classList.add("hidden");
     document.getElementById("writing-filter-bar")?.classList.add("hidden");
     document.getElementById("writing-history-panel")?.classList.add("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("writing", false);
     document.getElementById("writing-editor")?.classList.remove("hidden");
     document.getElementById("writing-evaluation")?.classList.add("hidden");
     document.getElementById("writing-inline-check-box")?.classList.add("hidden");
@@ -17504,6 +17646,17 @@ function checkTargetedWritingExercise(btnEl, expectedAnswer) {
 function quickSaveWritingVocab(word, meaningVi, example) {
     const clean = String(word || "").trim();
     if (!clean) return;
+    if (typeof LearningHub !== "undefined" && typeof LearningHub.openSaveVocabWithDayModal === "function") {
+        LearningHub.openSaveVocabWithDayModal({
+            term: clean,
+            def: meaningVi || "",
+            example: example || "",
+            category: "Writing Upgrade",
+            level: activeWritingTopic?.level || "B2",
+            source: "ai-generated"
+        });
+        return;
+    }
     if (deck.some(d => d.term.toLowerCase() === clean.toLowerCase())) {
         showToast(`Từ "${clean}" đã có trong Kho Từ Vựng!`, "warning");
         return;
@@ -17855,6 +18008,7 @@ function closeWritingEditor() {
     document.getElementById("writing-topics-list")?.classList.remove("hidden");
     document.getElementById("writing-filter-bar")?.classList.remove("hidden");
     document.getElementById("writing-history-panel")?.classList.remove("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("writing", true);
     filterWritingTopics();
 }
 
@@ -19578,10 +19732,12 @@ function startSpeakingMode(mode) {
     if (mode === "conversation") {
         document.getElementById("speaking-topics-list")?.classList.add("hidden");
         document.getElementById("speaking-session")?.classList.remove("hidden");
+        if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("speaking", false);
         initLiveConversationSession();
     } else {
         document.getElementById("speaking-session")?.classList.add("hidden");
         document.getElementById("speaking-topics-list")?.classList.remove("hidden");
+        if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("speaking", true);
         renderSpeakingTopicsGrid();
     }
 }
@@ -19589,6 +19745,7 @@ function startSpeakingMode(mode) {
 function closeSpeakingTopics() {
     document.getElementById("speaking-topics-list")?.classList.add("hidden");
     document.getElementById("speaking-mode-cards")?.classList.remove("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("speaking", true);
 }
 
 function closeSpeakingSession() {
@@ -19597,6 +19754,7 @@ function closeSpeakingSession() {
     document.getElementById("speaking-session")?.classList.add("hidden");
     document.getElementById("speaking-topics-list")?.classList.add("hidden");
     document.getElementById("speaking-mode-cards")?.classList.remove("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("speaking", true);
 }
 
 function renderSpeakingTopicsGrid() {
@@ -19846,6 +20004,7 @@ function openTopicSpeakingWorkspace(topicId, customTopic = null) {
 
     document.getElementById("speaking-mode-cards")?.classList.add("hidden");
     document.getElementById("speaking-topics-list")?.classList.add("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("speaking", false);
     document.getElementById("speaking-session")?.classList.remove("hidden");
 
     const container = document.getElementById("speaking-content");
@@ -28437,15 +28596,9 @@ const LearningHub = {
 
     saveVocabExerciseWordsToBank(exId) {
         const ex = this.load().aiExercises.find(e => String(e.id) === String(exId));
-        if (!ex || !Array.isArray(ex.words)) return;
-        const existing = new Set((deck || []).map(w => String(w.term || "").trim().toLowerCase()));
-        let added = 0;
-        ex.words.forEach(w => {
-            const key = String(w.term || "").trim().toLowerCase();
-            if (!key || existing.has(key)) return;
-            existing.add(key);
-            deck.unshift(normalizeWordItem({
-                id: Date.now() + Math.random(),
+        if (!ex || !Array.isArray(ex.words) || !ex.words.length) return;
+        this.openSaveVocabWithDayModal({
+            batchWords: ex.words.map(w => ({
                 term: w.term,
                 ipa: w.ipa || "",
                 pos: w.pos || "",
@@ -28453,19 +28606,320 @@ const LearningHub = {
                 example: w.example || "",
                 level: ex.cefrLevel || "B1",
                 category: ex.topic || "AI Vocab",
-                day: 1,
                 source: "ai-generated"
-            }));
-            added++;
+            })),
+            titleLabel: `${ex.words.length} từ vựng từ "${ex.title}"`
         });
-        if (added > 0) {
-            saveDeckToStorage();
-            if (typeof applyStudyFilter === "function") applyStudyFilter();
-            if (typeof renderWordList === "function") renderWordList();
-            showToast(`✅ Đã lưu thêm ${added} từ vựng mới vào Kho SRS cá nhân!`);
-        } else {
-            showToast("Tất cả các từ này đã có sẵn trong Kho từ vựng của bạn rồi!");
+    },
+
+    /* ==================== 2B. UNIFIED SAVE-TO-VOCABULARY MODAL (DAY PICKER + AI AUTO POS & CEFR) ==================== */
+    _vocabSaveModal: { open: false, classifying: false, isBatch: false, batchWords: [], titleLabel: "", day: 1, term: "", ipa: "", pos: "vocab", level: "B1", def: "", example: "", category: "Vocabulary", source: "ai-generated", aiClassifiedBy: "" },
+
+    _getExistingDeckDays() {
+        const daySet = new Set();
+        (Array.isArray(deck) ? deck : []).forEach(w => {
+            const d = parseInt(w?.day, 10);
+            if (Number.isFinite(d) && d >= 1) daySet.add(d);
+        });
+        const sorted = Array.from(daySet).sort((a, b) => a - b);
+        const maxDay = sorted.length ? sorted[sorted.length - 1] : 1;
+        return { sorted, maxDay };
+    },
+
+    _guessLocalPosAndCefr(term, fallbackPos = "", fallbackLevel = "B1") {
+        const clean = String(term || "").trim();
+        const low = clean.toLowerCase();
+        const dictHit = (typeof ACADEMIC_DICTIONARY !== "undefined" && ACADEMIC_DICTIONARY[low]) ? ACADEMIC_DICTIONARY[low] : null;
+        let pos = dictHit?.pos || (fallbackPos && fallbackPos !== "vocab" ? fallbackPos : "");
+        if (!pos) {
+            if (clean.includes(" ")) pos = "collocation";
+            else if (/(tion|sion|ment|ness|ity|ance|ence|ship|ism)$/i.test(low)) pos = "noun";
+            else if (/(ous|ive|able|ible|al|ic|ful|less|ary|ory)$/i.test(low)) pos = "adjective";
+            else if (/(ly)$/i.test(low) && low.length > 4) pos = "adverb";
+            else if (/(ize|ise|ify|ate)$/i.test(low)) pos = "verb";
+            else pos = "noun";
         }
+        const validLevels = ["A1", "A2", "B1", "B2", "C1", "C2"];
+        let level = dictHit?.level || (validLevels.includes(String(fallbackLevel || "").toUpperCase()) ? String(fallbackLevel).toUpperCase() : "B1");
+        if (!dictHit && clean.length >= 10 && /(ic|ous|ity|tion|ance|ence)$/i.test(low)) level = "C1";
+        return {
+            ipa: dictHit?.ipa || "",
+            pos,
+            level,
+            def: dictHit?.def || ""
+        };
+    },
+
+    openSaveVocabWithDayModal(payload = {}) {
+        const { maxDay } = this._getExistingDeckDays();
+        const isBatch = Array.isArray(payload.batchWords) && payload.batchWords.length > 0;
+        if (!isBatch) {
+            const cleanTerm = String(payload.term || "").trim();
+            if (!cleanTerm) return;
+            if ((Array.isArray(deck) ? deck : []).some(d => String(d.term || "").trim().toLowerCase() === cleanTerm.toLowerCase())) {
+                const exist = deck.find(d => String(d.term || "").trim().toLowerCase() === cleanTerm.toLowerCase());
+                showToast(`Từ "${cleanTerm}" đã có sẵn trong Vocabulary (Ngày ${exist?.day || 1})!`, "warning");
+                return;
+            }
+            const guess = this._guessLocalPosAndCefr(cleanTerm, payload.pos, payload.level);
+            this._vocabSaveModal = {
+                open: true,
+                classifying: true,
+                isBatch: false,
+                batchWords: [],
+                titleLabel: cleanTerm,
+                day: maxDay,
+                term: cleanTerm,
+                ipa: (payload.ipa && payload.ipa !== "/.../") ? payload.ipa : (guess.ipa || ""),
+                pos: (payload.pos && payload.pos !== "vocab") ? payload.pos : guess.pos,
+                level: ["A1", "A2", "B1", "B2", "C1", "C2"].includes(String(payload.level || "").toUpperCase()) ? String(payload.level).toUpperCase() : guess.level,
+                def: String(payload.def || guess.def || "").trim(),
+                example: String(payload.example || "").trim(),
+                category: String(payload.category || "Vocabulary").trim(),
+                source: payload.source || "ai-generated",
+                aiClassifiedBy: ""
+            };
+            this.renderSaveVocabWithDayModal();
+            this._runAiClassifyForVocabModal(cleanTerm);
+        } else {
+            this._vocabSaveModal = {
+                open: true,
+                classifying: false,
+                isBatch: true,
+                batchWords: payload.batchWords,
+                titleLabel: payload.titleLabel || `${payload.batchWords.length} từ vựng`,
+                day: maxDay,
+                term: "",
+                ipa: "",
+                pos: "",
+                level: "",
+                def: "",
+                example: "",
+                category: "AI Vocab",
+                source: "ai-generated",
+                aiClassifiedBy: ""
+            };
+            this.renderSaveVocabWithDayModal();
+        }
+    },
+
+    async _runAiClassifyForVocabModal(expectedTerm) {
+        const m = this._vocabSaveModal;
+        try {
+            if (typeof AIClient !== "undefined") {
+                const res = await AIClient.request("vocab-classify", {
+                    term: m.term,
+                    def: m.def,
+                    example: m.example
+                });
+                if (this._vocabSaveModal.open && !this._vocabSaveModal.isBatch && this._vocabSaveModal.term === expectedTerm && res?.ok && res.data) {
+                    const d = res.data;
+                    if (d.ipa) this._vocabSaveModal.ipa = String(d.ipa).trim();
+                    if (d.pos) this._vocabSaveModal.pos = String(d.pos).trim().toLowerCase();
+                    if (["A1", "A2", "B1", "B2", "C1", "C2"].includes(String(d.level || "").toUpperCase())) {
+                        this._vocabSaveModal.level = String(d.level).toUpperCase();
+                    }
+                    if (!this._vocabSaveModal.def && d.defVi) this._vocabSaveModal.def = String(d.defVi).trim();
+                    if (!this._vocabSaveModal.example && d.example) this._vocabSaveModal.example = String(d.example).trim();
+                    if (d.category) this._vocabSaveModal.category = String(d.category).trim();
+                    this._vocabSaveModal.aiClassifiedBy = res.provider || "Google Gemini";
+                }
+            }
+        } catch {}
+        if (this._vocabSaveModal.open && this._vocabSaveModal.term === expectedTerm) {
+            this._vocabSaveModal.classifying = false;
+            this.renderSaveVocabWithDayModal();
+        }
+    },
+
+    renderSaveVocabWithDayModal() {
+        const m = this._vocabSaveModal;
+        const modal = this.ensureModalHost("lh-save-vocab-modal");
+        if (!m.open) {
+            modal.classList.add("hidden");
+            return;
+        }
+        const { sorted, maxDay } = this._getExistingDeckDays();
+        const quickDays = sorted.slice(-6);
+        if (!quickDays.includes(maxDay)) quickDays.push(maxDay);
+        const nextNewDay = maxDay + 1;
+
+        modal.classList.remove("hidden");
+        modal.innerHTML = `
+            <div class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5" onclick="if(event.target===this) LearningHub.closeSaveVocabModal()">
+                <div class="w-full max-w-lg glass-panel rounded-3xl border border-violet-500/45 p-5 sm:p-6 space-y-4 text-xs shadow-2xl">
+                    <div class="flex items-start justify-between gap-2 pb-3 border-b border-white/10">
+                        <div>
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-cyan-300">📍 Lưu vào: Vocabulary → Kho Từ Vựng (SRS)</span>
+                            <h3 class="text-base sm:text-lg font-black text-white mt-0.5">
+                                ${m.isBatch ? `➕ Lưu ${escHtml(m.titleLabel)}` : `➕ Lưu từ "${escHtml(m.term)}" vào Kho Từ Vựng`}
+                            </h3>
+                        </div>
+                        <button type="button" onclick="LearningHub.closeSaveVocabModal()" class="px-2.5 py-1 rounded-xl bg-white/5 text-slate-300 font-bold">✕</button>
+                    </div>
+
+                    <!-- STEP 1: CHOOSE DAY -->
+                    <div class="p-3.5 rounded-2xl bg-slate-950/90 border border-cyan-500/30 space-y-2.5">
+                        <div class="flex items-center justify-between gap-2">
+                            <label class="font-extrabold text-cyan-300">📅 Bước 1: Chọn Ngày học (Day) trong Kho Vocabulary *</label>
+                            <span class="text-[11px] text-slate-400">Hiện có ${sorted.length || 1} ngày</span>
+                        </div>
+                        <div class="flex flex-wrap gap-1.5">
+                            ${quickDays.map(d => `
+                                <button type="button" data-vsave-day="${d}" onclick="LearningHub._vocabSaveModal.day=${d}; LearningHub.renderSaveVocabWithDayModal();" class="px-2.5 py-1.5 rounded-xl border font-extrabold transition ${Number(m.day) === d ? "bg-violet-600 border-violet-400 text-white shadow" : "bg-slate-900 border-white/10 text-slate-300 hover:border-cyan-400/50"}">Ngày ${d}</button>
+                            `).join("")}
+                            <button type="button" data-vsave-day="${nextNewDay}" onclick="LearningHub._vocabSaveModal.day=${nextNewDay}; LearningHub.renderSaveVocabWithDayModal();" class="px-2.5 py-1.5 rounded-xl border font-extrabold transition ${Number(m.day) === nextNewDay ? "bg-emerald-600 border-emerald-400 text-white shadow" : "bg-emerald-500/10 border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/20"}">➕ Ngày mới (${nextNewDay})</button>
+                        </div>
+                        <div class="flex items-center gap-2 pt-1">
+                            <span class="text-slate-400 shrink-0">Hoặc nhập số ngày bất kỳ:</span>
+                            <input id="lh-vsave-day-input" type="number" min="1" max="999" value="${Number(m.day) || 1}" oninput="LearningHub._vocabSaveModal.day=Math.max(1, parseInt(this.value,10)||1);" class="w-24 bg-slate-900 border border-white/15 rounded-xl px-3 py-1.5 text-cyan-300 font-black focus:outline-none focus:border-cyan-400">
+                        </div>
+                    </div>
+
+                    ${!m.isBatch ? `
+                        <!-- STEP 2: AI AUTO-CLASSIFIED POS, CEFR LEVEL & IPA -->
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="font-extrabold text-violet-300">🤖 Bước 2: Phân loại tự động (Loại từ &amp; Trình độ CEFR)</span>
+                                <span class="text-[10.5px] font-bold ${m.classifying ? "text-amber-300 animate-pulse" : "text-emerald-300"}">
+                                    ${m.classifying ? "⏳ AI đang tự lọc loại từ & CEFR..." : (m.aiClassifiedBy ? `✨ Đã lọc bởi ${escHtml(m.aiClassifiedBy)}` : "🛠️ Đã tự lọc cục bộ")}
+                                </span>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                <div>
+                                    <label class="text-[10.5px] text-slate-400 font-bold block mb-1">Loại từ (POS)</label>
+                                    <select id="lh-vsave-pos" onchange="LearningHub._vocabSaveModal.pos=this.value;" class="w-full bg-slate-950 border border-white/15 rounded-xl px-2.5 py-2 text-emerald-300 font-bold">
+                                        ${["noun", "verb", "adjective", "adverb", "collocation", "phrase", "phrasal verb", "idiom", "preposition"].map(p => `<option value="${p}" ${String(m.pos).toLowerCase() === p ? "selected" : ""}>${p}</option>`).join("")}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-[10.5px] text-slate-400 font-bold block mb-1">Trình độ CEFR</label>
+                                    <select id="lh-vsave-level" onchange="LearningHub._vocabSaveModal.level=this.value;" class="w-full bg-slate-950 border border-white/15 rounded-xl px-2.5 py-2 text-amber-300 font-extrabold">
+                                        ${["A1", "A2", "B1", "B2", "C1", "C2"].map(lv => `<option value="${lv}" ${String(m.level).toUpperCase() === lv ? "selected" : ""}>CEFR ${lv}</option>`).join("")}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-[10.5px] text-slate-400 font-bold block mb-1">Phiên âm IPA</label>
+                                    <input id="lh-vsave-ipa" type="text" value="${escHtml(m.ipa || "")}" oninput="LearningHub._vocabSaveModal.ipa=this.value;" placeholder="/.../" class="w-full bg-slate-950 border border-white/15 rounded-xl px-2.5 py-2 text-cyan-300 font-mono">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <div>
+                                    <label class="text-[10.5px] text-slate-400 font-bold block mb-1">Nghĩa tiếng Việt *</label>
+                                    <input id="lh-vsave-def" type="text" value="${escHtml(m.def || "")}" oninput="LearningHub._vocabSaveModal.def=this.value;" placeholder="Nhập nghĩa tiếng Việt..." class="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-white">
+                                </div>
+                                <div>
+                                    <label class="text-[10.5px] text-slate-400 font-bold block mb-1">Chủ đề (Category)</label>
+                                    <input id="lh-vsave-cat" type="text" value="${escHtml(m.category || "Vocabulary")}" oninput="LearningHub._vocabSaveModal.category=this.value;" class="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-slate-200">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-[10.5px] text-slate-400 font-bold block mb-1">Câu ví dụ (Example)</label>
+                                <input id="lh-vsave-example" type="text" value="${escHtml(m.example || "")}" oninput="LearningHub._vocabSaveModal.example=this.value;" placeholder="Ví dụ ngữ cảnh tiếng Anh..." class="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-slate-200">
+                            </div>
+                        </div>
+                    ` : `
+                        <p class="text-slate-300">Tất cả <strong>${m.batchWords.length} từ</strong> (đã có sẵn loại từ &amp; trình độ CEFR) sẽ được lưu vào <strong>Vocabulary → Kho Từ Vựng → Ngày ${Number(m.day) || 1}</strong> (tự động bỏ qua các từ đã tồn tại).</p>
+                    `}
+
+                    <div class="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+                        <button type="button" onclick="LearningHub.closeSaveVocabModal()" class="px-4 py-2.5 rounded-xl bg-white/5 text-slate-300 font-bold">Hủy</button>
+                        <button id="lh-vsave-confirm-btn" type="button" onclick="LearningHub.confirmSaveVocabWithDayModal()" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-95 text-white font-extrabold shadow-lg">
+                            💾 Save vào Vocabulary (Ngày ${Number(m.day) || 1})
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    closeSaveVocabModal() {
+        this._vocabSaveModal.open = false;
+        document.getElementById("lh-save-vocab-modal")?.classList.add("hidden");
+    },
+
+    confirmSaveVocabWithDayModal() {
+        const m = this._vocabSaveModal;
+        if (!m.open) return;
+        const chosenDay = Math.max(1, parseInt(document.getElementById("lh-vsave-day-input")?.value || m.day, 10) || 1);
+
+        if (m.isBatch) {
+            const existing = new Set((Array.isArray(deck) ? deck : []).map(w => String(w.term || "").trim().toLowerCase()));
+            let added = 0;
+            m.batchWords.forEach(w => {
+                const key = String(w.term || "").trim().toLowerCase();
+                if (!key || existing.has(key)) return;
+                existing.add(key);
+                const g = this._guessLocalPosAndCefr(w.term, w.pos, w.level);
+                deck.unshift(normalizeWordItem({
+                    id: Date.now() + Math.random(),
+                    day: chosenDay,
+                    term: w.term,
+                    ipa: w.ipa || g.ipa || "/.../",
+                    pos: w.pos || g.pos || "noun",
+                    def: w.def || w.meaningVi || w.term,
+                    example: w.example || "",
+                    level: w.level || g.level || "B1",
+                    category: w.category || "AI Vocab",
+                    source: w.source || "ai-generated"
+                }));
+                added++;
+            });
+            this.closeSaveVocabModal();
+            if (added > 0) {
+                saveDeckToStorage();
+                if (typeof applyStudyFilter === "function") applyStudyFilter();
+                if (typeof renderWordList === "function") renderWordList();
+                showToast(`✅ Đã lưu ${added} từ vựng mới vào Vocabulary (Ngày ${chosenDay})!`);
+            } else {
+                showToast("Tất cả các từ này đã có sẵn trong Kho Vocabulary của bạn rồi!", "warning");
+            }
+            return;
+        }
+
+        const defVal = String(document.getElementById("lh-vsave-def")?.value ?? m.def ?? "").trim();
+        if (!defVal) {
+            showToast("Vui lòng nhập nghĩa tiếng Việt trước khi lưu!", "error");
+            return;
+        }
+        const posVal = String(document.getElementById("lh-vsave-pos")?.value || m.pos || "noun").trim();
+        const levelVal = String(document.getElementById("lh-vsave-level")?.value || m.level || "B1").trim();
+        const ipaVal = String(document.getElementById("lh-vsave-ipa")?.value ?? m.ipa ?? "").trim() || "/.../";
+        const catVal = String(document.getElementById("lh-vsave-cat")?.value ?? m.category ?? "Vocabulary").trim() || "Vocabulary";
+        const exVal = String(document.getElementById("lh-vsave-example")?.value ?? m.example ?? "").trim();
+
+        if ((Array.isArray(deck) ? deck : []).some(d => String(d.term || "").trim().toLowerCase() === m.term.toLowerCase())) {
+            this.closeSaveVocabModal();
+            showToast(`Từ "${m.term}" đã có sẵn trong Kho Từ Vựng!`, "warning");
+            return;
+        }
+
+        deck.unshift(normalizeWordItem({
+            id: Date.now() + Math.random(),
+            day: chosenDay,
+            term: m.term,
+            ipa: ipaVal,
+            pos: posVal,
+            def: defVal,
+            example: exVal,
+            category: catVal,
+            level: levelVal,
+            starred: true,
+            source: m.source || "ai-generated"
+        }));
+        saveDeckToStorage();
+        if (typeof applyStudyFilter === "function") applyStudyFilter();
+        if (typeof renderWordList === "function") renderWordList();
+        this.closeSaveVocabModal();
+        showToast(`✅ Đã lưu "${m.term}" (${posVal} • ${levelVal}) vào Vocabulary — Ngày ${chosenDay}!`);
+    },
+
+    setSkillOuterPanelsVisible(skill, visible) {
+        const aiEl = document.getElementById(`lh-aigen-${skill}`);
+        const histEl = document.getElementById(`lh-history-${skill}`);
+        if (aiEl) aiEl.classList.toggle("hidden", !visible);
+        if (histEl) histEl.classList.toggle("hidden", !visible);
+        if (visible) this.refreshSkillWidgets(skill);
     },
 
     /* ==================== 3. QUESTION SETS & AI – GENERATE MORE QUESTIONS (UNLIMITED SETS 1..N) ==================== */
@@ -29015,7 +29469,7 @@ function navigateTo(page, subTab = null) {
     if (page === "settings") renderSettingsAndCMSPage();
 
     if (typeof LearningHub !== "undefined" && ["vocabulary", "grammar", "listening", "speaking", "reading", "writing"].includes(page)) {
-        LearningHub.refreshSkillWidgets(page);
+        LearningHub.setSkillOuterPanelsVisible(page, true);
     }
 
     window.scrollTo({ top: 0, behavior: "smooth" });

@@ -108,9 +108,11 @@ function openReadingPassage(id, customPassage = null) {
     document.getElementById("reading-custom-panel")?.classList.add("hidden");
     document.getElementById("reading-list")?.classList.add("hidden");
     document.getElementById("reading-filter-bar")?.classList.add("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("reading", false);
     document.getElementById("reading-session")?.classList.remove("hidden");
     document.getElementById("reading-results")?.classList.add("hidden");
     document.getElementById("reading-lookup-box")?.classList.add("hidden");
+    setHighlightEraseMode(false);
 
     document.getElementById("reading-title").innerHTML = `${renderLevelBadge(p.level)} <span class="ml-1">${escHtml(p.title)}</span>`;
 
@@ -135,6 +137,7 @@ function openReadingPassage(id, customPassage = null) {
             </p>
         `).join("");
     }
+    bindPassageHighlightClickErase();
 
     // Passage personal note
     const noteArea = document.getElementById("reading-passage-note");
@@ -161,8 +164,72 @@ function openReadingPassage(id, customPassage = null) {
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+let isHighlightEraseMode = false;
+
+function setHighlightEraseMode(enabled) {
+    isHighlightEraseMode = Boolean(enabled);
+    const btn = document.getElementById("reading-hl-erase-btn");
+    const passageBox = document.getElementById("reading-passage-text");
+    if (btn) {
+        btn.classList.toggle("bg-rose-600", isHighlightEraseMode);
+        btn.classList.toggle("text-white", isHighlightEraseMode);
+        btn.classList.toggle("ring-2", isHighlightEraseMode);
+        btn.classList.toggle("ring-rose-300", isHighlightEraseMode);
+        btn.classList.toggle("bg-slate-900", !isHighlightEraseMode);
+        btn.classList.toggle("text-rose-300", !isHighlightEraseMode);
+        btn.textContent = isHighlightEraseMode ? "🧹 Đang tẩy (Bấm chỗ tô)" : "🧹 Bỏ tô";
+    }
+    if (passageBox) {
+        passageBox.classList.toggle("cursor-crosshair", isHighlightEraseMode);
+    }
+}
+
+function unwrapMarkElement(markEl) {
+    if (!markEl || !markEl.parentNode) return;
+    const parent = markEl.parentNode;
+    while (markEl.firstChild) {
+        parent.insertBefore(markEl.firstChild, markEl);
+    }
+    parent.removeChild(markEl);
+    parent.normalize();
+}
+
+function persistPassageHighlightsState() {
+    if (!activeReadingPassage) return;
+    const passageBox = document.getElementById("reading-passage-text");
+    if (!passageBox) return;
+    const st = getReadingState();
+    if (!st.highlightsById) st.highlightsById = {};
+    const hasAnyMarks = passageBox.querySelectorAll("mark").length > 0;
+    if (hasAnyMarks) {
+        st.highlightsById[activeReadingPassage.id] = passageBox.innerHTML;
+    } else {
+        delete st.highlightsById[activeReadingPassage.id];
+    }
+    saveReadingState(st);
+}
+
+function bindPassageHighlightClickErase() {
+    const passageBox = document.getElementById("reading-passage-text");
+    if (!passageBox || passageBox.dataset.hlClickBound === "1") return;
+    passageBox.dataset.hlClickBound = "1";
+    passageBox.addEventListener("click", (e) => {
+        const markEl = e.target?.closest ? e.target.closest("mark") : null;
+        if (!markEl || !passageBox.contains(markEl)) return;
+        if (isHighlightEraseMode || e.altKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            unwrapMarkElement(markEl);
+            persistPassageHighlightsState();
+            showToast("🧹 Đã xóa vùng highlight vừa chọn!");
+        }
+    });
+}
+
 function applySelectionHighlight() {
     if (!activeReadingPassage) return;
+    setHighlightEraseMode(false);
+    bindPassageHighlightClickErase();
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.toString().trim()) {
         showToast("Hãy bôi đen cụm từ hoặc câu trong Bài đọc trước khi bấm Highlight!", "warning");
@@ -177,28 +244,81 @@ function applySelectionHighlight() {
     try {
         const range = sel.getRangeAt(0);
         const mark = document.createElement("mark");
-        mark.className = `${currentHighlightColor} text-white px-0.5 rounded`;
+        mark.className = `${currentHighlightColor} reading-hl-mark text-white px-0.5 rounded`;
+        mark.title = "Bấm 🧹 Bỏ tô rồi nhấp vào đây (hoặc giữ Alt + Click) để xóa highlight";
         mark.appendChild(range.extractContents());
+        // Flatten any nested <mark> inside the new mark
+        mark.querySelectorAll("mark").forEach(inner => unwrapMarkElement(inner));
         range.insertNode(mark);
         sel.removeAllRanges();
 
-        const st = getReadingState();
-        if (!st.highlightsById) st.highlightsById = {};
-        st.highlightsById[activeReadingPassage.id] = passageBox.innerHTML;
-        saveReadingState(st);
+        persistPassageHighlightsState();
         showToast("Đã đánh dấu Highlight!");
     } catch (e) {
         showToast("Hãy bôi đen trong phạm vi một đoạn văn để Highlight mượt nhất.", "warning");
     }
 }
 
+function removeSelectedHighlight() {
+    if (!activeReadingPassage) return;
+    const passageBox = document.getElementById("reading-passage-text");
+    if (!passageBox) return;
+    bindPassageHighlightClickErase();
+
+    // 1. Check if current selection or caret touches any <mark> inside the passage
+    const sel = window.getSelection();
+    let removed = 0;
+    if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        if (passageBox.contains(range.commonAncestorContainer)) {
+            const marks = Array.from(passageBox.querySelectorAll("mark"));
+            marks.forEach(m => {
+                let touches = false;
+                try {
+                    touches = range.intersectsNode(m);
+                } catch {
+                    touches = m.contains(range.startContainer) || m.contains(range.endContainer);
+                }
+                if (touches) {
+                    unwrapMarkElement(m);
+                    removed++;
+                }
+            });
+            if (removed > 0) {
+                sel.removeAllRanges();
+                persistPassageHighlightsState();
+                setHighlightEraseMode(false);
+                showToast(`🧹 Đã xóa ${removed} vùng highlight đã chọn!`);
+                return;
+            }
+        }
+    }
+
+    // 2. Otherwise toggle 1-click Erase Mode so user can tap directly on ANY highlight to remove it!
+    const totalMarks = passageBox.querySelectorAll("mark").length;
+    if (totalMarks === 0) {
+        setHighlightEraseMode(false);
+        showToast("Bài đọc hiện không có vùng highlight nào để xóa.", "info");
+        return;
+    }
+    setHighlightEraseMode(!isHighlightEraseMode);
+    if (isHighlightEraseMode) {
+        showToast("🧹 Đã bật chế độ tẩy: nhấp trực tiếp vào bất kỳ đoạn tô màu nào để xóa (hoặc bấm ↺ Xóa hết)!");
+    }
+}
+
 function clearPassageHighlights() {
     if (!activeReadingPassage) return;
+    setHighlightEraseMode(false);
+    const passageBox = document.getElementById("reading-passage-text");
+    if (passageBox) {
+        const marks = Array.from(passageBox.querySelectorAll("mark"));
+        marks.forEach(m => unwrapMarkElement(m));
+    }
     const st = getReadingState();
     if (st.highlightsById) delete st.highlightsById[activeReadingPassage.id];
     saveReadingState(st);
-    openReadingPassage(activeReadingPassage.id);
-    showToast("Đã xóa toàn bộ Highlight của bài đọc này.");
+    showToast("✅ Đã xóa toàn bộ Highlight của bài đọc này!");
 }
 
 function saveReadingNote(syncToNotebook = false) {
@@ -280,14 +400,6 @@ function showReadingWordPopup(wordRaw) {
 
 function saveLookupWordToBank(wordRaw, ipa, pos, level) {
     const defVal = (document.getElementById("lookup-custom-def")?.value || "").trim();
-    if (!defVal) {
-        showToast("Hãy nhập nghĩa tiếng Việt trước khi lưu vào Vocabulary Bank!", "error");
-        return;
-    }
-    if (deck.some(d => d.term.toLowerCase() === wordRaw.toLowerCase())) {
-        showToast(`Từ "${wordRaw}" đã có sẵn trong Vocabulary Bank!`, "warning");
-        return;
-    }
     // Extract sentence containing this word from active passage if available
     let contextSentence = "";
     if (activeReadingPassage && activeReadingPassage.passage) {
@@ -296,6 +408,28 @@ function saveLookupWordToBank(wordRaw, ipa, pos, level) {
         if (hit) contextSentence = hit.replace(/\[Paragraph [A-Z]\]/g, "").trim();
     }
 
+    if (typeof LearningHub !== "undefined" && typeof LearningHub.openSaveVocabWithDayModal === "function") {
+        LearningHub.openSaveVocabWithDayModal({
+            term: wordRaw,
+            ipa,
+            pos,
+            def: defVal,
+            example: contextSentence || DYNAMIC_EXAMPLE_TEMPLATES[0](wordRaw).en,
+            category: activeReadingPassage?.topic || "Reading",
+            level: String(level || "").startsWith("IELTS") ? "B2" : (level || "B1"),
+            source: "user-imported"
+        });
+        return;
+    }
+
+    if (!defVal) {
+        showToast("Hãy nhập nghĩa tiếng Việt trước khi lưu vào Vocabulary Bank!", "error");
+        return;
+    }
+    if (deck.some(d => d.term.toLowerCase() === wordRaw.toLowerCase())) {
+        showToast(`Từ "${wordRaw}" đã có sẵn trong Vocabulary Bank!`, "warning");
+        return;
+    }
     deck.push(normalizeWordItem({
         id: Date.now() + Math.random(),
         day: 1,
@@ -595,11 +729,13 @@ function extractKeyVocabFromPassage(passageText) {
 }
 
 function closeReadingSession() {
+    setHighlightEraseMode(false);
     activeReadingPassage = null;
     document.getElementById("reading-session")?.classList.add("hidden");
     document.getElementById("reading-custom-panel")?.classList.remove("hidden");
     document.getElementById("reading-list")?.classList.remove("hidden");
     document.getElementById("reading-filter-bar")?.classList.remove("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("reading", true);
     filterReadingPassages();
 }
 

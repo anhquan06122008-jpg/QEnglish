@@ -275,6 +275,7 @@ function openWritingEditor(topicId, customTopic) {
     document.getElementById("writing-topics-list")?.classList.add("hidden");
     document.getElementById("writing-filter-bar")?.classList.add("hidden");
     document.getElementById("writing-history-panel")?.classList.add("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("writing", false);
     document.getElementById("writing-editor")?.classList.remove("hidden");
     document.getElementById("writing-evaluation")?.classList.add("hidden");
     document.getElementById("writing-inline-check-box")?.classList.add("hidden");
@@ -685,6 +686,17 @@ function checkTargetedWritingExercise(btnEl, expectedAnswer) {
 function quickSaveWritingVocab(word, meaningVi, example) {
     const clean = String(word || "").trim();
     if (!clean) return;
+    if (typeof LearningHub !== "undefined" && typeof LearningHub.openSaveVocabWithDayModal === "function") {
+        LearningHub.openSaveVocabWithDayModal({
+            term: clean,
+            def: meaningVi || "",
+            example: example || "",
+            category: "Writing Upgrade",
+            level: activeWritingTopic?.level || "B2",
+            source: "ai-generated"
+        });
+        return;
+    }
     if (deck.some(d => d.term.toLowerCase() === clean.toLowerCase())) {
         showToast(`Từ "${clean}" đã có trong Kho Từ Vựng!`, "warning");
         return;
@@ -1036,5 +1048,6 @@ function closeWritingEditor() {
     document.getElementById("writing-topics-list")?.classList.remove("hidden");
     document.getElementById("writing-filter-bar")?.classList.remove("hidden");
     document.getElementById("writing-history-panel")?.classList.remove("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("writing", true);
     filterWritingTopics();
 }

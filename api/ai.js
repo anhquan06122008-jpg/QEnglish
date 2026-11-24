@@ -1637,6 +1637,36 @@ Return STRICT JSON:
         };
     }
 
+    if (task === "vocab-classify") {
+        const term = String(body.term || "").trim().slice(0, 120);
+        const def = String(body.def || "").trim().slice(0, 260);
+        const example = String(body.example || "").trim().slice(0, 320);
+        if (!term) {
+            const err = new Error("Thiếu từ vựng cần phân loại.");
+            err.statusCode = 400;
+            throw err;
+        }
+        return {
+            system: `You are an English lexicographer & CEFR vocabulary expert.
+Classify the given English word/collocation accurately by part of speech, IPA pronunciation (US/UK standard), exact CEFR level (A1, A2, B1, B2, C1, or C2), concise Vietnamese meaning, natural English example, and topic category.
+Return ONLY strict RFC-8259 JSON.`,
+            prompt: `Term: "${term}"
+${def ? `Existing Vietnamese hint: "${def}"` : ""}
+${example ? `Context example: "${example}"` : ""}
+
+Return JSON:
+{
+  "term": "${term}",
+  "ipa": "/.../",
+  "pos": "noun|verb|adjective|adverb|phrase|collocation|idiom|phrasal verb",
+  "level": "A1|A2|B1|B2|C1|C2",
+  "defVi": "Nghĩa tiếng Việt chính xác, ngắn gọn",
+  "example": "Natural English example sentence using the term.",
+  "category": "Short English topic name (e.g. Environment, Society, Academic, Daily Life)"
+}`
+        };
+    }
+
     const err = new Error(`Unsupported AI task: ${task}`);
     err.statusCode = 400;
     throw err;

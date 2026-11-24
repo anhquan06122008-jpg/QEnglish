@@ -543,6 +543,7 @@ function openListeningExercise(id, customItem = null) {
     document.getElementById("listening-custom-panel")?.classList.add("hidden");
     document.getElementById("listening-list")?.classList.add("hidden");
     document.getElementById("listening-filter-bar")?.classList.add("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("listening", false);
     document.getElementById("listening-exercise")?.classList.remove("hidden");
 
     if (ex.type === "dictation") {
@@ -567,6 +568,7 @@ function closeListeningExercise() {
     document.getElementById("listening-custom-panel")?.classList.remove("hidden");
     document.getElementById("listening-list")?.classList.remove("hidden");
     document.getElementById("listening-filter-bar")?.classList.remove("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("listening", true);
     filterListeningExercises();
 }
 

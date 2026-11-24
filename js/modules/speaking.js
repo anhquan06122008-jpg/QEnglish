@@ -31,10 +31,12 @@ function startSpeakingMode(mode) {
     if (mode === "conversation") {
         document.getElementById("speaking-topics-list")?.classList.add("hidden");
         document.getElementById("speaking-session")?.classList.remove("hidden");
+        if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("speaking", false);
         initLiveConversationSession();
     } else {
         document.getElementById("speaking-session")?.classList.add("hidden");
         document.getElementById("speaking-topics-list")?.classList.remove("hidden");
+        if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("speaking", true);
         renderSpeakingTopicsGrid();
     }
 }
@@ -42,6 +44,7 @@ function startSpeakingMode(mode) {
 function closeSpeakingTopics() {
     document.getElementById("speaking-topics-list")?.classList.add("hidden");
     document.getElementById("speaking-mode-cards")?.classList.remove("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("speaking", true);
 }
 
 function closeSpeakingSession() {
@@ -50,6 +53,7 @@ function closeSpeakingSession() {
     document.getElementById("speaking-session")?.classList.add("hidden");
     document.getElementById("speaking-topics-list")?.classList.add("hidden");
     document.getElementById("speaking-mode-cards")?.classList.remove("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("speaking", true);
 }
 
 function renderSpeakingTopicsGrid() {
@@ -299,6 +303,7 @@ function openTopicSpeakingWorkspace(topicId, customTopic = null) {
 
     document.getElementById("speaking-mode-cards")?.classList.add("hidden");
     document.getElementById("speaking-topics-list")?.classList.add("hidden");
+    if (typeof LearningHub !== "undefined") LearningHub.setSkillOuterPanelsVisible("speaking", false);
     document.getElementById("speaking-session")?.classList.remove("hidden");
 
     const container = document.getElementById("speaking-content");
