@@ -1638,9 +1638,9 @@ Return STRICT JSON:
     }
 
     if (task === "vocab-classify") {
-        const term = String(body.term || "").trim().slice(0, 120);
-        const def = String(body.def || "").trim().slice(0, 260);
-        const example = String(body.example || "").trim().slice(0, 320);
+        const term = String(payload.term || "").trim().slice(0, 120);
+        const def = String(payload.def || "").trim().slice(0, 260);
+        const example = String(payload.example || "").trim().slice(0, 320);
         if (!term) {
             const err = new Error("Thiếu từ vựng cần phân loại.");
             err.statusCode = 400;
