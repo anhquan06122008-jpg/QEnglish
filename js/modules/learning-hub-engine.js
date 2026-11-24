@@ -662,6 +662,9 @@ const LearningHub = {
                 ${skill === "vocabulary" ? `<div id="lh-vocab-ai-workspace" class="hidden pt-2"></div>` : ""}
             </div>
         `;
+        if (skill === "vocabulary" && this._activeVocabExercise) {
+            this.renderVocabAiExerciseWorkspace();
+        }
     },
 
     async runGenerateExercise(skill) {
