@@ -519,17 +519,129 @@ async function generateAIContentPreview() {
     `;
 }
 
+function normalizeCmsMcqQuestions(rawList) {
+    if (!Array.isArray(rawList)) return [];
+    return rawList.map((q, idx) => {
+        if (!q || typeof q !== "object") return null;
+        const opts = Array.isArray(q.options) ? q.options.map(o => String(o || "").trim()).filter(Boolean) : [];
+        let ans = String(q.answer || "").trim();
+        if (opts.length) {
+            const exact = opts.find(o => o.toLowerCase() === ans.toLowerCase());
+            if (exact) {
+                ans = exact;
+            } else if (/^[A-Da-d]$/.test(ans)) {
+                const i = ans.toUpperCase().charCodeAt(0) - 65;
+                if (opts[i]) ans = opts[i];
+            } else {
+                const letterPref = ans.match(/^([A-Da-d])[\.\)\:\-]\s*(.+)$/);
+                if (letterPref) {
+                    const byIdx = opts[letterPref[1].toUpperCase().charCodeAt(0) - 65];
+                    const byBody = opts.find(o => o.toLowerCase() === letterPref[2].trim().toLowerCase());
+                    ans = byBody || byIdx || opts[0];
+                } else {
+                    const partial = opts.find(o => o.toLowerCase().includes(ans.toLowerCase()) || ans.toLowerCase().includes(o.toLowerCase()));
+                    ans = partial || opts[0];
+                }
+            }
+        }
+        return {
+            id: q.id || `cmsq-${Date.now().toString(36)}-${idx}`,
+            type: String(q.type || (opts.length ? "mcq" : "fill")).toLowerCase(),
+            question: String(q.question || "").trim(),
+            options: opts,
+            answer: ans,
+            explanation: String(q.explanation || q.explanationVi || "").trim()
+        };
+    }).filter(q => q && q.question);
+}
+
 function confirmSaveAIGeneratedContent() {
     if (!aiGeneratedPreviewCandidate) return;
     const c = aiGeneratedPreviewCandidate;
+    const rawPayload = (c.payload && typeof c.payload === "object") ? { ...c.payload } : {};
+    const fallbackText = String(c.contentText || "").trim();
+    const skill = String(c.skill || "reading").toLowerCase();
+    let payload = { ...rawPayload };
+
+    if (skill === "listening") {
+        const transcriptLines = Array.isArray(rawPayload.transcriptLines) && rawPayload.transcriptLines.length
+            ? rawPayload.transcriptLines.map(ln => ({
+                speaker: String(ln?.speaker || "").trim(),
+                text: String(ln?.text || ln || "").trim(),
+                translationVi: String(ln?.translationVi || "").trim()
+            })).filter(ln => ln.text)
+            : [];
+        const transcript = String(rawPayload.transcript || rawPayload.audioText || fallbackText || transcriptLines.map(l => l.speaker ? `${l.speaker}: ${l.text}` : l.text).join("\n")).trim();
+        const sentences = Array.isArray(rawPayload.sentences) && rawPayload.sentences.length
+            ? rawPayload.sentences.map(s => String(s || "").trim()).filter(Boolean)
+            : (transcriptLines.length
+                ? transcriptLines.map(l => l.speaker ? `${l.speaker}: ${l.text}` : l.text)
+                : (transcript.split(/\n+/).map(s => s.trim()).filter(Boolean)));
+        payload = {
+            ...rawPayload,
+            type: rawPayload.type || "multiple_choice",
+            transcript,
+            audioText: transcript,
+            sentences,
+            transcriptLines,
+            questions: normalizeCmsMcqQuestions(rawPayload.questions || rawPayload.exercises)
+        };
+    } else if (skill === "reading") {
+        payload = {
+            ...rawPayload,
+            passage: String(rawPayload.passage || fallbackText).trim(),
+            keyVocab: Array.isArray(rawPayload.keyVocab) ? rawPayload.keyVocab : [],
+            questions: normalizeCmsMcqQuestions(rawPayload.questions || rawPayload.exercises)
+        };
+    } else if (skill === "grammar") {
+        const exs = normalizeCmsMcqQuestions(rawPayload.exercises || rawPayload.questions);
+        payload = {
+            ...rawPayload,
+            intro: String(rawPayload.intro || c.topic || "").trim(),
+            explanation: String(rawPayload.explanation || fallbackText).trim(),
+            formula: String(rawPayload.formula || "").trim(),
+            examples: Array.isArray(rawPayload.examples) ? rawPayload.examples : [],
+            commonMistakes: Array.isArray(rawPayload.commonMistakes) ? rawPayload.commonMistakes : [],
+            exercises: exs,
+            questions: exs
+        };
+    } else if (skill === "speaking") {
+        const rawQs = Array.isArray(rawPayload.suggestedQuestions) && rawPayload.suggestedQuestions.length
+            ? rawPayload.suggestedQuestions
+            : (Array.isArray(rawPayload.questions) ? rawPayload.questions : []);
+        payload = {
+            ...rawPayload,
+            type: "monologue",
+            prompt: String(rawPayload.prompt || fallbackText || c.title || c.topic).trim(),
+            promptVi: String(rawPayload.promptVi || "").trim(),
+            duration: Number(rawPayload.duration) || 90,
+            suggestedQuestions: rawQs.map(q => typeof q === "string" ? q : String(q?.question || q?.text || "")).filter(Boolean),
+            usefulPhrases: Array.isArray(rawPayload.usefulPhrases) ? rawPayload.usefulPhrases : [],
+            sampleAnswer: String(rawPayload.sampleAnswer || "").trim()
+        };
+    } else if (skill === "writing") {
+        payload = {
+            ...rawPayload,
+            type: rawPayload.type || "essay",
+            prompt: String(rawPayload.prompt || fallbackText || c.title || c.topic).trim(),
+            promptVi: String(rawPayload.promptVi || "").trim(),
+            minWords: Number(rawPayload.minWords) || 120,
+            maxWords: Number(rawPayload.maxWords) || 250,
+            timeLimit: Number(rawPayload.timeLimit) || 25,
+            targetStructures: Array.isArray(rawPayload.targetStructures) ? rawPayload.targetStructures : [],
+            keyVocab: Array.isArray(rawPayload.keyVocab) ? rawPayload.keyVocab : [],
+            sampleAnswer: String(rawPayload.sampleAnswer || "").trim()
+        };
+    }
+
     const saved = addCMSContent({
-        skill: c.skill,
+        skill,
         level: c.level,
         title: c.title || `${c.topic} (${c.level})`,
         topic: c.topic,
-        contentText: c.contentText || "",
+        contentText: fallbackText || payload.passage || payload.transcript || payload.prompt || payload.explanation || "",
         source: "ai-generated",
-        payload: c.payload || {}
+        payload
     });
     if (!saved.ok) {
         showToast("Chống trùng lặp: " + saved.error, "error");
@@ -538,7 +650,7 @@ function confirmSaveAIGeneratedContent() {
     aiGeneratedPreviewCandidate = null;
     document.getElementById("ai-gen-preview")?.classList.add("hidden");
     renderCMSContentTable();
-    showToast("Đã lưu bài học AI vào kho nội dung!");
+    showToast(`Đã lưu bài học AI "${c.title || c.topic}" vào kho ${skill.toUpperCase()}!`);
 }
 
 function deleteCMSItem(id) {

@@ -121,12 +121,42 @@ function renderSavedWritingsHistory() {
                     <div class="flex items-center gap-2">
                         ${renderSourceBadge(s.evalMode === "ai" ? "ai-generated" : "local-browser")}
                         <button onclick="openWritingSubmissionDetail(${idx})" class="px-3 py-1 rounded-lg bg-violet-600/20 hover:bg-violet-600/35 text-violet-200 font-bold">Xem bài & kết quả</button>
+                        <button type="button" onclick="deleteWritingSubmission('${escHtml(String(s.id || ""))}', ${idx})" title="Xóa bài viết này khỏi lịch sử" aria-label="Xóa bài viết" class="px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 font-bold transition">🗑️</button>
                     </div>
                 </div>
                 <p class="text-slate-400 line-clamp-2">${escHtml(s.originalText)}</p>
             </div>
         `).join("")}
     `;
+}
+
+function deleteWritingSubmission(subId, fallbackIdx) {
+    const st = getWritingState();
+    const subs = Array.isArray(st.submissions) ? st.submissions : [];
+    let targetIdx = subId ? subs.findIndex(item => String(item?.id || "") === String(subId)) : -1;
+    if (targetIdx < 0 && Number.isInteger(fallbackIdx) && fallbackIdx >= 0 && fallbackIdx < subs.length) {
+        targetIdx = fallbackIdx;
+    }
+    if (targetIdx < 0) return;
+    const item = subs[targetIdx];
+    const titleLabel = item?.title || "bài viết này";
+    if (!confirm(`Bạn có chắc muốn xóa "${titleLabel}" khỏi Lịch Sử Bài Viết Đã Nộp không?`)) return;
+
+    subs.splice(targetIdx, 1);
+    st.submissions = subs;
+    const removedId = String(item?.id || subId || "").trim();
+    if (removedId) {
+        const delSet = new Set(Array.isArray(st.deletedSubmissionIds) ? st.deletedSubmissionIds.map(String) : []);
+        delSet.add(removedId);
+        st.deletedSubmissionIds = Array.from(delSet).slice(-200);
+    }
+    saveWritingState(st);
+    if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) {
+        CloudClient.scheduleCloudSync();
+    }
+    renderSavedWritingsHistory();
+    filterWritingTopics();
+    showToast(`🗑️ Đã xóa "${titleLabel}" khỏi lịch sử bài viết!`);
 }
 
 function openWritingSubmissionDetail(idx) {

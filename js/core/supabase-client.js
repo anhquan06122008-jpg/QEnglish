@@ -1002,9 +1002,17 @@ const CloudClient = {
             mergedDraftMeta[lid] = new Date(Math.max(lTime, rTime) || Date.now()).toISOString();
         });
 
+        const mergedDeletedSubIds = Array.from(new Set([
+            ...(Array.isArray(remoteW.deletedSubmissionIds) ? remoteW.deletedSubmissionIds : []),
+            ...(Array.isArray(localW.deletedSubmissionIds) ? localW.deletedSubmissionIds : [])
+        ].map(String).filter(Boolean))).slice(-200);
+        const deletedSubSet = new Set(mergedDeletedSubIds);
+
         const mergedWriting = {
             drafts: { ...(remoteW.drafts || {}), ...(localW.drafts || {}) },
+            deletedSubmissionIds: mergedDeletedSubIds,
             submissions: mergeByKey(localW.submissions, remoteW.submissions, s => String(s.id || s.at))
+                .filter(s => !deletedSubSet.has(String(s.id || "")))
                 .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
                 .slice(0, 60),
             translation: {

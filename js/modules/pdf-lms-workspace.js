@@ -39,8 +39,430 @@ let pdfLmsUi = {
     aiGenDifficulty: "same", // easier | same | harder
     aiGenFocus: "mixed", // same_type | mixed | mistakes | deep
     aiGenBusy: false,
+    aiExerciseBusy: false,
+    aiExerciseStyle: "pdf_press", // pdf_press | pdf_deep | ielts_academic | custom_url
+    aiExerciseFocus: "",
+    showTranscriptVi: true,
+    transcriptOpen: true,
     writingDraftTimers: {}
 };
+
+/* ==================== 0. INTERACTIVE SENTENCE-SYNCED AUDIO & MULTI-VOICE TTS ENGINE ==================== */
+const lmsAudioState = {
+    lessonId: null,
+    mode: "tts", // tts | mp3
+    lines: [], // [{ speaker, text, translationVi }]
+    segments: [], // [{ idx, start, end, dur }]
+    totalDur: 10,
+    currentTime: 0,
+    currentIdx: -1,
+    isPlaying: false,
+    rate: 1.0,
+    volume: 1.0,
+    muted: false,
+    runToken: 0,
+    timerId: null
+};
+
+function lmsFormatTimeSec(sec) {
+    const s = Math.max(0, Math.floor(Number(sec) || 0));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+}
+
+function lmsParseTranscriptLines(ls) {
+    if (!ls) return [];
+    if (Array.isArray(ls.transcriptLines) && ls.transcriptLines.length) {
+        return ls.transcriptLines.map(ln => ({
+            speaker: String(ln?.speaker || "").trim(),
+            text: String(ln?.text || ln || "").trim(),
+            translationVi: String(ln?.translationVi || "").trim()
+        })).filter(ln => ln.text);
+    }
+    const raw = String(ls.transcript || "").trim();
+    if (!raw) return [];
+    const byNewline = raw.split(/\n+/).map(s => s.trim()).filter(Boolean);
+    const out = [];
+    byNewline.forEach(line => {
+        const m = line.match(/^([A-Za-z][A-Za-z0-9.\s]{0,22}):\s*(.+)$/);
+        if (m) {
+            out.push({ speaker: m[1].trim(), text: m[2].trim(), translationVi: "" });
+        } else {
+            const sents = line.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) || [line];
+            sents.forEach(s => {
+                const clean = s.trim();
+                if (clean) out.push({ speaker: "", text: clean, translationVi: "" });
+            });
+        }
+    });
+    return out;
+}
+
+function lmsComputeTtsSegments(lines, rate = 1.0) {
+    const effRate = Math.max(0.5, Math.min(2.0, Number(rate) || 1.0));
+    let cursor = 0;
+    const segs = lines.map((ln, idx) => {
+        const wordCount = Math.max(3, String(ln.text || "").trim().split(/\s+/).filter(Boolean).length);
+        const dur = Math.max(1.8, (wordCount * 0.42) / effRate);
+        const seg = { idx, start: cursor, end: cursor + dur, dur };
+        cursor += dur;
+        return seg;
+    });
+    return { segs, totalDur: Math.max(3, cursor) };
+}
+
+function lmsSegIdxForTime(segs, sec) {
+    if (!segs.length) return 0;
+    for (let i = 0; i < segs.length; i++) {
+        if (sec < segs[i].end - 0.05) return i;
+    }
+    return segs.length - 1;
+}
+
+function lmsHighlightTranscriptRow(activeIdx, scrollIntoView = true) {
+    const rows = document.querySelectorAll("[data-lms-trow]");
+    rows.forEach(row => {
+        const idx = Number(row.getAttribute("data-lms-trow"));
+        const isActive = idx === activeIdx;
+        row.classList.toggle("border-cyan-400", isActive);
+        row.classList.toggle("bg-cyan-500/20", isActive);
+        row.classList.toggle("shadow-[0_0_20px_rgba(34,211,238,0.28)]", isActive);
+        row.classList.toggle("ring-1", isActive);
+        row.classList.toggle("ring-cyan-400/60", isActive);
+        row.classList.toggle("border-white/5", !isActive);
+        row.classList.toggle("bg-slate-900/70", !isActive);
+        const badge = row.querySelector(".lms-trow-playing-dot");
+        if (badge) badge.classList.toggle("hidden", !isActive);
+        if (isActive && scrollIntoView) {
+            try { row.scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch {}
+        }
+    });
+}
+
+function lmsSyncTtsControlsUI() {
+    const seek = document.getElementById("lms-tts-seek");
+    const curEl = document.getElementById("lms-tts-cur-time");
+    const durEl = document.getElementById("lms-tts-dur-time");
+    const playBtn = document.getElementById("lms-tts-play-btn");
+    const clamped = Math.max(0, Math.min(lmsAudioState.totalDur, lmsAudioState.currentTime));
+    if (seek) {
+        seek.max = String(Number(lmsAudioState.totalDur.toFixed(2)));
+        seek.value = String(Number(clamped.toFixed(2)));
+    }
+    if (curEl) curEl.textContent = lmsFormatTimeSec(clamped);
+    if (durEl) durEl.textContent = lmsFormatTimeSec(lmsAudioState.totalDur);
+    if (playBtn) playBtn.textContent = lmsAudioState.isPlaying ? "⏸ Tạm dừng" : "▶ Phát Audio";
+    document.querySelectorAll("[data-lms-rate]").forEach(btn => {
+        const r = Number(btn.getAttribute("data-lms-rate"));
+        const active = Math.abs(r - lmsAudioState.rate) < 0.01;
+        btn.classList.toggle("bg-cyan-500/25", active);
+        btn.classList.toggle("border-cyan-400", active);
+        btn.classList.toggle("text-white", active);
+    });
+}
+
+function stopLmsAudioPlayer(resetUi = false) {
+    lmsAudioState.runToken += 1;
+    lmsAudioState.isPlaying = false;
+    if (lmsAudioState.timerId) {
+        clearInterval(lmsAudioState.timerId);
+        lmsAudioState.timerId = null;
+    }
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        try { window.speechSynthesis.cancel(); } catch {}
+    }
+    if (resetUi) {
+        lmsSyncTtsControlsUI();
+        const stEl = document.getElementById("lms-tts-status");
+        if (stEl) stEl.textContent = "⏸ Đã tạm dừng";
+    }
+}
+
+function lmsInitAudioStateForLesson(ls, hasRealAudio) {
+    const lines = lmsParseTranscriptLines(ls);
+    const sameLesson = lmsAudioState.lessonId === ls.id && lmsAudioState.lines.length === lines.length;
+    if (!sameLesson) {
+        stopLmsAudioPlayer(false);
+        lmsAudioState.lessonId = ls.id;
+        lmsAudioState.mode = hasRealAudio ? "mp3" : "tts";
+        lmsAudioState.lines = lines;
+        const { segs, totalDur } = lmsComputeTtsSegments(lines, lmsAudioState.rate);
+        lmsAudioState.segments = segs;
+        lmsAudioState.totalDur = totalDur;
+        lmsAudioState.currentTime = 0;
+        lmsAudioState.currentIdx = -1;
+    }
+}
+
+function lmsSpeakTtsLine(idx, myToken) {
+    if (myToken !== lmsAudioState.runToken || !lmsAudioState.isPlaying) return;
+    if (!("speechSynthesis" in window)) {
+        showToast("Trình duyệt không hỗ trợ đọc giọng nói TTS!", "error");
+        stopLmsAudioPlayer(true);
+        return;
+    }
+    const lines = lmsAudioState.lines;
+    if (idx >= lines.length) {
+        lmsAudioState.runToken += 1;
+        lmsAudioState.isPlaying = false;
+        if (lmsAudioState.timerId) { clearInterval(lmsAudioState.timerId); lmsAudioState.timerId = null; }
+        lmsAudioState.currentTime = lmsAudioState.totalDur;
+        lmsAudioState.currentIdx = -1;
+        lmsSyncTtsControlsUI();
+        lmsHighlightTranscriptRow(-1, false);
+        const stEl = document.getElementById("lms-tts-status");
+        if (stEl) stEl.textContent = "✅ Đã phát hết toàn bộ bài nghe";
+        return;
+    }
+
+    lmsAudioState.currentIdx = idx;
+    const seg = lmsAudioState.segments[idx] || { start: 0, end: lmsAudioState.totalDur, dur: 3 };
+    lmsAudioState.currentTime = seg.start;
+    lmsSyncTtsControlsUI();
+    lmsHighlightTranscriptRow(idx, true);
+
+    const ln = lines[idx];
+    const stEl = document.getElementById("lms-tts-status");
+    if (stEl) {
+        const spk = ln.speaker ? ` • ${ln.speaker}` : "";
+        stEl.textContent = `🔊 Đang đọc câu ${idx + 1}/${lines.length}${spk} (${lmsAudioState.rate}x)`;
+    }
+
+    if (lmsAudioState.timerId) clearInterval(lmsAudioState.timerId);
+    const startedAt = Date.now();
+    lmsAudioState.timerId = setInterval(() => {
+        if (myToken !== lmsAudioState.runToken || !lmsAudioState.isPlaying) {
+            clearInterval(lmsAudioState.timerId);
+            lmsAudioState.timerId = null;
+            return;
+        }
+        const elapsed = (Date.now() - startedAt) / 1000;
+        lmsAudioState.currentTime = Math.min(seg.end - 0.05, seg.start + elapsed);
+        lmsSyncTtsControlsUI();
+    }, 100);
+
+    // Distinct voice & pitch per speaker name so dialogues sound natural!
+    const speakerOrder = [];
+    lines.forEach(item => {
+        const k = (item.speaker || "narrator").toLowerCase();
+        if (!speakerOrder.includes(k)) speakerOrder.push(k);
+    });
+    const spIdx = Math.max(0, speakerOrder.indexOf((ln.speaker || "narrator").toLowerCase()));
+    const voices = (window.speechSynthesis.getVoices() || []).filter(v => /^en/i.test(v.lang));
+
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(ln.text);
+    u.lang = "en-US";
+    u.rate = lmsAudioState.rate;
+    u.volume = lmsAudioState.muted ? 0 : lmsAudioState.volume;
+    u.pitch = spIdx % 2 === 0 ? 1.08 : 0.88;
+    if (voices.length > 1) u.voice = voices[spIdx % voices.length];
+
+    u.onstart = () => {
+        if (myToken === lmsAudioState.runToken && lmsAudioState.isPlaying) {
+            lmsHighlightTranscriptRow(idx, true);
+        }
+    };
+    u.onend = () => {
+        if (myToken !== lmsAudioState.runToken || !lmsAudioState.isPlaying) return;
+        if (lmsAudioState.timerId) { clearInterval(lmsAudioState.timerId); lmsAudioState.timerId = null; }
+        lmsAudioState.currentTime = seg.end;
+        lmsSyncTtsControlsUI();
+        setTimeout(() => {
+            if (myToken === lmsAudioState.runToken && lmsAudioState.isPlaying) {
+                lmsSpeakTtsLine(idx + 1, myToken);
+            }
+        }, 220);
+    };
+    u.onerror = () => {
+        if (myToken !== lmsAudioState.runToken || !lmsAudioState.isPlaying) return;
+        if (lmsAudioState.timerId) { clearInterval(lmsAudioState.timerId); lmsAudioState.timerId = null; }
+    };
+    window.speechSynthesis.speak(u);
+}
+
+function lmsTtsStartFromIndex(idx) {
+    if (!lmsAudioState.lines.length) {
+        showToast("Bài nghe chưa có nội dung transcript để phát.", "warning");
+        return;
+    }
+    lmsAudioState.runToken += 1;
+    const myToken = lmsAudioState.runToken;
+    lmsAudioState.isPlaying = true;
+    const safeIdx = Math.max(0, Math.min(lmsAudioState.lines.length - 1, idx));
+    lmsSyncTtsControlsUI();
+    lmsSpeakTtsLine(safeIdx, myToken);
+}
+
+function lmsTtsTogglePlay() {
+    if (lmsAudioState.isPlaying) {
+        stopLmsAudioPlayer(true);
+    } else {
+        const startIdx = (lmsAudioState.currentTime >= lmsAudioState.totalDur - 0.2 || lmsAudioState.currentIdx < 0)
+            ? 0
+            : lmsSegIdxForTime(lmsAudioState.segments, lmsAudioState.currentTime);
+        lmsTtsStartFromIndex(startIdx);
+    }
+}
+
+function lmsTtsSeekInput(val) {
+    const targetSec = Math.max(0, Math.min(lmsAudioState.totalDur, Number(val) || 0));
+    lmsAudioState.currentTime = targetSec;
+    const targetIdx = lmsSegIdxForTime(lmsAudioState.segments, targetSec);
+    lmsAudioState.currentIdx = targetIdx;
+    const curEl = document.getElementById("lms-tts-cur-time");
+    if (curEl) curEl.textContent = lmsFormatTimeSec(targetSec);
+    lmsHighlightTranscriptRow(targetIdx, true);
+}
+
+function lmsTtsSeekCommit(val) {
+    const targetSec = Math.max(0, Math.min(lmsAudioState.totalDur, Number(val) || 0));
+    lmsAudioState.currentTime = targetSec;
+    const targetIdx = lmsSegIdxForTime(lmsAudioState.segments, targetSec);
+    lmsAudioState.currentIdx = targetIdx;
+    lmsHighlightTranscriptRow(targetIdx, true);
+    if (lmsAudioState.isPlaying) lmsTtsStartFromIndex(targetIdx);
+}
+
+function lmsTtsRewind5() {
+    const nextTime = Math.max(0, lmsAudioState.currentTime - 5);
+    lmsAudioState.currentTime = nextTime;
+    const targetIdx = lmsSegIdxForTime(lmsAudioState.segments, nextTime);
+    lmsAudioState.currentIdx = targetIdx;
+    lmsSyncTtsControlsUI();
+    lmsHighlightTranscriptRow(targetIdx, true);
+    if (lmsAudioState.isPlaying) lmsTtsStartFromIndex(targetIdx);
+}
+
+function lmsTtsStep(delta) {
+    if (!lmsAudioState.lines.length) return;
+    const base = lmsAudioState.currentIdx < 0 ? 0 : lmsAudioState.currentIdx;
+    const nextIdx = Math.max(0, Math.min(lmsAudioState.lines.length - 1, base + delta));
+    const seg = lmsAudioState.segments[nextIdx];
+    if (seg) lmsAudioState.currentTime = seg.start;
+    lmsAudioState.currentIdx = nextIdx;
+    lmsSyncTtsControlsUI();
+    lmsHighlightTranscriptRow(nextIdx, true);
+    if (lmsAudioState.isPlaying) lmsTtsStartFromIndex(nextIdx);
+}
+
+function lmsTtsRestart() {
+    lmsAudioState.currentTime = 0;
+    lmsTtsStartFromIndex(0);
+}
+
+function lmsTtsSetRate(rateVal) {
+    lmsAudioState.rate = Math.max(0.5, Math.min(2.0, Number(rateVal) || 1.0));
+    const curIdx = Math.max(0, lmsAudioState.currentIdx);
+    const { segs, totalDur } = lmsComputeTtsSegments(lmsAudioState.lines, lmsAudioState.rate);
+    lmsAudioState.segments = segs;
+    lmsAudioState.totalDur = totalDur;
+    if (segs[curIdx]) lmsAudioState.currentTime = segs[curIdx].start;
+    lmsSyncTtsControlsUI();
+    if (lmsAudioState.isPlaying) {
+        lmsTtsStartFromIndex(curIdx);
+    }
+    showToast(`🎧 Tốc độ phát: ${lmsAudioState.rate}x`);
+}
+
+function lmsTtsSetVolume(volVal) {
+    lmsAudioState.volume = Math.max(0, Math.min(1, Number(volVal)));
+    lmsAudioState.muted = lmsAudioState.volume === 0;
+    const muteBtn = document.getElementById("lms-tts-mute-btn");
+    if (muteBtn) muteBtn.textContent = lmsAudioState.muted ? "🔇" : "🔊";
+    if (lmsAudioState.isPlaying) {
+        lmsTtsStartFromIndex(Math.max(0, lmsAudioState.currentIdx));
+    }
+}
+
+function lmsTtsToggleMute() {
+    lmsAudioState.muted = !lmsAudioState.muted;
+    const muteBtn = document.getElementById("lms-tts-mute-btn");
+    if (muteBtn) muteBtn.textContent = lmsAudioState.muted ? "🔇" : "🔊";
+    const volEl = document.getElementById("lms-tts-vol");
+    if (volEl) volEl.value = lmsAudioState.muted ? "0" : String(lmsAudioState.volume || 1);
+    if (lmsAudioState.isPlaying) {
+        lmsTtsStartFromIndex(Math.max(0, lmsAudioState.currentIdx));
+    }
+}
+
+function lmsJumpToTranscriptLine(idx, audioElId = "") {
+    if (audioElId) {
+        const audioEl = document.getElementById(audioElId);
+        if (audioEl && Number.isFinite(audioEl.duration) && audioEl.duration > 0 && lmsAudioState.lines.length) {
+            const totalChars = lmsAudioState.lines.reduce((s, l) => s + Math.max(8, l.text.length), 0) || 1;
+            let acc = 0;
+            for (let i = 0; i < idx; i++) acc += Math.max(8, lmsAudioState.lines[i].text.length);
+            audioEl.currentTime = (acc / totalChars) * audioEl.duration;
+            audioEl.play?.().catch(() => {});
+            lmsHighlightTranscriptRow(idx, true);
+            return;
+        }
+    }
+    lmsTtsStartFromIndex(idx);
+}
+
+function lmsBindMp3TranscriptSync(audioElId) {
+    const audioEl = document.getElementById(audioElId);
+    if (!audioEl || audioEl.dataset.syncBound === "1") return;
+    audioEl.dataset.syncBound = "1";
+    audioEl.addEventListener("timeupdate", () => {
+        if (!Number.isFinite(audioEl.duration) || audioEl.duration <= 0 || !lmsAudioState.lines.length) return;
+        const ratio = Math.max(0, Math.min(1, audioEl.currentTime / audioEl.duration));
+        const totalChars = lmsAudioState.lines.reduce((s, l) => s + Math.max(8, l.text.length), 0) || 1;
+        let acc = 0;
+        let activeIdx = lmsAudioState.lines.length - 1;
+        for (let i = 0; i < lmsAudioState.lines.length; i++) {
+            const nextAcc = acc + Math.max(8, lmsAudioState.lines[i].text.length);
+            if (ratio <= nextAcc / totalChars) {
+                activeIdx = i;
+                break;
+            }
+            acc = nextAcc;
+        }
+        if (activeIdx !== lmsAudioState.currentIdx) {
+            lmsAudioState.currentIdx = activeIdx;
+            lmsHighlightTranscriptRow(activeIdx, true);
+        }
+    });
+}
+
+function lmsPlaySpeakingDialogueSynced(dialogueLines) {
+    if (!Array.isArray(dialogueLines) || !dialogueLines.length) return;
+    stopLmsAudioPlayer(false);
+    const lines = dialogueLines.map(dl => ({
+        speaker: String(dl?.speaker || "Speaker").trim(),
+        text: String(dl?.text || dl || "").trim(),
+        translationVi: ""
+    })).filter(l => l.text);
+    lmsAudioState.lessonId = "speaking-dialogue";
+    lmsAudioState.mode = "tts";
+    lmsAudioState.lines = lines;
+    const { segs, totalDur } = lmsComputeTtsSegments(lines, lmsAudioState.rate);
+    lmsAudioState.segments = segs;
+    lmsAudioState.totalDur = totalDur;
+    lmsTtsStartFromIndex(0);
+}
+
+function lmsResolveCleanMcqAnswer(opts, rawAns) {
+    const ans = String(rawAns || "").trim();
+    if (!Array.isArray(opts) || !opts.length) return ans;
+    const exact = opts.find(o => o.toLowerCase() === ans.toLowerCase());
+    if (exact) return exact;
+    if (/^[A-Da-d]$/.test(ans)) {
+        const idx = ans.toUpperCase().charCodeAt(0) - 65;
+        if (opts[idx]) return opts[idx];
+    }
+    const letterPref = ans.match(/^([A-Da-d])[\.\)\:\-]\s*(.+)$/);
+    if (letterPref) {
+        const byBody = opts.find(o => o.toLowerCase() === letterPref[2].trim().toLowerCase());
+        const byIdx = opts[letterPref[1].toUpperCase().charCodeAt(0) - 65];
+        if (byBody || byIdx) return byBody || byIdx;
+    }
+    const partial = opts.find(o => ans && (o.toLowerCase().includes(ans.toLowerCase()) || ans.toLowerCase().includes(o.toLowerCase())));
+    return partial || opts[0];
+}
 
 /* ==================== 1. NORMALIZE COURSE INTO MULTI-LEVEL UNITS ==================== */
 function ensureCourseUnitsNormalized(course) {
@@ -245,12 +667,14 @@ function lmsGetLesson(unit, skillKey, lessonId) {
 }
 
 function lmsGoUnits() {
+    stopLmsAudioPlayer(false);
     pdfLmsUi.level = "units";
     pdfLmsUi.showingResultAttemptId = null;
     renderPdfStudioPage();
 }
 
 function lmsOpenUnit(unitId) {
+    stopLmsAudioPlayer(false);
     pdfLmsUi.level = "unit_skills";
     pdfLmsUi.unitId = unitId;
     pdfLmsUi.skillKey = null;
@@ -260,6 +684,7 @@ function lmsOpenUnit(unitId) {
 }
 
 function lmsOpenSkill(unitId, skillKey) {
+    stopLmsAudioPlayer(false);
     pdfLmsUi.level = "skill_lessons";
     pdfLmsUi.unitId = unitId;
     pdfLmsUi.skillKey = skillKey;
@@ -269,6 +694,7 @@ function lmsOpenSkill(unitId, skillKey) {
 }
 
 function lmsOpenLesson(unitId, skillKey, lessonId, practiceSetId = "original") {
+    stopLmsAudioPlayer(false);
     pdfLmsUi.level = "lesson";
     pdfLmsUi.unitId = unitId;
     pdfLmsUi.skillKey = skillKey;
@@ -780,9 +1206,8 @@ async function lmsGenerateAiPracticeForLesson(unitId, skillKey, lessonId) {
         const nextNum = (ls.aiPracticeSets || []).length + 1;
         const cleanQs = (Array.isArray(d.questions) ? d.questions : []).map((q, idx) => {
             let opts = Array.isArray(q.options) ? q.options.map(o => String(o || "").trim()).filter(Boolean) : [];
-            let ans = String(q.answer || "").trim();
             if (String(q.type || "").toLowerCase() === "tfng" && opts.length < 2) opts = ["True", "False", "Not Given"];
-            if (opts.length && ans && !opts.some(o => o.toLowerCase() === ans.toLowerCase())) opts[0] = ans;
+            const ans = lmsResolveCleanMcqAnswer(opts, q.answer);
             return {
                 id: `aiq-${Date.now().toString(36)}-${idx}`,
                 type: String(q.type || "mcq").toLowerCase(),
@@ -836,6 +1261,187 @@ async function lmsGenerateAiPracticeForLesson(unitId, skillKey, lessonId) {
         showToast(`✨ Đã tạo "${practiceSet.label}" (${cleanQs.length || practiceSet.writingTasks.length || practiceSet.speakingTasks.length} bài mới) lưu ngay trong "${ls.title}"!`);
     } finally {
         pdfLmsUi.aiGenBusy = false;
+        renderPdfStudioPage();
+    }
+}
+
+/* ==================== 6B. QCHINESE-STYLE "AI – GENERATE EXERCISE N" FOR ALL 6 SKILLS ==================== */
+async function lmsGenerateNewSkillExercise(unitId, skillKey) {
+    if (pdfLmsUi.aiExerciseBusy) return;
+    const course = getActivePdfCourse();
+    const u = lmsGetUnit(course, unitId);
+    if (!course || !u) return;
+
+    const list = u.skills?.[skillKey] || [];
+    const nextNum = list.length + 1;
+    const doc = getPdfDocumentById(course.docId);
+
+    // Collect REAL PDF page excerpts belonging to this Unit so AI reads the actual uploaded textbook!
+    const excerptParts = [];
+    if (doc && doc.pageExcerpts && typeof doc.pageExcerpts === "object") {
+        const pStart = Math.max(1, Number(u.pageStart) || 1);
+        const pEnd = Math.max(pStart, Number(u.pageEnd) || pStart);
+        for (let p = pStart; p <= Math.min(pEnd, pStart + 12); p++) {
+            const txt = doc.pageExcerpts[String(p)];
+            if (txt) excerptParts.push(`[Page ${p}]\n${String(txt).slice(0, 850)}`);
+        }
+    }
+    if (!excerptParts.length && u.summaryVi) excerptParts.push(u.summaryVi);
+
+    const unitVocab = (u.skills?.vocabulary || []).flatMap(vl => (vl.words || []).map(w => ({ term: w.term, meaningVi: w.meaningVi }))).slice(0, 24);
+    const unitGrammar = (u.skills?.grammar || []).map(gl => ({ title: gl.title, formula: gl.formula, ruleVi: (gl.ruleVi || "").slice(0, 140) })).slice(0, 10);
+    const existingTitles = list.map(l => l.title).filter(Boolean);
+
+    const rawFocus = String(pdfLmsUi.aiExerciseFocus || "").trim();
+    let sourceStyle = pdfLmsUi.aiExerciseStyle || "pdf_press";
+    let externalArticleText = "";
+    let customFocus = rawFocus;
+
+    pdfLmsUi.aiExerciseBusy = true;
+    renderPdfStudioPage();
+
+    try {
+        // If learner pasted an international news / web learning URL, safely extract it first via Backend SSRF-protected scraper!
+        if (/^https?:\/\//i.test(rawFocus)) {
+            showToast("🌐 Đang đọc nội dung bài báo/web nguồn để AI biến thành bài tập...");
+            const extRes = await AIClient.request("extract-url", { url: rawFocus });
+            if (extRes && extRes.ok && extRes.data?.extractedText) {
+                externalArticleText = `Source URL: ${extRes.data.url}\nTitle: ${extRes.data.title}\n\n${extRes.data.extractedText}`;
+                sourceStyle = "custom_url";
+                customFocus = extRes.data.title || rawFocus;
+            } else {
+                showToast("⚠️ Không đọc trực tiếp được link web này (" + (extRes?.error || "Bị chặn") + "). AI sẽ tạo bài theo chủ đề PDF Unit!", "warning");
+            }
+        }
+
+        const skillLabel = (LMS_SKILLS_META.find(s => s.key === skillKey)?.label) || skillKey;
+        showToast(`✨ AI đang tạo Exercise ${nextNum} (${skillLabel}) từ tài liệu PDF & nguồn học thuật...`);
+
+        const res = await AIClient.request("pdf-generate-skill-exercise", {
+            skill: skillKey,
+            unitTitle: u.title,
+            courseTitle: course.title,
+            level: course.level || "B1",
+            exerciseNumber: nextNum,
+            sourceStyle,
+            sourcePage: u.pageStart || 1,
+            pdfExcerpts: excerptParts.join("\n\n").slice(0, 9500),
+            externalArticleText,
+            unitVocab,
+            unitGrammar,
+            existingTitles,
+            customFocus
+        });
+
+        if (!res || !res.ok || !res.data) {
+            showToast("Không tạo được bài học mới bằng AI: " + (res?.error || "Vui lòng kiểm tra kết nối AI Backend."), "error");
+            return;
+        }
+
+        const d = res.data;
+        const cleanQs = (Array.isArray(d.questions) ? d.questions : []).map((q, idx) => {
+            if (typeof q === "string") return q.trim();
+            if (!q || typeof q !== "object") return null;
+            let opts = Array.isArray(q.options) ? q.options.map(o => String(o || "").trim()).filter(Boolean) : [];
+            if (String(q.type || "").toLowerCase() === "tfng" && opts.length < 2) opts = ["True", "False", "Not Given"];
+            const ans = lmsResolveCleanMcqAnswer(opts, q.answer);
+            return {
+                id: `aiexq-${Date.now().toString(36)}-${idx}`,
+                type: String(q.type || (opts.length ? "mcq" : "fill_blank")).toLowerCase(),
+                question: String(q.question || "").trim(),
+                options: opts,
+                answer: ans || (opts[0] || ""),
+                acceptableAnswers: Array.isArray(q.acceptableAnswers) ? q.acceptableAnswers : [],
+                explanationVi: String(q.explanationVi || q.explanation || "").trim(),
+                evidenceQuote: String(q.evidenceQuote || "").trim(),
+                topicTag: String(q.topicTag || d.title || u.title).trim(),
+                sourcePage: Number(q.sourcePage) || u.pageStart || 1,
+                sourceType: "ai_generated_from_pdf",
+                contentOrigin: "AI_GENERATED"
+            };
+        }).filter(q => (typeof q === "string" ? Boolean(q) : Boolean(q && q.question)));
+
+        const baseLesson = {
+            id: `ls-ai-${skillKey}-${Date.now().toString(36)}`,
+            order: list.length,
+            skill: skillKey,
+            extraSkills: [],
+            title: String(d.title || `Exercise ${nextNum} — ${skillLabel} (${u.title})`).trim(),
+            sourceTag: String(d.sourceTag || "✨ AI • PDF Unit + International Source").trim(),
+            level: String(d.level || course.level || "B1"),
+            sourcePage: Number(d.sourcePage) || u.pageStart || 1,
+            contentOrigin: "AI_GENERATED",
+            sourceType: "ai_generated_from_pdf",
+            aiPracticeSets: [],
+            createdAt: new Date().toISOString()
+        };
+
+        if (skillKey === "reading") {
+            baseLesson.passage = String(d.passage || "").trim();
+            baseLesson.keyVocab = Array.isArray(d.keyVocab) ? d.keyVocab : [];
+            baseLesson.questions = cleanQs.filter(q => typeof q === "object");
+        } else if (skillKey === "listening") {
+            const tLines = Array.isArray(d.transcriptLines) && d.transcriptLines.length
+                ? d.transcriptLines.map(ln => ({
+                    speaker: String(ln?.speaker || "").trim(),
+                    text: String(ln?.text || ln || "").trim(),
+                    translationVi: String(ln?.translationVi || "").trim()
+                })).filter(ln => ln.text)
+                : [];
+            baseLesson.mode = "transcript_only";
+            baseLesson.transcriptLines = tLines;
+            baseLesson.transcript = String(d.transcript || tLines.map(l => l.speaker ? `${l.speaker}: ${l.text}` : l.text).join("\n")).trim();
+            baseLesson.questions = cleanQs.filter(q => typeof q === "object");
+        } else if (skillKey === "writing") {
+            baseLesson.taskType = String(d.taskType || "paragraph");
+            baseLesson.promptVi = String(d.promptVi || "").trim();
+            baseLesson.promptEn = String(d.promptEn || "").trim();
+            baseLesson.sourceTextVi = String(d.sourceTextVi || "").trim();
+            baseLesson.targetStructures = Array.isArray(d.targetStructures) ? d.targetStructures : [];
+            baseLesson.keyVocab = Array.isArray(d.keyVocab) ? d.keyVocab : [];
+            baseLesson.modelAnswer = String(d.modelAnswer || "").trim();
+        } else if (skillKey === "speaking") {
+            baseLesson.taskType = String(d.taskType || "dialogue");
+            baseLesson.scenarioVi = String(d.scenarioVi || "").trim();
+            baseLesson.dialogueLines = Array.isArray(d.dialogueLines)
+                ? d.dialogueLines.map(dl => ({ speaker: String(dl?.speaker || "Speaker").trim(), text: String(dl?.text || dl || "").trim() })).filter(dl => dl.text)
+                : [];
+            baseLesson.questions = cleanQs.map(q => (typeof q === "string" ? q : q.question)).filter(Boolean);
+            baseLesson.suggestedVocab = Array.isArray(d.suggestedVocab) ? d.suggestedVocab : [];
+            baseLesson.usefulExpressions = Array.isArray(d.usefulExpressions) ? d.usefulExpressions : [];
+            baseLesson.modelResponse = String(d.modelResponse || "").trim();
+        } else if (skillKey === "vocabulary") {
+            baseLesson.words = (Array.isArray(d.words) ? d.words : []).map((w, wi) => ({
+                id: `aiv-${Date.now().toString(36)}-${wi}`,
+                term: String(w?.term || "").trim(),
+                ipa: String(w?.ipa || "").trim(),
+                pos: String(w?.pos || "").trim(),
+                meaningVi: String(w?.meaningVi || "").trim(),
+                example: String(w?.example || "").trim(),
+                collocations: Array.isArray(w?.collocations) ? w.collocations : [],
+                level: String(w?.level || baseLesson.level),
+                sourcePage: Number(w?.sourcePage) || baseLesson.sourcePage,
+                chapterTitle: u.title
+            })).filter(w => w.term);
+            baseLesson.questions = cleanQs.filter(q => typeof q === "object");
+        } else {
+            baseLesson.ruleVi = String(d.ruleVi || "").trim();
+            baseLesson.formula = String(d.formula || "").trim();
+            baseLesson.examples = Array.isArray(d.examples) ? d.examples : [];
+            baseLesson.commonMistakesVi = Array.isArray(d.commonMistakesVi) ? d.commonMistakesVi : [];
+            baseLesson.questions = cleanQs.filter(q => typeof q === "object");
+        }
+
+        u.skills[skillKey].push(baseLesson);
+        course.updatedAt = new Date().toISOString();
+        savePdfStudioState();
+        if (typeof CloudClient !== "undefined" && CloudClient.isCloudMode()) CloudClient.syncNow();
+
+        pdfLmsUi.aiExerciseFocus = "";
+        showToast(`🎉 AI đã tạo xong "${baseLesson.title}"! Đang mở bài học...`);
+        lmsOpenLesson(u.id, skillKey, baseLesson.id, "original");
+    } finally {
+        pdfLmsUi.aiExerciseBusy = false;
         renderPdfStudioPage();
     }
 }
@@ -1245,10 +1851,13 @@ function renderLmsReadingSplitWorkspace(course, u, ls) {
 }
 
 function renderLmsQuestionBasedWorkspace(course, u, ls, skillKey) {
-    // Shared rich layout for Listening (with Cloud MP3 player) & Grammar (with theory/formula)
+    // Shared rich layout for Listening (Cloud MP3 + Full Interactive Synced TTS Player), Vocabulary AI Quiz & Grammar
     const qs = lmsGetActiveQuestions(ls, pdfLmsUi.practiceSetId);
     const draft = lmsGetSavedDraft(course, ls.id, pdfLmsUi.practiceSetId);
     const answered = qs.filter(q => String(draft[q.id] || "").trim() !== "").length;
+    const activePs = pdfLmsUi.practiceSetId !== "original"
+        ? (ls.aiPracticeSets || []).find(p => p.id === pdfLmsUi.practiceSetId)
+        : null;
 
     let topMaterialHtml = "";
     if (skillKey === "listening") {
@@ -1257,10 +1866,56 @@ function renderLmsQuestionBasedWorkspace(course, u, ls, skillKey) {
         const cloudPath = String(ls.audioStoragePath || "").trim();
         const hasRealAudio = Boolean(blobUrl || cloudPath);
         const audioElId = `pdf-audio-${ls.id}`;
+        lmsInitAudioStateForLesson(ls, hasRealAudio);
+        const tLines = lmsAudioState.lines;
+        const hasViTrans = tLines.some(l => Boolean(l.translationVi));
+        if (hasRealAudio) {
+            setTimeout(() => lmsBindMp3TranscriptSync(audioElId), 80);
+        }
+
+        const transcriptRowsHtml = tLines.length ? `
+            <div class="p-4 rounded-2xl bg-slate-950/90 border border-cyan-500/25 space-y-2.5 text-xs">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <button type="button" onclick="pdfLmsUi.transcriptOpen=!pdfLmsUi.transcriptOpen; renderPdfStudioPage();" class="font-extrabold text-cyan-300 hover:text-white flex items-center gap-1.5">
+                        <span>${pdfLmsUi.transcriptOpen ? "▾" : "▸"} 📜 Phụ đề tương tác (${tLines.length} câu — bấm bất kỳ câu nào để nghe)</span>
+                    </button>
+                    ${hasViTrans && pdfLmsUi.transcriptOpen ? `
+                        <button type="button" onclick="pdfLmsUi.showTranscriptVi=!pdfLmsUi.showTranscriptVi; renderPdfStudioPage();" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] font-bold text-slate-300">
+                            ${pdfLmsUi.showTranscriptVi ? "🇻🇳 Ẩn dịch Việt" : "🇻🇳 Hiện dịch Việt"}
+                        </button>
+                    ` : ""}
+                </div>
+                ${pdfLmsUi.transcriptOpen ? `
+                    <div class="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                        ${tLines.map((ln, idx) => {
+                            const isActive = idx === lmsAudioState.currentIdx;
+                            return `
+                                <div data-lms-trow="${idx}" onclick="lmsJumpToTranscriptLine(${idx}, '${hasRealAudio ? audioElId : ""}')" class="cursor-pointer p-2.5 rounded-xl border transition-all duration-200 ${isActive ? "border-cyan-400 bg-cyan-500/20 shadow-[0_0_20px_rgba(34,211,238,0.28)] ring-1 ring-cyan-400/60" : "border-white/5 bg-slate-900/70 hover:border-cyan-500/40 hover:bg-slate-900"}">
+                                    <div class="flex items-start gap-2">
+                                        <span class="lms-trow-playing-dot ${isActive ? "" : "hidden"} text-cyan-300 animate-pulse shrink-0">🔊</span>
+                                        <span class="text-[10px] font-mono text-slate-500 shrink-0 mt-0.5">${idx + 1}.</span>
+                                        <div class="flex-1 min-w-0 space-y-0.5">
+                                            <p class="text-slate-100 leading-relaxed">
+                                                ${ln.speaker ? `<strong class="text-emerald-300 mr-1">${escHtml(ln.speaker)}:</strong>` : ""}${escHtml(ln.text)}
+                                            </p>
+                                            ${pdfLmsUi.showTranscriptVi && ln.translationVi ? `<p class="text-[11px] text-slate-400 italic">${escHtml(ln.translationVi)}</p>` : ""}
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join("")}
+                    </div>
+                ` : ""}
+            </div>
+        ` : "";
+
         topMaterialHtml = `
             <div class="p-5 rounded-3xl bg-slate-900/90 border border-emerald-500/30 space-y-3.5">
                 <div class="flex flex-wrap items-center justify-between gap-2">
-                    <h3 class="text-base md:text-lg font-black text-white">🎧 ${escHtml(ls.title)}</h3>
+                    <div>
+                        ${ls.sourceTag ? `<span class="text-[10px] font-extrabold text-violet-300 uppercase">${escHtml(ls.sourceTag)}</span>` : ""}
+                        <h3 class="text-base md:text-lg font-black text-white">🎧 ${escHtml(ls.title)}</h3>
+                    </div>
                     <button onclick="openPdfSourcePage('${escHtml(course.docId)}', ${ls.sourcePage || 1})" class="px-3 py-1 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-xs font-bold">📖 Xem nguồn PDF (Tr.${ls.sourcePage || 1})</button>
                 </div>
                 ${hasRealAudio ? `
@@ -1275,22 +1930,74 @@ function renderLmsQuestionBasedWorkspace(course, u, ls, skillKey) {
                             <button type="button" onclick="setPdfAudioRate('${audioElId}', 0.75)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-white/10 text-cyan-300 font-bold">0.75x</button>
                             <button type="button" onclick="setPdfAudioRate('${audioElId}', 1.0)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-white/10 text-emerald-300 font-bold">1.0x</button>
                             <button type="button" onclick="setPdfAudioRate('${audioElId}', 1.25)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-white/10 text-violet-300 font-bold">1.25x</button>
+                            <button type="button" onclick="setPdfAudioRate('${audioElId}', 1.5)" class="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-white/10 text-amber-300 font-bold">1.5x</button>
                         </div>
                     </div>
                 ` : `
-                    <div class="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <div>
-                            <p class="font-extrabold text-amber-300">📝 Bài tập dựa trên Transcript trong PDF (chưa có file MP3 gốc)</p>
-                            <p class="text-slate-300">Hỗ trợ nghe đọc tách giọng bằng TTS trình duyệt.</p>
+                    <!-- FULL INTERACTIVE SENTENCE-SYNCED MULTI-VOICE TTS AUDIO PLAYER -->
+                    <div class="p-4 rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950/35 border border-cyan-500/35 space-y-3 text-xs">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <span class="font-extrabold text-cyan-300">🎧 Trình Phát Audio Tách Giọng Tương Tác (Đồng Bộ Phát Sáng Phụ Đề)</span>
+                            <span id="lms-tts-status" class="text-[11px] font-bold text-emerald-300">${lmsAudioState.isPlaying ? `🔊 Đang phát (${lmsAudioState.rate}x)` : `✅ Sẵn sàng • ${tLines.length} câu`}</span>
                         </div>
-                        <button data-speak="${escHtml((ls.transcript || "").slice(0, 1400))}" onclick="speakPdfDialogueMultiVoice(this)" class="px-3.5 py-2 rounded-xl bg-cyan-600 text-white font-extrabold">🔊 Nghe tách giọng TTS</button>
+
+                        <!-- Seekable Timeline Slider -->
+                        <div class="flex items-center gap-2.5">
+                            <span id="lms-tts-cur-time" class="font-mono text-[11px] text-cyan-300 w-10 shrink-0">${lmsFormatTimeSec(lmsAudioState.currentTime)}</span>
+                            <input id="lms-tts-seek" type="range" min="0" max="${Number(lmsAudioState.totalDur.toFixed(2))}" step="0.1" value="${Number(lmsAudioState.currentTime.toFixed(2))}" oninput="lmsTtsSeekInput(this.value)" onchange="lmsTtsSeekCommit(this.value)" class="flex-1 accent-cyan-400 cursor-pointer">
+                            <span id="lms-tts-dur-time" class="font-mono text-[11px] text-slate-400 w-10 text-right shrink-0">${lmsFormatTimeSec(lmsAudioState.totalDur)}</span>
+                        </div>
+
+                        <!-- Playback, Speed & Volume Controls -->
+                        <div class="flex flex-wrap items-center justify-between gap-2.5">
+                            <div class="flex flex-wrap items-center gap-1.5">
+                                <button id="lms-tts-play-btn" type="button" onclick="lmsTtsTogglePlay()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-emerald-600 hover:opacity-95 text-white font-extrabold shadow">${lmsAudioState.isPlaying ? "⏸ Tạm dừng" : "▶ Phát Audio"}</button>
+                                <button type="button" onclick="lmsTtsStep(-1)" title="Câu trước" class="px-2.5 py-2 rounded-xl bg-slate-950 border border-white/10 hover:border-cyan-400 text-slate-200 font-bold">⏮ Câu trước</button>
+                                <button type="button" onclick="lmsTtsRewind5()" title="Tua lùi 5 giây" class="px-2.5 py-2 rounded-xl bg-slate-950 border border-white/10 hover:border-cyan-400 text-slate-200 font-bold">⏪ -5s</button>
+                                <button type="button" onclick="lmsTtsStep(1)" title="Câu tiếp theo" class="px-2.5 py-2 rounded-xl bg-slate-950 border border-white/10 hover:border-cyan-400 text-slate-200 font-bold">⏭ Câu tiếp</button>
+                                <button type="button" onclick="lmsTtsRestart()" title="Phát lại từ đầu" class="px-2.5 py-2 rounded-xl bg-slate-950 border border-white/10 hover:border-cyan-400 text-cyan-300 font-bold">↻</button>
+                            </div>
+
+                            <div class="flex flex-wrap items-center gap-2">
+                                <div class="flex items-center gap-1">
+                                    ${[0.75, 1.0, 1.25, 1.5].map(r => `
+                                        <button type="button" data-lms-rate="${r}" onclick="lmsTtsSetRate(${r})" class="px-2 py-1 rounded-lg border text-[11px] font-bold transition ${Math.abs(r - lmsAudioState.rate) < 0.01 ? "bg-cyan-500/25 border-cyan-400 text-white" : "bg-slate-950 border-white/10 text-slate-300 hover:text-white"}">${r}x</button>
+                                    `).join("")}
+                                </div>
+                                <div class="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-xl border border-white/10">
+                                    <button id="lms-tts-mute-btn" type="button" onclick="lmsTtsToggleMute()" class="text-sm">${lmsAudioState.muted ? "🔇" : "🔊"}</button>
+                                    <input id="lms-tts-vol" type="range" min="0" max="1" step="0.05" value="${lmsAudioState.muted ? 0 : lmsAudioState.volume}" oninput="lmsTtsSetVolume(this.value)" class="w-16 accent-emerald-400 cursor-pointer" title="Âm lượng">
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 `}
-                ${ls.transcript ? `
-                    <details class="p-3.5 rounded-2xl bg-slate-950/85 border border-white/10 text-xs">
-                        <summary class="cursor-pointer font-bold text-slate-300">📜 Xem / Ẩn Transcript gốc từ PDF</summary>
-                        <p class="mt-2.5 text-slate-200 whitespace-pre-wrap leading-relaxed">${escHtml(ls.transcript)}</p>
-                    </details>
+                ${transcriptRowsHtml}
+            </div>
+        `;
+    } else if (skillKey === "vocabulary") {
+        // Proper Vocabulary AI Practice header + optional extra vocabCards (fixes Grammar header bug!)
+        const extraCards = Array.isArray(activePs?.vocabCards) ? activePs.vocabCards : [];
+        topMaterialHtml = `
+            <div class="p-5 rounded-3xl bg-slate-900/90 border border-indigo-500/30 space-y-3 text-xs">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <span class="text-[10px] font-extrabold text-indigo-300 uppercase">📖 VOCABULARY AI PRACTICE</span>
+                        <h3 class="text-base md:text-lg font-black text-white mt-0.5">${escHtml(activePs?.title || ls.title)}</h3>
+                    </div>
+                    <button onclick="openPdfSourcePage('${escHtml(course.docId)}', ${ls.sourcePage || 1})" class="px-3 py-1 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-bold">📖 Xem nguồn PDF (Tr.${ls.sourcePage || 1})</button>
+                </div>
+                ${activePs?.summaryVi ? `<p class="text-slate-300">${escHtml(activePs.summaryVi)}</p>` : ""}
+                ${extraCards.length ? `
+                    <div class="grid sm:grid-cols-2 gap-2.5 pt-1">
+                        ${extraCards.map(v => `
+                            <div class="p-3 rounded-xl bg-slate-950 border border-white/10 space-y-1">
+                                <button data-speak="${escHtml(v.term || "")}" onclick="handlePdfSpeakBtn(this)" class="font-black text-white hover:text-cyan-300 text-left">🔊 ${escHtml(v.term || "")} <span class="font-mono text-cyan-300 font-normal">${escHtml(v.ipa || "")}</span></button>
+                                <p class="text-emerald-300 font-bold">${escHtml(v.meaningVi || "")} ${v.pos ? `<span class="text-slate-400 font-normal">(${escHtml(v.pos)})</span>` : ""}</p>
+                                ${v.example ? `<p class="text-slate-400 italic text-[11px]">"${escHtml(v.example)}"</p>` : ""}
+                            </div>
+                        `).join("")}
+                    </div>
                 ` : ""}
             </div>
         `;
@@ -1299,7 +2006,10 @@ function renderLmsQuestionBasedWorkspace(course, u, ls, skillKey) {
         topMaterialHtml = `
             <div class="p-5 rounded-3xl bg-slate-900/90 border border-violet-500/30 space-y-3 text-xs">
                 <div class="flex flex-wrap items-center justify-between gap-2">
-                    <h3 class="text-base md:text-lg font-black text-white">📝 ${escHtml(ls.title)}</h3>
+                    <div>
+                        ${ls.sourceTag ? `<span class="text-[10px] font-extrabold text-violet-300 uppercase">${escHtml(ls.sourceTag)}</span>` : ""}
+                        <h3 class="text-base md:text-lg font-black text-white">📝 ${escHtml(ls.title)}</h3>
+                    </div>
                     <button onclick="openPdfSourcePage('${escHtml(course.docId)}', ${ls.sourcePage || 1})" class="px-3 py-1 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-bold">📖 Xem nguồn PDF (Tr.${ls.sourcePage || 1})</button>
                 </div>
                 ${ls.formula ? `<div class="p-3 rounded-xl bg-violet-500/15 border border-violet-500/35 font-mono text-violet-200 font-bold">📐 Công thức: ${escHtml(ls.formula)}</div>` : ""}
@@ -1366,15 +2076,28 @@ function renderLmsOpenSkillSplitWorkspace(course, u, ls, mode) {
                             ${t.promptEn ? `<div class="p-3 rounded-xl bg-slate-950 border border-white/10 text-cyan-200 italic">${escHtml(t.promptEn)}</div>` : ""}
                             ${t.sourceTextVi ? `<div class="p-3 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-100"><strong>Đoạn tiếng Việt cần dịch:</strong> ${escHtml(t.sourceTextVi)}</div>` : ""}
                             ${(t.dialogueLines || []).length ? `
-                                <div class="p-3 rounded-xl bg-slate-950 border border-white/10 space-y-1">
-                                    <p class="font-bold text-cyan-300">💬 Hội thoại mẫu:</p>
-                                    ${t.dialogueLines.map(dl => `<p class="text-slate-200"><strong class="text-violet-300">${escHtml(dl.speaker)}:</strong> ${escHtml(dl.text)} <button data-speak="${escHtml(dl.text)}" onclick="handlePdfSpeakBtn(this)" class="text-cyan-400 ml-1">🔊</button></p>`).join("")}
+                                <div class="p-3 rounded-xl bg-slate-950 border border-white/10 space-y-2">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <p class="font-bold text-cyan-300">💬 Hội thoại mẫu:</p>
+                                        <button type="button" onclick='lmsPlaySpeakingDialogueSynced(${JSON.stringify(t.dialogueLines)})' class="px-2.5 py-1 rounded-lg bg-cyan-600/25 hover:bg-cyan-600/40 border border-cyan-400/35 text-cyan-200 font-bold text-[11px]">🔊 Nghe cả hội thoại (phát sáng)</button>
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        ${t.dialogueLines.map((dl, di) => {
+                                            const spk = typeof dl === "object" ? (dl.speaker || "Speaker") : `Speaker ${di % 2 + 1}`;
+                                            const txt = typeof dl === "object" ? (dl.text || "") : String(dl || "");
+                                            return `<div data-lms-trow="${di}" class="p-2 rounded-lg border border-white/5 bg-slate-900/70 transition"><span class="lms-trow-playing-dot hidden text-cyan-300 mr-1">🔊</span><strong class="text-violet-300">${escHtml(spk)}:</strong> <span class="text-slate-200">${escHtml(txt)}</span> <button type="button" data-speak="${escHtml(txt)}" onclick="handlePdfSpeakBtn(this)" class="text-cyan-400 ml-1">🔊</button></div>`;
+                                        }).join("")}
+                                    </div>
                                 </div>
                             ` : ""}
                             ${(t.questions || []).length ? `
                                 <div class="space-y-1">
                                     <p class="font-bold text-emerald-300">🎤 Câu hỏi gợi ý:</p>
-                                    ${t.questions.map((q, qi) => `<p class="text-white">${qi + 1}. ${escHtml(q)} <button data-speak="${escHtml(q)}" onclick="handlePdfSpeakBtn(this)" class="text-cyan-400 ml-1">🔊</button></p>`).join("")}
+                                    ${t.questions.map((q, qi) => {
+                                        const qStr = typeof q === "string" ? q : String(q?.question || q?.text || "");
+                                        if (!qStr) return "";
+                                        return `<p class="text-white">${qi + 1}. ${escHtml(qStr)} <button type="button" data-speak="${escHtml(qStr)}" onclick="handlePdfSpeakBtn(this)" class="text-cyan-400 ml-1">🔊</button></p>`;
+                                    }).join("")}
                                 </div>
                             ` : ""}
                             ${(t.targetStructures || t.usefulExpressions || []).length ? `<div class="flex flex-wrap gap-1.5">${(t.targetStructures || t.usefulExpressions).map(s => `<span class="px-2 py-0.5 rounded-lg bg-violet-500/15 text-violet-300 font-bold">📐 ${escHtml(s)}</span>`).join("")}</div>` : ""}
@@ -1405,19 +2128,24 @@ function renderLmsOpenSkillSplitWorkspace(course, u, ls, mode) {
 }
 
 function renderLmsVocabularyLessonWorkspace(course, u, ls) {
-    // If an AI Practice set is selected, run the multi-question quiz; otherwise show Flashcards + Word Table + SRS Push!
+    // If an AI Practice set is selected, run the multi-question quiz; otherwise show Flashcards + Word Table + inline Quiz if AI generated!
     if (pdfLmsUi.practiceSetId !== "original") {
         return renderLmsQuestionBasedWorkspace(course, u, ls, "vocabulary");
     }
     const words = ls.words || [];
+    const qs = Array.isArray(ls.questions) ? ls.questions : [];
+    const draft = qs.length ? lmsGetSavedDraft(course, ls.id, "original") : {};
+    const answered = qs.filter(q => String(draft[q.id] || "").trim() !== "").length;
+
     return `
         <div class="space-y-4">
             ${renderLmsPracticeSetSwitcher(u, ls)}
             <div class="p-5 rounded-3xl bg-slate-900/90 border border-indigo-500/30 space-y-4">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <div>
+                        ${ls.sourceTag ? `<span class="text-[10px] font-extrabold text-violet-300 uppercase">${escHtml(ls.sourceTag)}</span>` : ""}
                         <h3 class="text-base md:text-lg font-black text-white">📖 ${escHtml(ls.title)}</h3>
-                        <p class="text-xs text-slate-400">Nghe phát âm, đánh dấu từ đã nhớ, đẩy vào hệ thống SRS QEnglish hoặc tạo thêm bài kiểm tra từ vựng bằng AI.</p>
+                        <p class="text-xs text-slate-400">Nghe phát âm, đánh dấu từ đã nhớ, đẩy vào hệ thống SRS QEnglish hoặc làm bài kiểm tra từ vựng ngay bên dưới.</p>
                     </div>
                     <button onclick="pushPdfVocabToMainSRS()" class="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 text-xs font-extrabold">➕ Đẩy vào Kho Từ Vựng SRS QEnglish</button>
                 </div>
@@ -1441,6 +2169,21 @@ function renderLmsVocabularyLessonWorkspace(course, u, ls) {
                     }).join("")}
                 </div>
             </div>
+            ${qs.length ? `
+                <div class="p-5 rounded-3xl bg-slate-900/90 border border-white/10 space-y-4">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <h4 class="text-sm font-extrabold text-white">🎯 Bài kiểm tra vận dụng từ vựng (${qs.length} câu)</h4>
+                        <span id="lms-answered-counter" class="text-xs font-extrabold text-emerald-300">Đã trả lời: ${answered}/${qs.length} • Chưa làm: ${Math.max(0, qs.length - answered)}</span>
+                    </div>
+                    <div class="space-y-3">
+                        ${qs.map((q, idx) => renderLmsQuestionCardHtml(q, idx, qs.length, ls.id, "original", draft[q.id], course.docId)).join("")}
+                    </div>
+                    <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10">
+                        <button type="button" onclick="lmsSaveLessonProgressManual()" class="px-4 py-2.5 rounded-xl bg-white/5 border border-white/15 text-cyan-300 text-xs font-extrabold">💾 Lưu tiến độ</button>
+                        <button type="button" onclick="lmsSubmitQuestionLesson('${u.id}','vocabulary','${ls.id}','original')" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs md:text-sm font-extrabold shadow-lg">✅ Nộp bài & Chấm điểm</button>
+                    </div>
+                </div>
+            ` : ""}
             ${renderLmsAiPracticeGeneratorBar(u, ls)}
         </div>
     `;
@@ -1621,8 +2364,23 @@ function renderLmsCourseWorkspace(course, folders) {
                             <option value="todo" ${pdfLmsUi.statusFilter === "todo" ? "selected" : ""}>⏳ Chưa hoàn thành</option>
                             <option value="done" ${pdfLmsUi.statusFilter === "done" ? "selected" : ""}>✅ Đã hoàn thành</option>
                         </select>
-                        <button onclick="lmsAddManualLesson('${activeUnit.id}','${activeSkillMeta.key}')" class="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-slate-200 font-bold">➕ Thêm bài học</button>
+                        <button id="lms-ai-gen-exercise-btn" type="button" onclick="lmsGenerateNewSkillExercise('${activeUnit.id}','${activeSkillMeta.key}')" ${pdfLmsUi.aiExerciseBusy ? "disabled" : ""} class="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-95 text-white font-extrabold shadow-lg disabled:opacity-60">
+                            ${pdfLmsUi.aiExerciseBusy ? `⏳ AI đang tạo Exercise ${list.length + 1}...` : `✨ AI – Generate Exercise ${list.length + 1}`}
+                        </button>
+                        <button onclick="lmsAddManualLesson('${activeUnit.id}','${activeSkillMeta.key}')" class="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-slate-200 font-bold">➕ Thêm thủ công</button>
                     </div>
+                </div>
+
+                <!-- QChinese-inspired AI Exercise Source Bar (PDF Textbook + International Press + Web Article URL) -->
+                <div class="p-3.5 rounded-2xl bg-emerald-950/25 border border-emerald-500/25 flex flex-wrap items-center gap-2.5 text-xs">
+                    <span class="font-extrabold text-emerald-300 shrink-0">🌐 Nguồn AI tạo Exercise ${list.length + 1}:</span>
+                    <select onchange="pdfLmsUi.aiExerciseStyle=this.value;" class="bg-slate-950 border border-white/15 rounded-xl px-3 py-1.5 text-cyan-300 font-bold">
+                        <option value="pdf_press" ${pdfLmsUi.aiExerciseStyle === "pdf_press" ? "selected" : ""}>📰 PDF Unit + Báo chí quốc tế (BBC / NatGeo / Guardian)</option>
+                        <option value="pdf_deep" ${pdfLmsUi.aiExerciseStyle === "pdf_deep" ? "selected" : ""}>📖 Chuyên sâu từ giáo trình PDF đã tải</option>
+                        <option value="ielts_academic" ${pdfLmsUi.aiExerciseStyle === "ielts_academic" ? "selected" : ""}>🎓 Chuẩn IELTS / Học thuật</option>
+                        <option value="custom_url" ${pdfLmsUi.aiExerciseStyle === "custom_url" ? "selected" : ""}>🔗 Biến link bài báo URL thành bài tập</option>
+                    </select>
+                    <input type="text" value="${escHtml(pdfLmsUi.aiExerciseFocus || "")}" oninput="pdfLmsUi.aiExerciseFocus=this.value;" placeholder="Tùy chọn: nhập chủ đề hoặc dán link bài báo (https://...) — bỏ trống để AI tự đọc PDF Unit này" class="flex-1 min-w-[220px] bg-slate-950 border border-white/15 rounded-xl px-3 py-1.5 text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400">
                 </div>
 
                 ${filtered.length ? `

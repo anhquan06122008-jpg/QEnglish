@@ -77,6 +77,7 @@ function navigateTo(page, subTab = null) {
 
     // Stop any stray background audio/timers when switching pages
     if (typeof listeningStopAudio === "function") listeningStopAudio();
+    if (typeof stopLmsAudioPlayer === "function") stopLmsAudioPlayer(false);
     if (typeof stopActiveSpeakingCapture === "function") stopActiveSpeakingCapture();
     if (typeof stopSpeech === "function") stopSpeech();
     if (typeof fullTestTimerId !== "undefined") clearInterval(fullTestTimerId);

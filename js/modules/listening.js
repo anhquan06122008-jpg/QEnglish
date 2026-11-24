@@ -118,10 +118,14 @@ function getResolvedAudioUrl(ex) {
     return String(sess || ex.audioUrl || "").trim();
 }
 
+let listeningLiveSubOpen = true;
+
 function renderAudioPlayerControls(ex, singleSentenceMode = false) {
     const resolvedUrl = getResolvedAudioUrl(ex);
     const hasExternalUrl = Boolean(resolvedUrl);
-    const hasTranscript = Boolean(String(ex.audioText || ex.transcript || "").trim());
+    const sentences = getSentencesOfActiveListening();
+    const hasTranscript = Boolean(sentences.length || String(ex.audioText || ex.transcript || "").trim());
+    const tLines = Array.isArray(ex.transcriptLines) && ex.transcriptLines.length ? ex.transcriptLines : null;
     return `
         <div class="p-4 rounded-2xl bg-slate-950/90 border border-white/10 space-y-3">
             ${hasExternalUrl ? `
@@ -130,12 +134,19 @@ function renderAudioPlayerControls(ex, singleSentenceMode = false) {
                     ❗ Không truy cập được file audio (có thể file tạm của phiên trước đã hết hạn sau khi tải lại trang, mất mạng hoặc CORS). Hãy tải lại file âm thanh từ máy của bạn hoặc dùng transcript bên dưới.
                 </div>
             ` : ""}
+            ${!singleSentenceMode && sentences.length > 1 ? `
+                <div class="flex items-center gap-2.5 text-[11px]">
+                    <span id="listening-seek-label" class="font-mono text-cyan-300 shrink-0">Câu ${Math.min(sentences.length, listeningSentenceCursor + 1)}/${sentences.length}</span>
+                    <input id="listening-sentence-seek" type="range" min="0" max="${Math.max(0, sentences.length - 1)}" step="1" value="${Math.min(Math.max(0, sentences.length - 1), listeningSentenceCursor)}" oninput="listeningJumpToSentence(Number(this.value), false)" onchange="listeningJumpToSentence(Number(this.value), true)" class="flex-1 accent-cyan-400 cursor-pointer" title="Kéo để tua đến bất kỳ câu nào">
+                </div>
+            ` : ""}
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div class="flex flex-wrap items-center gap-2">
-                    <button onclick="listeningPlayAudio(${singleSentenceMode})" class="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold text-xs shadow-lg">▶ Phát Audio</button>
-                    <button onclick="listeningRewindAudio(${singleSentenceMode})" class="px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-slate-200 font-bold text-xs" title="Tua lại câu trước / đầu câu">⏪ Tua lại</button>
-                    <button onclick="listeningReplayAudio(${singleSentenceMode})" class="px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-cyan-300 font-bold text-xs">↻ Phát lại</button>
-                    <button onclick="listeningStopAudio()" class="px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-rose-300 font-bold text-xs">⏹ Dừng</button>
+                    <button id="listening-play-toggle-btn" onclick="listeningTogglePlay(${singleSentenceMode})" class="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold text-xs shadow-lg">${listeningIsPlaying ? "⏸ Tạm dừng" : "▶ Phát Audio"}</button>
+                    <button onclick="listeningRewindAudio(${singleSentenceMode})" class="px-3 py-2 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-slate-200 font-bold text-xs" title="Tua lại câu trước">⏮ Câu trước</button>
+                    ${!singleSentenceMode && sentences.length > 1 ? `<button onclick="listeningNextSentence()" class="px-3 py-2 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-slate-200 font-bold text-xs" title="Câu tiếp theo">⏭ Câu tiếp</button>` : ""}
+                    <button onclick="listeningReplayAudio(${singleSentenceMode})" class="px-3 py-2 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-cyan-300 font-bold text-xs">↻ Phát lại</button>
+                    <button onclick="listeningStopAudio()" class="px-3 py-2 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-rose-300 font-bold text-xs">⏹ Dừng</button>
                 </div>
                 <div class="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-white/10 text-xs">
                     <span class="text-slate-400 font-bold">Tốc độ nghe:</span>
@@ -152,12 +163,90 @@ function renderAudioPlayerControls(ex, singleSentenceMode = false) {
                 <span id="listening-player-status">${hasExternalUrl && !hasTranscript ? "Đang dùng trình phát tệp âm thanh gốc của bạn (không tự bịa transcript)" : "Sẵn sàng phát âm thanh (Web Speech API en-US)"}</span>
                 <div class="flex items-center gap-2">
                     <span id="listening-sentence-indicator"></span>
+                    ${!singleSentenceMode && sentences.length ? `<button type="button" onclick="toggleMainListeningLiveSubtitles()" class="px-2.5 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 font-bold">📜 Hiện/Ẩn Phụ Đề Phát Sáng</button>` : ""}
                     ${hasTranscript ? `<button onclick="runAIListeningCoach()" class="px-2.5 py-1 rounded-lg bg-violet-600/25 hover:bg-violet-600/40 border border-violet-400/30 text-violet-200 font-bold">🤖 AI Giải thích cụm từ khó</button>` : ""}
                 </div>
             </div>
+            ${!singleSentenceMode && sentences.length ? `
+                <div id="main-listening-live-subtitles" class="${listeningLiveSubOpen ? "" : "hidden"} pt-2 border-t border-white/10 space-y-1.5 max-h-56 overflow-y-auto pr-1 text-xs">
+                    ${sentences.map((s, idx) => {
+                        const viLine = tLines && tLines[idx]?.translationVi ? tLines[idx].translationVi : "";
+                        return `
+                            <div id="main-lis-trow-${idx}" data-main-lis-trow="${idx}" onclick="listeningJumpToSentence(${idx}, true)" class="cursor-pointer p-2.5 rounded-xl border border-white/5 bg-slate-900/70 hover:border-cyan-500/40 transition-all duration-200">
+                                <div class="flex items-start gap-2">
+                                    <span class="main-lis-dot hidden text-cyan-300 animate-pulse shrink-0">🔊</span>
+                                    <span class="text-[10px] font-mono text-slate-500 shrink-0 mt-0.5">${idx + 1}.</span>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-slate-200 leading-relaxed">${escHtml(s)}</p>
+                                        ${viLine ? `<p class="text-[11px] text-slate-400 italic mt-0.5">${escHtml(viLine)}</p>` : ""}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join("")}
+                </div>
+            ` : ""}
             <div id="listening-coach-output" class="hidden pt-1"></div>
         </div>
     `;
+}
+
+function toggleMainListeningLiveSubtitles() {
+    listeningLiveSubOpen = !listeningLiveSubOpen;
+    const box = document.getElementById("main-listening-live-subtitles");
+    if (box) box.classList.toggle("hidden", !listeningLiveSubOpen);
+}
+
+function highlightMainListeningSentence(activeIdx) {
+    const rows = document.querySelectorAll("[data-main-lis-trow]");
+    rows.forEach(row => {
+        const idx = Number(row.getAttribute("data-main-lis-trow"));
+        const isActive = idx === activeIdx;
+        row.classList.toggle("border-cyan-400", isActive);
+        row.classList.toggle("bg-cyan-500/20", isActive);
+        row.classList.toggle("shadow-[0_0_20px_rgba(34,211,238,0.28)]", isActive);
+        row.classList.toggle("ring-1", isActive);
+        row.classList.toggle("ring-cyan-400/60", isActive);
+        row.classList.toggle("border-white/5", !isActive);
+        row.classList.toggle("bg-slate-900/70", !isActive);
+        const dot = row.querySelector(".main-lis-dot");
+        if (dot) dot.classList.toggle("hidden", !isActive);
+        if (isActive) {
+            try { row.scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch {}
+        }
+    });
+    const seek = document.getElementById("listening-sentence-seek");
+    if (seek && activeIdx >= 0) seek.value = String(activeIdx);
+    const seekLbl = document.getElementById("listening-seek-label");
+    const total = getSentencesOfActiveListening().length;
+    if (seekLbl && total > 0) seekLbl.textContent = `Câu ${Math.max(1, Math.min(total, activeIdx + 1))}/${total}`;
+}
+
+function listeningTogglePlay(singleSentenceMode = false) {
+    if (listeningIsPlaying) {
+        listeningStopAudio();
+    } else {
+        listeningPlayAudio(singleSentenceMode);
+    }
+}
+
+function listeningJumpToSentence(idx, autoPlayNow = true) {
+    const sentences = getSentencesOfActiveListening();
+    if (!sentences.length) return;
+    const safeIdx = Math.max(0, Math.min(sentences.length - 1, idx));
+    listeningSentenceCursor = safeIdx;
+    highlightMainListeningSentence(safeIdx);
+    if (autoPlayNow) {
+        listeningIsPlaying = true;
+        playListeningSequenceFrom(safeIdx);
+    }
+}
+
+function listeningNextSentence() {
+    const sentences = getSentencesOfActiveListening();
+    if (!sentences.length) return;
+    const nextIdx = Math.min(sentences.length - 1, listeningSentenceCursor + 1);
+    listeningJumpToSentence(nextIdx, true);
 }
 
 function handleExternalAudioError() {
@@ -169,6 +258,9 @@ function changeListeningSpeed(val) {
     listeningSpeed = parseFloat(val) || 1.0;
     const extAudio = document.getElementById("ext-audio-el");
     if (extAudio) extAudio.playbackRate = listeningSpeed;
+    if (listeningIsPlaying) {
+        playListeningSequenceFrom(listeningSentenceCursor);
+    }
     showToast(`Tốc độ bài nghe: ${listeningSpeed}x`);
 }
 
@@ -216,17 +308,22 @@ function listeningPlayAudio(singleSentenceMode = false) {
 
 function playListeningSequenceFrom(startIdx) {
     const sentences = getSentencesOfActiveListening();
+    const toggleBtn = document.getElementById("listening-play-toggle-btn");
     if (!listeningIsPlaying || startIdx >= sentences.length) {
         listeningIsPlaying = false;
         listeningSentenceCursor = 0;
+        highlightMainListeningSentence(-1);
+        if (toggleBtn) toggleBtn.textContent = "▶ Phát Audio";
         const stEl = document.getElementById("listening-player-status");
         if (stEl) stEl.textContent = "✅ Đã phát hết đoạn nghe.";
         return;
     }
     listeningSentenceCursor = startIdx;
+    highlightMainListeningSentence(startIdx);
+    if (toggleBtn) toggleBtn.textContent = "⏸ Tạm dừng";
     const stEl = document.getElementById("listening-player-status");
     const indEl = document.getElementById("listening-sentence-indicator");
-    if (stEl) stEl.textContent = `🔊 Đang phát (${listeningSpeed}x)...`;
+    if (stEl) stEl.textContent = `🔊 Đang phát câu ${startIdx + 1}/${sentences.length} (${listeningSpeed}x)...`;
     if (indEl) indEl.textContent = `Câu ${startIdx + 1} / ${sentences.length}`;
 
     speakText(sentences[startIdx], listeningSpeed, () => {
@@ -260,6 +357,8 @@ function listeningStopAudio() {
     stopSpeech();
     const extAudio = document.getElementById("ext-audio-el");
     if (extAudio && !extAudio.paused) extAudio.pause();
+    const toggleBtn = document.getElementById("listening-play-toggle-btn");
+    if (toggleBtn) toggleBtn.textContent = "▶ Phát Audio";
     const stEl = document.getElementById("listening-player-status");
     if (stEl) stEl.textContent = "⏹ Đã dừng phát.";
 }
