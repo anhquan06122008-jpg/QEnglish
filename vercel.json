@@ -1,5 +1,10 @@
 {
   "cleanUrls": false,
+  "functions": {
+    "api/ai.js": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     {
       "source": "/api/health",

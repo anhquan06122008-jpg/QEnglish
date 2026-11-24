@@ -41,7 +41,7 @@ function getPublicConfig() {
         aiConfigured,
         aiProvider,
         aiModel: hasGemini
-            ? (process.env.GEMINI_MODEL || "gemini-flash-lite-latest")
+            ? (process.env.GEMINI_MODEL || "gemini-3.5-flash-lite")
             : (hasOpenAI ? (process.env.OPENAI_MODEL || "gpt-4o-mini") : null),
         authConfigured,
         supabaseUrl: authConfigured ? supabaseUrl : "",

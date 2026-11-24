@@ -740,17 +740,18 @@ function buildWritingEvaluationHTML(originalText, wordCount, r, evalMode) {
         <div class="p-5 sm:p-6 rounded-3xl bg-slate-950/95 border border-violet-500/35 space-y-6 text-xs">
             <!-- Honest AI / Source Banner -->
             <div class="p-4 rounded-2xl ${isAi ? "bg-violet-500/15 border-violet-500/30" : "bg-amber-500/10 border-amber-500/30"} border flex flex-wrap items-start justify-between gap-3">
-                <div class="space-y-1 max-w-3xl">
+                <div class="space-y-1.5 max-w-3xl">
                     <p class="font-extrabold text-sm ${isAi ? "text-violet-200" : "text-amber-300"}">
                         ${isAi
                             ? `🤖 Kết Quả Chấm Bài AI — ${escHtml(WRITING_MODE_LABELS[r.gradingMode] || r.gradingMode || "Thang 10")}`
-                            : "🛠️ Kiểm Tra Cục Bộ Cơ Bản (Chưa kết nối AI Server)"}
+                            : "🛠️ Kiểm Tra Cục Bộ Cơ Bản (AI Server đang bận hoặc chưa kết nối)"}
                     </p>
                     <p class="text-slate-300 leading-relaxed">
                         ${isAi
                             ? (r.modeAssessmentSummary ? escHtml(r.modeAssessmentSummary) : "⚠️ Lưu ý minh bạch: Điểm số thang 10, CEFR và IELTS Band là đánh giá tham khảo phục vụ học tập, không thay thế chứng chỉ thi chính thức.")
-                            : `${escHtml(r.offlineNotice)} Hệ thống KHÔNG tự bịa điểm AI 10/10 hay 3 bản viết lại khi Backend AI chưa kết nối. Hãy cấu hình GEMINI_API_KEY hoặc OPENAI_API_KEY trong Settings/Vercel để chấm sâu.`}
+                            : `${escHtml(r.offlineNotice)} Hệ thống KHÔNG tự bịa điểm AI 10/10 hay 3 bản viết lại khi chưa nhận phản hồi từ AI Backend.`}
                     </p>
+                    ${!isAi ? `<div class="pt-1"><button onclick="submitWriting()" class="px-3.5 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-extrabold transition shadow-md">🔄 Thử Chấm Lại Bằng AI</button></div>` : ""}
                 </div>
                 ${renderSourceBadge(isAi ? "ai-generated" : "local-browser")}
             </div>

@@ -10,7 +10,9 @@ const RATE_WINDOW_MS = 60 * 1000;
 const RATE_MAX_PER_MIN = parseInt(process.env.RATE_LIMIT_MAX_PER_MIN || "45", 10) || 45;
 const MAX_INPUT_CHARS = parseInt(process.env.AI_MAX_INPUT_CHARS || "26000", 10) || 26000;
 const MAX_OUTPUT_TOKENS = parseInt(process.env.AI_MAX_OUTPUT_TOKENS || "6400", 10) || 6400;
-const UPSTREAM_TIMEOUT_MS = 55000;
+const UPSTREAM_TIMEOUT_MS = 48000;
+const PER_ATTEMPT_HEAVY_MS = 20000;
+const PER_ATTEMPT_STANDARD_MS = 12000;
 
 function sanitizeUntrustedPdfText(raw, maxLen = 18000) {
     return String(raw || "")
@@ -36,7 +38,7 @@ function detectProvider() {
         return {
             configured: true,
             provider: "Google Gemini",
-            model: process.env.GEMINI_MODEL || "gemini-flash-lite-latest"
+            model: process.env.GEMINI_MODEL || "gemini-3.5-flash-lite"
         };
     }
     if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.trim()) {
@@ -133,6 +135,14 @@ function extractJSONFromText(raw) {
     }
 }
 
+function sleepMs(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function supportsMinimalThinkingLevel(modelName) {
+    return /^gemini-(3(\.\d+)?-flash|flash-lite-latest)/i.test(String(modelName || ""));
+}
+
 async function callLLMJson(systemInstruction, userPrompt, options = {}) {
     const info = detectProvider();
     if (!info.configured) {
@@ -143,85 +153,172 @@ async function callLLMJson(systemInstruction, userPrompt, options = {}) {
 
     const safePrompt = String(userPrompt || "").slice(0, MAX_INPUT_CHARS);
     const inlineImages = Array.isArray(options.inlineImages) ? options.inlineImages : [];
+    const hasAudio = inlineImages.some(img => /^audio\//i.test(String(img?.mimeType || "")));
     const maxTokens = Math.min(8192, Number(options.maxOutputTokens) || MAX_OUTPUT_TOKENS);
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), UPSTREAM_TIMEOUT_MS);
+    const deadline = Number(options._deadline) || (Date.now() + (Number(options.totalTimeoutMs) || UPSTREAM_TIMEOUT_MS));
+    const perAttemptBase = options.heavy ? PER_ATTEMPT_HEAVY_MS : PER_ATTEMPT_STANDARD_MS;
 
-    try {
-        if (info.provider === "Google Gemini") {
-            const apiKey = process.env.GEMINI_API_KEY.trim();
-            const modelChain = Array.from(new Set([
-                info.model,
-                "gemini-flash-lite-latest",
-                "gemini-3.5-flash-lite",
-                "gemini-3.1-flash-lite",
-                "gemini-3.8-flash"
-            ].filter(Boolean)));
-            // Include one quick retry of the primary working model on transient 503 spikes
-            if (info.model) modelChain.push(info.model);
+    if (info.provider === "Google Gemini") {
+        const apiKey = process.env.GEMINI_API_KEY.trim();
+        const primary = info.model || "gemini-3.5-flash-lite";
+        const baseChain = Array.from(new Set([
+            primary,
+            "gemini-3.5-flash-lite",
+            "gemini-flash-lite-latest",
+            "gemini-3.1-flash-lite",
+            ...(hasAudio ? [] : ["gemini-robotics-er-2-preview"]),
+            "gemini-3.1-flash-lite-preview",
+            "gemini-3.8-flash"
+        ].filter(Boolean)));
+        // Add a second pass of the two fastest low-quota-cost models to ride out transient 503 spikes
+        const attemptPlan = [...baseChain];
+        if (!attemptPlan.includes("gemini-3.5-flash-lite")) attemptPlan.push("gemini-3.5-flash-lite");
+        attemptPlan.push("gemini-3.5-flash-lite");
+        if (primary !== "gemini-3.5-flash-lite") attemptPlan.push(primary);
 
-            const userParts = [{ text: safePrompt }];
-            inlineImages.forEach(img => {
-                if (img && img.data && img.mimeType) {
-                    userParts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+        const userParts = [{ text: safePrompt }];
+        inlineImages.forEach(img => {
+            if (img && img.data && img.mimeType) {
+                userParts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+            }
+        });
+
+        let lastErr = null;
+        const triedCounts = new Map();
+
+        for (let idx = 0; idx < attemptPlan.length; idx++) {
+            const candidateModel = attemptPlan[idx];
+            const remaining = deadline - Date.now();
+            if (remaining < 3000) break;
+
+            const prevCount = triedCounts.get(candidateModel) || 0;
+            if (prevCount > 0 && remaining > 7000) {
+                await sleepMs(350);
+            }
+            triedCounts.set(candidateModel, prevCount + 1);
+
+            const executeOnce = async (useThinking) => {
+                const remNow = deadline - Date.now();
+                if (remNow < 2500) {
+                    const toErr = new Error("Yêu cầu tới nhà cung cấp AI vượt quá thời gian chờ.");
+                    toErr.name = "AbortError";
+                    toErr.statusCode = 504;
+                    throw toErr;
                 }
-            });
+                const attemptMs = Math.max(2500, Math.min(perAttemptBase, remNow - 300));
+                const ctrl = new AbortController();
+                const attemptTimer = setTimeout(() => ctrl.abort(), attemptMs);
+                try {
+                    const generationConfig = {
+                        temperature: typeof options.temperature === "number" ? options.temperature : 0.25,
+                        maxOutputTokens: maxTokens,
+                        responseMimeType: "application/json"
+                    };
+                    if (useThinking && supportsMinimalThinkingLevel(candidateModel)) {
+                        generationConfig.thinkingConfig = { thinkingLevel: "MINIMAL" };
+                    }
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(candidateModel)}:generateContent`;
+                    const resp = await fetch(url, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "x-goog-api-key": apiKey
+                        },
+                        body: JSON.stringify({
+                            systemInstruction: { parts: [{ text: systemInstruction }] },
+                            contents: [{ role: "user", parts: userParts }],
+                            generationConfig
+                        }),
+                        signal: ctrl.signal
+                    });
+                    const bodyJson = await resp.json().catch(() => ({}));
+                    return { ok: resp.ok, status: resp.status, bodyJson };
+                } finally {
+                    clearTimeout(attemptTimer);
+                }
+            };
 
-            let lastErr = null;
-            for (const candidateModel of modelChain) {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(candidateModel)}:generateContent`;
-                const resp = await fetch(url, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "x-goog-api-key": apiKey
-                    },
-                    body: JSON.stringify({
-                        systemInstruction: { parts: [{ text: systemInstruction }] },
-                        contents: [{ role: "user", parts: userParts }],
-                        generationConfig: {
-                            temperature: typeof options.temperature === "number" ? options.temperature : 0.25,
-                            maxOutputTokens: maxTokens,
-                            responseMimeType: "application/json"
-                        }
-                    }),
-                    signal: ctrl.signal
-                });
+            let outcome;
+            let useThinking = supportsMinimalThinkingLevel(candidateModel);
+            try {
+                outcome = await executeOnce(useThinking);
+                if (!outcome.ok && outcome.status === 400 && useThinking && /thinking/i.test(String(outcome.bodyJson?.error?.message || ""))) {
+                    useThinking = false;
+                    outcome = await executeOnce(false);
+                }
+            } catch (fetchErr) {
+                const isAbort = fetchErr && fetchErr.name === "AbortError";
+                lastErr = new Error(
+                    isAbort
+                        ? `Model ${candidateModel} phản hồi quá chậm (timeout), đang thử model dự phòng.`
+                        : `Lỗi kết nối tới Gemini (${candidateModel}): ${fetchErr.message || "network error"}`
+                );
+                lastErr.statusCode = isAbort ? 504 : 502;
+                lastErr.isUpstreamTimeout = isAbort;
+                continue;
+            }
 
-                if (resp.ok) {
-                    const data = await resp.json();
-                    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-                    try {
-                        const parsed = extractJSONFromText(text);
-                        clearTimeout(timer);
-                        return { provider: `${info.provider} (${candidateModel})`, result: parsed };
-                    } catch (parseErr) {
-                        // Retry once with strict low-temperature call if model returned malformed JSON
-                        if (!options._retriedJson) {
-                            clearTimeout(timer);
-                            return callLLMJson(systemInstruction + "\nCRITICAL: Output strictly valid RFC-8259 JSON with NO trailing commas and properly escaped quotes.", userPrompt, {
+            if (outcome.ok) {
+                const parts = outcome.bodyJson?.candidates?.[0]?.content?.parts || [];
+                const nonThoughtText = parts
+                    .filter(p => p && !p.thought && typeof p.text === "string")
+                    .map(p => p.text)
+                    .join("");
+                const text = nonThoughtText || parts[0]?.text || "{}";
+                try {
+                    const parsed = extractJSONFromText(text);
+                    return { provider: `${info.provider} (${candidateModel})`, result: parsed };
+                } catch (parseErr) {
+                    if (!options._retriedJson && (deadline - Date.now()) >= 10000) {
+                        return callLLMJson(
+                            systemInstruction + "\nCRITICAL: Output strictly valid RFC-8259 JSON with NO trailing commas and properly escaped quotes.",
+                            userPrompt,
+                            {
                                 ...options,
                                 temperature: 0.1,
-                                _retriedJson: true
-                            });
-                        }
-                        throw parseErr;
+                                _retriedJson: true,
+                                _deadline: deadline
+                            }
+                        );
                     }
-                }
-
-                const errBody = await resp.json().catch(() => ({}));
-                const errDetail = errBody?.error?.message || `HTTP ${resp.status}`;
-                lastErr = new Error(`Gemini upstream HTTP ${resp.status}: ${errDetail}`);
-                lastErr.statusCode = resp.status >= 400 && resp.status < 600 ? resp.status : 502;
-
-                // Retry next fallback model only on deprecated model (404), high demand (503), or rate limit (429)
-                if (resp.status !== 404 && resp.status !== 503 && resp.status !== 429) {
-                    throw lastErr;
+                    lastErr = parseErr;
+                    lastErr.statusCode = 502;
+                    continue;
                 }
             }
-            throw lastErr || new Error("Gemini upstream unavailable");
-        } else {
-            const apiKey = process.env.OPENAI_API_KEY.trim();
+
+            const errDetail = outcome.bodyJson?.error?.message || `HTTP ${outcome.status}`;
+            lastErr = new Error(`Gemini upstream HTTP ${outcome.status}: ${errDetail}`);
+            lastErr.statusCode = outcome.status >= 400 && outcome.status < 600 ? outcome.status : 502;
+
+            // Failover to next model on deprecated/not-found (404), rate-limit (429), or transient server errors (500/502/503/504)
+            const retryableStatuses = new Set([404, 429, 500, 502, 503, 504]);
+            if (!retryableStatuses.has(outcome.status)) {
+                // Skip robotics model if it rejects specific payload format, otherwise surface non-retryable 4xx
+                if (outcome.status === 400 && candidateModel.includes("robotics")) {
+                    continue;
+                }
+                throw lastErr;
+            }
+        }
+
+        if (lastErr) {
+            if (lastErr.statusCode === 503) {
+                lastErr.message = "Máy chủ Google Gemini đang quá tải tạm thời (503). Vui lòng bấm thử lại sau vài giây.";
+            } else if (lastErr.statusCode === 504) {
+                lastErr.message = "Máy chủ Google Gemini phản hồi quá chậm (504). Vui lòng thử lại.";
+            }
+            throw lastErr;
+        }
+        const fallbackErr = new Error("Không thể kết nối tới Google Gemini lúc này. Vui lòng thử lại.");
+        fallbackErr.statusCode = 503;
+        throw fallbackErr;
+    } else {
+        const apiKey = process.env.OPENAI_API_KEY.trim();
+        const remNow = Math.max(5000, deadline - Date.now());
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), remNow);
+        try {
             const userContent = inlineImages.length
                 ? [
                     { type: "text", text: safePrompt },
@@ -249,14 +346,17 @@ async function callLLMJson(systemInstruction, userPrompt, options = {}) {
                 }),
                 signal: ctrl.signal
             });
-            clearTimeout(timer);
-            if (!resp.ok) throw new Error(`OpenAI upstream HTTP ${resp.status}`);
+            if (!resp.ok) {
+                const err = new Error(`OpenAI upstream HTTP ${resp.status}`);
+                err.statusCode = resp.status >= 400 && resp.status < 600 ? resp.status : 502;
+                throw err;
+            }
             const data = await resp.json();
             const text = data?.choices?.[0]?.message?.content || "{}";
             return { provider: `${info.provider} (${info.model})`, result: extractJSONFromText(text) };
+        } finally {
+            clearTimeout(timer);
         }
-    } finally {
-        clearTimeout(timer);
     }
 }
 
@@ -466,7 +566,7 @@ Honesty rule:
 - Each of the 4 criteria MUST be scored strictly between 0.0 and 2.5 (1 decimal place max).
 - NEVER fabricate official test certificates or undisclosed institutional rules (especially in PEN301 or Custom mode). If rubric criteria or assignment details are absent from input, state clearly in missingFromRubric what was missing or could not be verified.
 - All 3 rewritten essay versions MUST preserve the student's original ideas and core message, while progressively improving accuracy, cohesion, and academic range.
-- Respond with explanations written clearly in Vietnamese so a Vietnamese learner understands root causes.`,
+- Respond with explanations written clearly and concisely in Vietnamese so a Vietnamese learner understands root causes without bloat. Focus sentenceBreakdown on the 5-8 most impactful sentences.`,
         prompt: `Grading Mode: ${mode} (${modeDesc})
 Topic Title: ${String(payload.topic || "").slice(0, 300)}
 Prompt: ${String(payload.prompt || "").slice(0, 1500)}
@@ -1969,7 +2069,8 @@ Return STRICT JSON:
             const out = await callLLMJson(ocrSystem, ocrPrompt, {
                 inlineImages: [{ mimeType, data: rawB64 }],
                 maxOutputTokens: 4096,
-                temperature: 0.1
+                temperature: 0.1,
+                heavy: true
             });
             return {
                 statusCode: 200,
@@ -2019,7 +2120,8 @@ Return STRICT JSON:
             const out = await callLLMJson(alignSystem, alignPrompt, {
                 inlineImages: [{ mimeType, data: rawB64 }],
                 maxOutputTokens: 4096,
-                temperature: 0.05
+                temperature: 0.05,
+                heavy: true
             });
             return {
                 statusCode: 200,
@@ -2038,8 +2140,13 @@ Return STRICT JSON:
 
     try {
         const { system, prompt } = buildTaskPrompt(task, body || {});
+        const isExtendedTask = task.startsWith("pdf-") || task === "generate-more-questions" || task === "generate-skill-exercise";
+        const isEvalTask = task === "writing-eval" || task === "translation-eval" || task === "speaking-eval";
         const out = await callLLMJson(system, prompt, {
-            maxOutputTokens: (task.startsWith("pdf-") || task === "generate-more-questions" || task === "generate-skill-exercise") ? 8192 : MAX_OUTPUT_TOKENS
+            heavy: isExtendedTask || isEvalTask,
+            maxOutputTokens: isExtendedTask
+                ? 8192
+                : (isEvalTask ? Math.max(MAX_OUTPUT_TOKENS, 6400) : MAX_OUTPUT_TOKENS)
         });
         const finalResult = task === "writing-eval"
             ? normalizeWritingResult(out.result, body || {})

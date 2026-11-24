@@ -869,31 +869,48 @@ const AIClient = {
         if (typeof CloudClient !== "undefined" && CloudClient.getAccessToken()) {
             headers["Authorization"] = `Bearer ${CloudClient.getAccessToken()}`;
         }
-        const ctrl = new AbortController();
         const timeoutMs = task.startsWith("pdf-")
-            ? 60000
-            : ((task === "writing-eval" || task === "translation-eval" || task === "speaking-eval") ? 48000 : 28000);
-        const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-        try {
-            let res = await fetch(`${base}/${task}`, {
-                method: "POST",
-                headers,
-                body: JSON.stringify(payload),
-                signal: ctrl.signal
-            });
-            // If static server (GitHub Pages / Live Server / file host) rejects POST with 404/405/501, retry against Vercel AI Backend
-            if (!res.ok && base === "/api/ai" && (res.status === 404 || res.status === 405 || res.status === 501)) {
-                this._resolvedBase = DEFAULT_CLOUD_AI_BASE;
-                base = DEFAULT_CLOUD_AI_BASE;
-                res = await fetch(`${base}/${task}`, {
+            ? 65000
+            : ((task === "writing-eval" || task === "translation-eval" || task === "speaking-eval") ? 58000 : 38000);
+        const startedAt = Date.now();
+        const attemptFetch = async (attemptBudgetMs) => {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), Math.max(8000, attemptBudgetMs));
+            try {
+                let res = await fetch(`${base}/${task}`, {
                     method: "POST",
                     headers,
                     body: JSON.stringify(payload),
                     signal: ctrl.signal
                 });
+                // If static server (GitHub Pages / Live Server / file host) rejects POST with 404/405/501, retry against Vercel AI Backend
+                if (!res.ok && base === "/api/ai" && (res.status === 404 || res.status === 405 || res.status === 501)) {
+                    this._resolvedBase = DEFAULT_CLOUD_AI_BASE;
+                    base = DEFAULT_CLOUD_AI_BASE;
+                    res = await fetch(`${base}/${task}`, {
+                        method: "POST",
+                        headers,
+                        body: JSON.stringify(payload),
+                        signal: ctrl.signal
+                    });
+                }
+                const data = await res.json().catch(() => ({}));
+                return { res, data };
+            } finally {
+                clearTimeout(timer);
             }
-            clearTimeout(timer);
-            const data = await res.json().catch(() => ({}));
+        };
+        try {
+            let { res, data } = await attemptFetch(timeoutMs);
+            // Auto-retry once on fast transient 502/503/504 spikes from upstream AI provider
+            const elapsed = Date.now() - startedAt;
+            if ((!res.ok || !data.ok) && (res.status === 502 || res.status === 503 || res.status === 504) && (timeoutMs - elapsed) > 15000) {
+                await new Promise(r => setTimeout(r, 900));
+                const remaining = timeoutMs - (Date.now() - startedAt);
+                if (remaining > 10000) {
+                    ({ res, data } = await attemptFetch(remaining));
+                }
+            }
             if (!res.ok || !data.ok) {
                 return {
                     ok: false,
@@ -903,7 +920,6 @@ const AIClient = {
             }
             return { ok: true, data: data.result, provider: data.provider };
         } catch (err) {
-            clearTimeout(timer);
             return {
                 ok: false,
                 notConnected: true,

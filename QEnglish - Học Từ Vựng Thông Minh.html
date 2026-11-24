@@ -13026,31 +13026,48 @@ const AIClient = {
         if (typeof CloudClient !== "undefined" && CloudClient.getAccessToken()) {
             headers["Authorization"] = `Bearer ${CloudClient.getAccessToken()}`;
         }
-        const ctrl = new AbortController();
         const timeoutMs = task.startsWith("pdf-")
-            ? 60000
-            : ((task === "writing-eval" || task === "translation-eval" || task === "speaking-eval") ? 48000 : 28000);
-        const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-        try {
-            let res = await fetch(`${base}/${task}`, {
-                method: "POST",
-                headers,
-                body: JSON.stringify(payload),
-                signal: ctrl.signal
-            });
-            // If static server (GitHub Pages / Live Server / file host) rejects POST with 404/405/501, retry against Vercel AI Backend
-            if (!res.ok && base === "/api/ai" && (res.status === 404 || res.status === 405 || res.status === 501)) {
-                this._resolvedBase = DEFAULT_CLOUD_AI_BASE;
-                base = DEFAULT_CLOUD_AI_BASE;
-                res = await fetch(`${base}/${task}`, {
+            ? 65000
+            : ((task === "writing-eval" || task === "translation-eval" || task === "speaking-eval") ? 58000 : 38000);
+        const startedAt = Date.now();
+        const attemptFetch = async (attemptBudgetMs) => {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), Math.max(8000, attemptBudgetMs));
+            try {
+                let res = await fetch(`${base}/${task}`, {
                     method: "POST",
                     headers,
                     body: JSON.stringify(payload),
                     signal: ctrl.signal
                 });
+                // If static server (GitHub Pages / Live Server / file host) rejects POST with 404/405/501, retry against Vercel AI Backend
+                if (!res.ok && base === "/api/ai" && (res.status === 404 || res.status === 405 || res.status === 501)) {
+                    this._resolvedBase = DEFAULT_CLOUD_AI_BASE;
+                    base = DEFAULT_CLOUD_AI_BASE;
+                    res = await fetch(`${base}/${task}`, {
+                        method: "POST",
+                        headers,
+                        body: JSON.stringify(payload),
+                        signal: ctrl.signal
+                    });
+                }
+                const data = await res.json().catch(() => ({}));
+                return { res, data };
+            } finally {
+                clearTimeout(timer);
             }
-            clearTimeout(timer);
-            const data = await res.json().catch(() => ({}));
+        };
+        try {
+            let { res, data } = await attemptFetch(timeoutMs);
+            // Auto-retry once on fast transient 502/503/504 spikes from upstream AI provider
+            const elapsed = Date.now() - startedAt;
+            if ((!res.ok || !data.ok) && (res.status === 502 || res.status === 503 || res.status === 504) && (timeoutMs - elapsed) > 15000) {
+                await new Promise(r => setTimeout(r, 900));
+                const remaining = timeoutMs - (Date.now() - startedAt);
+                if (remaining > 10000) {
+                    ({ res, data } = await attemptFetch(remaining));
+                }
+            }
             if (!res.ok || !data.ok) {
                 return {
                     ok: false,
@@ -13060,7 +13077,6 @@ const AIClient = {
             }
             return { ok: true, data: data.result, provider: data.provider };
         } catch (err) {
-            clearTimeout(timer);
             return {
                 ok: false,
                 notConnected: true,
@@ -18122,17 +18138,18 @@ function buildWritingEvaluationHTML(originalText, wordCount, r, evalMode) {
         <div class="p-5 sm:p-6 rounded-3xl bg-slate-950/95 border border-violet-500/35 space-y-6 text-xs">
             <!-- Honest AI / Source Banner -->
             <div class="p-4 rounded-2xl ${isAi ? "bg-violet-500/15 border-violet-500/30" : "bg-amber-500/10 border-amber-500/30"} border flex flex-wrap items-start justify-between gap-3">
-                <div class="space-y-1 max-w-3xl">
+                <div class="space-y-1.5 max-w-3xl">
                     <p class="font-extrabold text-sm ${isAi ? "text-violet-200" : "text-amber-300"}">
                         ${isAi
                             ? `🤖 Kết Quả Chấm Bài AI — ${escHtml(WRITING_MODE_LABELS[r.gradingMode] || r.gradingMode || "Thang 10")}`
-                            : "🛠️ Kiểm Tra Cục Bộ Cơ Bản (Chưa kết nối AI Server)"}
+                            : "🛠️ Kiểm Tra Cục Bộ Cơ Bản (AI Server đang bận hoặc chưa kết nối)"}
                     </p>
                     <p class="text-slate-300 leading-relaxed">
                         ${isAi
                             ? (r.modeAssessmentSummary ? escHtml(r.modeAssessmentSummary) : "⚠️ Lưu ý minh bạch: Điểm số thang 10, CEFR và IELTS Band là đánh giá tham khảo phục vụ học tập, không thay thế chứng chỉ thi chính thức.")
-                            : `${escHtml(r.offlineNotice)} Hệ thống KHÔNG tự bịa điểm AI 10/10 hay 3 bản viết lại khi Backend AI chưa kết nối. Hãy cấu hình GEMINI_API_KEY hoặc OPENAI_API_KEY trong Settings/Vercel để chấm sâu.`}
+                            : `${escHtml(r.offlineNotice)} Hệ thống KHÔNG tự bịa điểm AI 10/10 hay 3 bản viết lại khi chưa nhận phản hồi từ AI Backend.`}
                     </p>
+                    ${!isAi ? `<div class="pt-1"><button onclick="submitWriting()" class="px-3.5 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-extrabold transition shadow-md">🔄 Thử Chấm Lại Bằng AI</button></div>` : ""}
                 </div>
                 ${renderSourceBadge(isAi ? "ai-generated" : "local-browser")}
             </div>
