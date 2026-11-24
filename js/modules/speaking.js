@@ -338,7 +338,26 @@ function openTopicSpeakingWorkspace(topicId, customTopic = null) {
                     <div class="flex flex-wrap gap-1.5">
                         ${(t.usefulPhrases || []).map(p => `<button onclick='speakText(${JSON.stringify(p)}, 1.0)' class="px-2.5 py-1 rounded-lg bg-slate-900 border border-white/10 text-[11px] text-amber-200 hover:border-amber-400/40">🔊 ${escHtml(p)}</button>`).join("")}
                     </div>
+                    ${(t.suggestedVocab && t.suggestedVocab.length) ? `
+                        <div class="pt-2 border-t border-white/10 flex flex-wrap gap-1.5">
+                            ${t.suggestedVocab.map(v => `<button onclick='speakText(${JSON.stringify(v)}, 1.0)' class="px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/25 text-[11px] text-cyan-200">📖 ${escHtml(v)}</button>`).join("")}
+                        </div>
+                    ` : ""}
                 </div>
+
+                ${(t.dialogueLines && t.dialogueLines.length) ? `
+                    <div class="p-4 rounded-2xl bg-slate-950/60 border border-cyan-500/25 space-y-2">
+                        <p class="text-xs font-extrabold uppercase text-cyan-300">🎭 Hội thoại mẫu tham khảo:</p>
+                        <div class="space-y-1.5 text-xs">
+                            ${t.dialogueLines.map(dl => `
+                                <div class="p-2 rounded-xl bg-slate-900/80 border border-white/5 flex items-start justify-between gap-2">
+                                    <p class="text-slate-200"><strong class="text-emerald-300">${escHtml(dl.speaker || "Speaker")}:</strong> ${escHtml(dl.text || "")}</p>
+                                    <button onclick='speakText(${JSON.stringify(dl.text || "")}, 1.0)' class="text-cyan-300 shrink-0">🔊</button>
+                                </div>
+                            `).join("")}
+                        </div>
+                    </div>
+                ` : ""}
             </div>
 
             <!-- Right: Recording Studio & Live Transcript -->

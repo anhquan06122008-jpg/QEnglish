@@ -689,16 +689,20 @@ function submitReadingAnswers() {
                     <div class="pt-2 border-t border-white/10 space-y-2">
                         <p class="text-xs font-extrabold uppercase text-cyan-300">📚 Từ vựng học thuật quan trọng trong bài đọc:</p>
                         <div class="grid gap-2">
-                            ${keyWords.map(kv => `
+                            ${keyWords.map(kv => {
+                                const kwWord = kv.word || kv.term || "";
+                                const kwVi = kv.vi || kv.meaningVi || kv.def || "";
+                                if (!kwWord) return "";
+                                return `
                                 <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950/80 text-xs">
                                     <div>
-                                        <strong class="text-white">${escHtml(kv.word)}</strong>
+                                        <strong class="text-white">${escHtml(kwWord)}</strong>
                                         <span class="font-mono text-cyan-400 ml-1">${escHtml(kv.ipa || "")}</span>:
-                                        <span class="text-amber-200 ml-1">${escHtml(kv.vi)}</span>
+                                        <span class="text-amber-200 ml-1">${escHtml(kwVi)}</span>
                                     </div>
-                                    <button onclick='showReadingWordPopup(${JSON.stringify(kv.word)})' class="text-[11px] font-bold text-violet-300 hover:underline shrink-0">+ Lưu từ</button>
-                                </div>
-                            `).join("")}
+                                    <button onclick='showReadingWordPopup(${JSON.stringify(kwWord)})' class="text-[11px] font-bold text-violet-300 hover:underline shrink-0">+ Lưu từ</button>
+                                </div>`;
+                            }).join("")}
                         </div>
                     </div>
                 ` : ""}

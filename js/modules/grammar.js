@@ -125,15 +125,39 @@ function openGrammarLesson(lessonId, customLesson = null) {
         <div class="space-y-2.5">
             <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-300">4 & 5. Ví dụ tiếng Anh và Dịch nghĩa</h4>
             <div class="grid gap-3">
-                ${(lesson.examples || []).map((ex, idx) => `
-                    <div class="p-4 rounded-2xl bg-slate-950/70 border border-white/10 flex items-start justify-between gap-3">
-                        <div class="space-y-1">
-                            <p class="text-sm font-bold text-white">${idx + 1}. ${escHtml(ex.en)}</p>
-                            <p class="text-xs text-slate-400">🇻🇳 ${escHtml(ex.vi)}</p>
+                ${(lesson.examples || []).map((rawEx, idx) => {
+                    let enText = "";
+                    let viText = "";
+                    if (typeof rawEx === "string") {
+                        const cleaned = rawEx.trim();
+                        const sepMatch = cleaned.match(/^(.+?)\s*(?:—|–|->|=>|\||:\s*\()\s*(.+)$/);
+                        if (sepMatch) {
+                            enText = sepMatch[1].trim();
+                            viText = sepMatch[2].replace(/\)\s*$/, "").trim();
+                        } else {
+                            const parenMatch = cleaned.match(/^(.+?)\s*\(([^()]+)\)\s*$/);
+                            if (parenMatch) {
+                                enText = parenMatch[1].trim();
+                                viText = parenMatch[2].trim();
+                            } else {
+                                enText = cleaned;
+                            }
+                        }
+                    } else if (rawEx && typeof rawEx === "object") {
+                        enText = String(rawEx.en || rawEx.english || rawEx.sentence || rawEx.text || "").trim();
+                        viText = String(rawEx.vi || rawEx.vietnamese || rawEx.meaningVi || rawEx.translation || rawEx.translationVi || "").trim();
+                    }
+                    if (!enText && !viText) return "";
+                    return `
+                        <div class="p-4 rounded-2xl bg-slate-950/70 border border-white/10 flex items-start justify-between gap-3">
+                            <div class="space-y-1">
+                                <p class="text-sm font-bold text-white">${idx + 1}. ${escHtml(enText || viText)}</p>
+                                ${viText ? `<p class="text-xs text-slate-400">🇻🇳 ${escHtml(viText)}</p>` : ""}
+                            </div>
+                            ${enText ? `<button onclick='speakText(${JSON.stringify(enText)}, 1.0)' class="px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 text-cyan-300 text-xs font-bold shrink-0 hover:bg-slate-800">🔊 Nghe</button>` : ""}
                         </div>
-                        <button onclick='speakText(${JSON.stringify(ex.en)}, 1.0)' class="px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 text-cyan-300 text-xs font-bold shrink-0 hover:bg-slate-800">🔊 Nghe</button>
-                    </div>
-                `).join("")}
+                    `;
+                }).join("")}
             </div>
         </div>
 
@@ -141,13 +165,40 @@ function openGrammarLesson(lessonId, customLesson = null) {
         <div class="space-y-2.5">
             <h4 class="text-xs font-extrabold uppercase tracking-wider text-rose-300">6. Những lỗi sinh viên thường gặp</h4>
             <div class="grid gap-3">
-                ${(lesson.commonMistakes || []).map(m => `
-                    <div class="p-4 rounded-2xl bg-rose-950/20 border border-rose-500/25 space-y-1.5 text-xs">
-                        <p class="text-rose-300 line-through font-medium">❌ Sai: ${escHtml(m.wrong)}</p>
-                        <p class="text-emerald-300 font-bold">✅ Đúng: ${escHtml(m.correct)}</p>
-                        <p class="text-slate-300">💡 <strong>Vì sao sai:</strong> ${escHtml(m.why || m.explanation || "")}</p>
-                    </div>
-                `).join("")}
+                ${(lesson.commonMistakes || []).map(rawM => {
+                    let wrong = "";
+                    let correct = "";
+                    let why = "";
+                    if (typeof rawM === "string") {
+                        const s = rawM.trim();
+                        const arrowMatch = s.match(/❌?\s*(?:Sai:?\s*)?(.+?)\s*(?:→|->|=>)\s*✅?\s*(?:Đúng:?\s*)?(.+)$/i);
+                        if (arrowMatch) {
+                            wrong = arrowMatch[1].trim();
+                            const rightPart = arrowMatch[2].trim();
+                            const whyMatch = rightPart.match(/^(.+?)\s*\(([^()]+)\)\s*$/);
+                            if (whyMatch) {
+                                correct = whyMatch[1].trim();
+                                why = whyMatch[2].trim();
+                            } else {
+                                correct = rightPart;
+                            }
+                        } else {
+                            why = s;
+                        }
+                    } else if (rawM && typeof rawM === "object") {
+                        wrong = String(rawM.wrong || rawM.incorrect || rawM.error || "").trim();
+                        correct = String(rawM.correct || rawM.right || rawM.fix || "").trim();
+                        why = String(rawM.why || rawM.explanation || rawM.explanationVi || rawM.reason || "").trim();
+                    }
+                    if (!wrong && !correct && !why) return "";
+                    return `
+                        <div class="p-4 rounded-2xl bg-rose-950/20 border border-rose-500/25 space-y-1.5 text-xs">
+                            ${wrong ? `<p class="text-rose-300 line-through font-medium">❌ Sai: ${escHtml(wrong)}</p>` : ""}
+                            ${correct ? `<p class="text-emerald-300 font-bold">✅ Đúng: ${escHtml(correct)}</p>` : ""}
+                            ${why ? `<p class="text-slate-300">💡 <strong>Vì sao sai:</strong> ${escHtml(why)}</p>` : ""}
+                        </div>
+                    `;
+                }).join("")}
             </div>
         </div>
     `;

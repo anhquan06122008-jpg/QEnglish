@@ -315,26 +315,29 @@ function openWritingEditor(topicId, customTopic) {
         </div>
     `;
 
+    const guideList = (t.guidelines && t.guidelines.length) ? t.guidelines : ((t.rubricVi && t.rubricVi.length) ? t.rubricVi : ["Trả lời trực tiếp trọng tâm đề bài, chia đoạn rõ ràng (Mở bài - Thân bài - Kết bài) và kiểm tra lại ngữ pháp trước khi nộp."]);
+    const outlineList = (t.sampleOutline && t.sampleOutline.length) ? t.sampleOutline : ((t.targetStructures && t.targetStructures.length) ? t.targetStructures : []);
+    const vocabList = (t.vocabulary && t.vocabulary.length) ? t.vocabulary : ((t.keyVocab && t.keyVocab.length) ? t.keyVocab : []);
     document.getElementById("writing-guidelines").innerHTML = `
         <div class="space-y-2">
-            <p class="text-xs font-extrabold uppercase text-violet-300">📌 Hướng dẫn viết:</p>
+            <p class="text-xs font-extrabold uppercase text-violet-300">📌 Hướng dẫn viết &amp; Tiêu chí chấm:</p>
             <ul class="list-disc pl-5 text-xs text-slate-300 space-y-1">
-                ${(t.guidelines && t.guidelines.length ? t.guidelines : ["Trả lời trực tiếp trọng tâm đề bài, chia đoạn rõ ràng (Mở bài - Thân bài - Kết bài) và kiểm tra lại ngữ pháp trước khi nộp."]).map(g => `<li>${escHtml(g)}</li>`).join("")}
+                ${guideList.map(g => `<li>${escHtml(g)}</li>`).join("")}
             </ul>
         </div>
-        ${(t.sampleOutline && t.sampleOutline.length) ? `
+        ${outlineList.length ? `
             <div class="space-y-1.5 pt-2 border-t border-white/10">
-                <p class="text-xs font-extrabold uppercase text-cyan-300">🗺️ Dàn ý gợi ý:</p>
+                <p class="text-xs font-extrabold uppercase text-cyan-300">🗺️ Dàn ý / Cấu trúc trọng tâm:</p>
                 <ol class="list-decimal pl-5 text-xs text-slate-300 space-y-1">
-                    ${t.sampleOutline.map(o => `<li>${escHtml(o)}</li>`).join("")}
+                    ${outlineList.map(o => `<li>${escHtml(o)}</li>`).join("")}
                 </ol>
             </div>
         ` : ""}
-        ${(t.vocabulary && t.vocabulary.length) ? `
+        ${vocabList.length ? `
             <div class="space-y-1.5 pt-2 border-t border-white/10">
-                <p class="text-xs font-extrabold uppercase text-amber-300">✨ Từ vựng & Cấu trúc ăn điểm (Bấm để chèn vào bài):</p>
+                <p class="text-xs font-extrabold uppercase text-amber-300">✨ Từ vựng &amp; Cấu trúc ăn điểm (Bấm để chèn vào bài):</p>
                 <div class="flex flex-wrap gap-1.5">
-                    ${t.vocabulary.map(v => `<button onclick='insertPhraseIntoWriting(${JSON.stringify(v)})' class="px-2.5 py-1 rounded-lg bg-slate-950 border border-white/10 hover:border-amber-400/50 text-[11px] text-amber-200 transition">+ ${escHtml(v)}</button>`).join("")}
+                    ${vocabList.map(v => `<button onclick='insertPhraseIntoWriting(${JSON.stringify(v)})' class="px-2.5 py-1 rounded-lg bg-slate-950 border border-white/10 hover:border-amber-400/50 text-[11px] text-amber-200 transition">+ ${escHtml(v)}</button>`).join("")}
                 </div>
             </div>
         ` : ""}

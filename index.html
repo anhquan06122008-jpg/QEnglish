@@ -14872,15 +14872,39 @@ function openGrammarLesson(lessonId, customLesson = null) {
         <div class="space-y-2.5">
             <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-300">4 & 5. Ví dụ tiếng Anh và Dịch nghĩa</h4>
             <div class="grid gap-3">
-                ${(lesson.examples || []).map((ex, idx) => `
-                    <div class="p-4 rounded-2xl bg-slate-950/70 border border-white/10 flex items-start justify-between gap-3">
-                        <div class="space-y-1">
-                            <p class="text-sm font-bold text-white">${idx + 1}. ${escHtml(ex.en)}</p>
-                            <p class="text-xs text-slate-400">🇻🇳 ${escHtml(ex.vi)}</p>
+                ${(lesson.examples || []).map((rawEx, idx) => {
+                    let enText = "";
+                    let viText = "";
+                    if (typeof rawEx === "string") {
+                        const cleaned = rawEx.trim();
+                        const sepMatch = cleaned.match(/^(.+?)\s*(?:—|–|->|=>|\||:\s*\()\s*(.+)$/);
+                        if (sepMatch) {
+                            enText = sepMatch[1].trim();
+                            viText = sepMatch[2].replace(/\)\s*$/, "").trim();
+                        } else {
+                            const parenMatch = cleaned.match(/^(.+?)\s*\(([^()]+)\)\s*$/);
+                            if (parenMatch) {
+                                enText = parenMatch[1].trim();
+                                viText = parenMatch[2].trim();
+                            } else {
+                                enText = cleaned;
+                            }
+                        }
+                    } else if (rawEx && typeof rawEx === "object") {
+                        enText = String(rawEx.en || rawEx.english || rawEx.sentence || rawEx.text || "").trim();
+                        viText = String(rawEx.vi || rawEx.vietnamese || rawEx.meaningVi || rawEx.translation || rawEx.translationVi || "").trim();
+                    }
+                    if (!enText && !viText) return "";
+                    return `
+                        <div class="p-4 rounded-2xl bg-slate-950/70 border border-white/10 flex items-start justify-between gap-3">
+                            <div class="space-y-1">
+                                <p class="text-sm font-bold text-white">${idx + 1}. ${escHtml(enText || viText)}</p>
+                                ${viText ? `<p class="text-xs text-slate-400">🇻🇳 ${escHtml(viText)}</p>` : ""}
+                            </div>
+                            ${enText ? `<button onclick='speakText(${JSON.stringify(enText)}, 1.0)' class="px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 text-cyan-300 text-xs font-bold shrink-0 hover:bg-slate-800">🔊 Nghe</button>` : ""}
                         </div>
-                        <button onclick='speakText(${JSON.stringify(ex.en)}, 1.0)' class="px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 text-cyan-300 text-xs font-bold shrink-0 hover:bg-slate-800">🔊 Nghe</button>
-                    </div>
-                `).join("")}
+                    `;
+                }).join("")}
             </div>
         </div>
 
@@ -14888,13 +14912,40 @@ function openGrammarLesson(lessonId, customLesson = null) {
         <div class="space-y-2.5">
             <h4 class="text-xs font-extrabold uppercase tracking-wider text-rose-300">6. Những lỗi sinh viên thường gặp</h4>
             <div class="grid gap-3">
-                ${(lesson.commonMistakes || []).map(m => `
-                    <div class="p-4 rounded-2xl bg-rose-950/20 border border-rose-500/25 space-y-1.5 text-xs">
-                        <p class="text-rose-300 line-through font-medium">❌ Sai: ${escHtml(m.wrong)}</p>
-                        <p class="text-emerald-300 font-bold">✅ Đúng: ${escHtml(m.correct)}</p>
-                        <p class="text-slate-300">💡 <strong>Vì sao sai:</strong> ${escHtml(m.why || m.explanation || "")}</p>
-                    </div>
-                `).join("")}
+                ${(lesson.commonMistakes || []).map(rawM => {
+                    let wrong = "";
+                    let correct = "";
+                    let why = "";
+                    if (typeof rawM === "string") {
+                        const s = rawM.trim();
+                        const arrowMatch = s.match(/❌?\s*(?:Sai:?\s*)?(.+?)\s*(?:→|->|=>)\s*✅?\s*(?:Đúng:?\s*)?(.+)$/i);
+                        if (arrowMatch) {
+                            wrong = arrowMatch[1].trim();
+                            const rightPart = arrowMatch[2].trim();
+                            const whyMatch = rightPart.match(/^(.+?)\s*\(([^()]+)\)\s*$/);
+                            if (whyMatch) {
+                                correct = whyMatch[1].trim();
+                                why = whyMatch[2].trim();
+                            } else {
+                                correct = rightPart;
+                            }
+                        } else {
+                            why = s;
+                        }
+                    } else if (rawM && typeof rawM === "object") {
+                        wrong = String(rawM.wrong || rawM.incorrect || rawM.error || "").trim();
+                        correct = String(rawM.correct || rawM.right || rawM.fix || "").trim();
+                        why = String(rawM.why || rawM.explanation || rawM.explanationVi || rawM.reason || "").trim();
+                    }
+                    if (!wrong && !correct && !why) return "";
+                    return `
+                        <div class="p-4 rounded-2xl bg-rose-950/20 border border-rose-500/25 space-y-1.5 text-xs">
+                            ${wrong ? `<p class="text-rose-300 line-through font-medium">❌ Sai: ${escHtml(wrong)}</p>` : ""}
+                            ${correct ? `<p class="text-emerald-300 font-bold">✅ Đúng: ${escHtml(correct)}</p>` : ""}
+                            ${why ? `<p class="text-slate-300">💡 <strong>Vì sao sai:</strong> ${escHtml(why)}</p>` : ""}
+                        </div>
+                    `;
+                }).join("")}
             </div>
         </div>
     `;
@@ -17031,16 +17082,20 @@ function submitReadingAnswers() {
                     <div class="pt-2 border-t border-white/10 space-y-2">
                         <p class="text-xs font-extrabold uppercase text-cyan-300">📚 Từ vựng học thuật quan trọng trong bài đọc:</p>
                         <div class="grid gap-2">
-                            ${keyWords.map(kv => `
+                            ${keyWords.map(kv => {
+                                const kwWord = kv.word || kv.term || "";
+                                const kwVi = kv.vi || kv.meaningVi || kv.def || "";
+                                if (!kwWord) return "";
+                                return `
                                 <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950/80 text-xs">
                                     <div>
-                                        <strong class="text-white">${escHtml(kv.word)}</strong>
+                                        <strong class="text-white">${escHtml(kwWord)}</strong>
                                         <span class="font-mono text-cyan-400 ml-1">${escHtml(kv.ipa || "")}</span>:
-                                        <span class="text-amber-200 ml-1">${escHtml(kv.vi)}</span>
+                                        <span class="text-amber-200 ml-1">${escHtml(kwVi)}</span>
                                     </div>
-                                    <button onclick='showReadingWordPopup(${JSON.stringify(kv.word)})' class="text-[11px] font-bold text-violet-300 hover:underline shrink-0">+ Lưu từ</button>
-                                </div>
-                            `).join("")}
+                                    <button onclick='showReadingWordPopup(${JSON.stringify(kwWord)})' class="text-[11px] font-bold text-violet-300 hover:underline shrink-0">+ Lưu từ</button>
+                                </div>`;
+                            }).join("")}
                         </div>
                     </div>
                 ` : ""}
@@ -17439,26 +17494,29 @@ function openWritingEditor(topicId, customTopic) {
         </div>
     `;
 
+    const guideList = (t.guidelines && t.guidelines.length) ? t.guidelines : ((t.rubricVi && t.rubricVi.length) ? t.rubricVi : ["Trả lời trực tiếp trọng tâm đề bài, chia đoạn rõ ràng (Mở bài - Thân bài - Kết bài) và kiểm tra lại ngữ pháp trước khi nộp."]);
+    const outlineList = (t.sampleOutline && t.sampleOutline.length) ? t.sampleOutline : ((t.targetStructures && t.targetStructures.length) ? t.targetStructures : []);
+    const vocabList = (t.vocabulary && t.vocabulary.length) ? t.vocabulary : ((t.keyVocab && t.keyVocab.length) ? t.keyVocab : []);
     document.getElementById("writing-guidelines").innerHTML = `
         <div class="space-y-2">
-            <p class="text-xs font-extrabold uppercase text-violet-300">📌 Hướng dẫn viết:</p>
+            <p class="text-xs font-extrabold uppercase text-violet-300">📌 Hướng dẫn viết &amp; Tiêu chí chấm:</p>
             <ul class="list-disc pl-5 text-xs text-slate-300 space-y-1">
-                ${(t.guidelines && t.guidelines.length ? t.guidelines : ["Trả lời trực tiếp trọng tâm đề bài, chia đoạn rõ ràng (Mở bài - Thân bài - Kết bài) và kiểm tra lại ngữ pháp trước khi nộp."]).map(g => `<li>${escHtml(g)}</li>`).join("")}
+                ${guideList.map(g => `<li>${escHtml(g)}</li>`).join("")}
             </ul>
         </div>
-        ${(t.sampleOutline && t.sampleOutline.length) ? `
+        ${outlineList.length ? `
             <div class="space-y-1.5 pt-2 border-t border-white/10">
-                <p class="text-xs font-extrabold uppercase text-cyan-300">🗺️ Dàn ý gợi ý:</p>
+                <p class="text-xs font-extrabold uppercase text-cyan-300">🗺️ Dàn ý / Cấu trúc trọng tâm:</p>
                 <ol class="list-decimal pl-5 text-xs text-slate-300 space-y-1">
-                    ${t.sampleOutline.map(o => `<li>${escHtml(o)}</li>`).join("")}
+                    ${outlineList.map(o => `<li>${escHtml(o)}</li>`).join("")}
                 </ol>
             </div>
         ` : ""}
-        ${(t.vocabulary && t.vocabulary.length) ? `
+        ${vocabList.length ? `
             <div class="space-y-1.5 pt-2 border-t border-white/10">
-                <p class="text-xs font-extrabold uppercase text-amber-300">✨ Từ vựng & Cấu trúc ăn điểm (Bấm để chèn vào bài):</p>
+                <p class="text-xs font-extrabold uppercase text-amber-300">✨ Từ vựng &amp; Cấu trúc ăn điểm (Bấm để chèn vào bài):</p>
                 <div class="flex flex-wrap gap-1.5">
-                    ${t.vocabulary.map(v => `<button onclick='insertPhraseIntoWriting(${JSON.stringify(v)})' class="px-2.5 py-1 rounded-lg bg-slate-950 border border-white/10 hover:border-amber-400/50 text-[11px] text-amber-200 transition">+ ${escHtml(v)}</button>`).join("")}
+                    ${vocabList.map(v => `<button onclick='insertPhraseIntoWriting(${JSON.stringify(v)})' class="px-2.5 py-1 rounded-lg bg-slate-950 border border-white/10 hover:border-amber-400/50 text-[11px] text-amber-200 transition">+ ${escHtml(v)}</button>`).join("")}
                 </div>
             </div>
         ` : ""}
@@ -20203,7 +20261,26 @@ function openTopicSpeakingWorkspace(topicId, customTopic = null) {
                     <div class="flex flex-wrap gap-1.5">
                         ${(t.usefulPhrases || []).map(p => `<button onclick='speakText(${JSON.stringify(p)}, 1.0)' class="px-2.5 py-1 rounded-lg bg-slate-900 border border-white/10 text-[11px] text-amber-200 hover:border-amber-400/40">🔊 ${escHtml(p)}</button>`).join("")}
                     </div>
+                    ${(t.suggestedVocab && t.suggestedVocab.length) ? `
+                        <div class="pt-2 border-t border-white/10 flex flex-wrap gap-1.5">
+                            ${t.suggestedVocab.map(v => `<button onclick='speakText(${JSON.stringify(v)}, 1.0)' class="px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/25 text-[11px] text-cyan-200">📖 ${escHtml(v)}</button>`).join("")}
+                        </div>
+                    ` : ""}
                 </div>
+
+                ${(t.dialogueLines && t.dialogueLines.length) ? `
+                    <div class="p-4 rounded-2xl bg-slate-950/60 border border-cyan-500/25 space-y-2">
+                        <p class="text-xs font-extrabold uppercase text-cyan-300">🎭 Hội thoại mẫu tham khảo:</p>
+                        <div class="space-y-1.5 text-xs">
+                            ${t.dialogueLines.map(dl => `
+                                <div class="p-2 rounded-xl bg-slate-900/80 border border-white/5 flex items-start justify-between gap-2">
+                                    <p class="text-slate-200"><strong class="text-emerald-300">${escHtml(dl.speaker || "Speaker")}:</strong> ${escHtml(dl.text || "")}</p>
+                                    <button onclick='speakText(${JSON.stringify(dl.text || "")}, 1.0)' class="text-cyan-300 shrink-0">🔊</button>
+                                </div>
+                            `).join("")}
+                        </div>
+                    </div>
+                ` : ""}
             </div>
 
             <!-- Right: Recording Studio & Live Transcript -->
@@ -28592,16 +28669,26 @@ const LearningHub = {
 
             if (skill === "reading") {
                 record.passage = String(d.passage || "").trim();
-                record.keyVocab = Array.isArray(d.keyVocab) ? d.keyVocab : [];
+                record.keyVocab = (Array.isArray(d.keyVocab) ? d.keyVocab : []).map(kv => ({
+                    word: String(kv?.word || kv?.term || "").trim(),
+                    ipa: String(kv?.ipa || "").trim(),
+                    vi: String(kv?.vi || kv?.meaningVi || kv?.def || "").trim()
+                })).filter(kv => kv.word);
                 record.questions = qs;
             } else if (skill === "listening") {
-                const tLines = Array.isArray(d.transcriptLines)
+                let tLines = Array.isArray(d.transcriptLines)
                     ? d.transcriptLines.map(ln => ({
                         speaker: String(ln?.speaker || "").trim(),
                         text: String(ln?.text || ln || "").trim(),
                         translationVi: String(ln?.translationVi || "").trim()
                     })).filter(l => l.text)
                     : [];
+                if (!tLines.length && d.transcript) {
+                    tLines = String(d.transcript).split(/\n+/).map(s => s.trim()).filter(Boolean).map(line => {
+                        const m = line.match(/^([A-Za-z][A-Za-z0-9.\s]{0,22}):\s*(.+)$/);
+                        return m ? { speaker: m[1].trim(), text: m[2].trim(), translationVi: "" } : { speaker: "", text: line, translationVi: "" };
+                    });
+                }
                 record.type = "multiple_choice";
                 record.transcriptLines = tLines;
                 record.transcript = tLines.map(l => l.speaker ? `${l.speaker}: ${l.text}` : l.text).join("\n");
@@ -28609,6 +28696,9 @@ const LearningHub = {
                 record.sentences = tLines.map(l => l.speaker ? `${l.speaker}: ${l.text}` : l.text);
                 record.questions = qs;
             } else if (skill === "writing") {
+                const rubricList = Array.isArray(d.rubricVi) ? d.rubricVi.filter(Boolean) : [];
+                const structList = Array.isArray(d.targetStructures) ? d.targetStructures.filter(Boolean) : [];
+                const vocabList = Array.isArray(d.keyVocab) ? d.keyVocab.filter(Boolean) : [];
                 record.type = d.taskType || "essay";
                 record.prompt = String(d.prompt || d.promptEn || "").trim();
                 record.promptVi = String(d.promptVi || "").trim();
@@ -28616,9 +28706,12 @@ const LearningHub = {
                 record.minWords = Number(d.minWords) || 100;
                 record.maxWords = Number(d.maxWords) || 220;
                 record.timeLimit = Number(d.timeLimit) || 25;
-                record.targetStructures = Array.isArray(d.targetStructures) ? d.targetStructures : [];
-                record.keyVocab = Array.isArray(d.keyVocab) ? d.keyVocab : [];
-                record.rubricVi = Array.isArray(d.rubricVi) ? d.rubricVi : [];
+                record.targetStructures = structList;
+                record.keyVocab = vocabList;
+                record.rubricVi = rubricList;
+                record.guidelines = rubricList.length ? rubricList : (Array.isArray(d.guidelines) ? d.guidelines : []);
+                record.sampleOutline = structList.length ? structList : (Array.isArray(d.sampleOutline) ? d.sampleOutline : []);
+                record.vocabulary = vocabList.length ? vocabList : (Array.isArray(d.vocabulary) ? d.vocabulary : []);
                 record.modelAnswer = String(d.modelAnswer || "").trim();
                 record.questions = qs;
             } else if (skill === "speaking") {
@@ -28631,17 +28724,17 @@ const LearningHub = {
                     ? d.dialogueLines.map(dl => ({ speaker: String(dl?.speaker || "Speaker").trim(), text: String(dl?.text || dl || "").trim() })).filter(l => l.text)
                     : [];
                 record.suggestedQuestions = (Array.isArray(d.suggestedQuestions) ? d.suggestedQuestions : []).map(q => typeof q === "string" ? q : String(q?.question || "")).filter(Boolean);
-                record.usefulPhrases = Array.isArray(d.usefulPhrases) ? d.usefulPhrases : [];
-                record.suggestedVocab = Array.isArray(d.suggestedVocab) ? d.suggestedVocab : [];
+                record.usefulPhrases = Array.isArray(d.usefulPhrases) ? d.usefulPhrases.filter(Boolean) : [];
+                record.suggestedVocab = Array.isArray(d.suggestedVocab) ? d.suggestedVocab.filter(Boolean) : [];
                 record.sampleAnswer = String(d.sampleAnswer || "").trim();
                 record.questions = qs;
             } else if (skill === "vocabulary") {
                 record.words = (Array.isArray(d.words) ? d.words : []).map((w, wi) => ({
                     id: `aivw-${exId}-${wi}`,
-                    term: String(w?.term || "").trim(),
+                    term: String(w?.term || w?.word || "").trim(),
                     ipa: String(w?.ipa || "").trim(),
                     pos: String(w?.pos || "").trim(),
-                    meaningVi: String(w?.meaningVi || "").trim(),
+                    meaningVi: String(w?.meaningVi || w?.def || w?.vi || "").trim(),
                     example: String(w?.example || "").trim(),
                     collocations: Array.isArray(w?.collocations) ? w.collocations : [],
                     synonyms: Array.isArray(w?.synonyms) ? w.synonyms : [],
@@ -28649,11 +28742,44 @@ const LearningHub = {
                 })).filter(w => w.term);
                 record.questions = qs;
             } else {
+                const normExamples = (Array.isArray(d.examples) ? d.examples : []).map(rawEx => {
+                    if (rawEx && typeof rawEx === "object") {
+                        return {
+                            en: String(rawEx.en || rawEx.english || rawEx.sentence || rawEx.text || "").trim(),
+                            vi: String(rawEx.vi || rawEx.vietnamese || rawEx.meaningVi || rawEx.translation || "").trim()
+                        };
+                    }
+                    const s = String(rawEx || "").trim();
+                    const sep = s.match(/^(.+?)\s*(?:—|–|->|=>|\|)\s*(.+)$/);
+                    if (sep) return { en: sep[1].trim(), vi: sep[2].trim() };
+                    const par = s.match(/^(.+?)\s*\(([^()]+)\)\s*$/);
+                    if (par) return { en: par[1].trim(), vi: par[2].trim() };
+                    return { en: s, vi: "" };
+                }).filter(e => e.en);
+
+                const normMistakes = (Array.isArray(d.commonMistakes) ? d.commonMistakes : []).map(rawM => {
+                    if (rawM && typeof rawM === "object") {
+                        return {
+                            wrong: String(rawM.wrong || rawM.incorrect || "").trim(),
+                            correct: String(rawM.correct || rawM.right || "").trim(),
+                            why: String(rawM.why || rawM.explanation || rawM.explanationVi || "").trim()
+                        };
+                    }
+                    const s = String(rawM || "").trim();
+                    const arr = s.match(/❌?\s*(?:Sai:?\s*)?(.+?)\s*(?:→|->|=>)\s*✅?\s*(?:Đúng:?\s*)?(.+)$/i);
+                    if (arr) {
+                        const r = arr[2].trim();
+                        const pm = r.match(/^(.+?)\s*\(([^()]+)\)\s*$/);
+                        return { wrong: arr[1].trim(), correct: pm ? pm[1].trim() : r, why: pm ? pm[2].trim() : "" };
+                    }
+                    return { wrong: "", correct: "", why: s };
+                }).filter(m => m.wrong || m.correct || m.why);
+
                 record.intro = String(d.intro || record.topic).trim();
-                record.explanation = String(d.explanation || "").trim();
+                record.explanation = String(d.explanation || d.ruleVi || "").trim();
                 record.formula = String(d.formula || "").trim();
-                record.examples = Array.isArray(d.examples) ? d.examples : [];
-                record.commonMistakes = Array.isArray(d.commonMistakes) ? d.commonMistakes : [];
+                record.examples = normExamples;
+                record.commonMistakes = normMistakes;
                 record.exercises = qs.map(q => ({
                     ...q,
                     type: q.options?.length ? "multiple_choice" : (q.type || "fill_blank"),
@@ -28696,6 +28822,7 @@ const LearningHub = {
         } else if (ex.skill === "vocabulary") {
             this._activeVocabExercise = ex;
             this.renderVocabAiExerciseWorkspace();
+            document.getElementById("lh-vocab-ai-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
         }
     },
 

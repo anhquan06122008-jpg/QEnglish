@@ -725,16 +725,26 @@ const LearningHub = {
 
             if (skill === "reading") {
                 record.passage = String(d.passage || "").trim();
-                record.keyVocab = Array.isArray(d.keyVocab) ? d.keyVocab : [];
+                record.keyVocab = (Array.isArray(d.keyVocab) ? d.keyVocab : []).map(kv => ({
+                    word: String(kv?.word || kv?.term || "").trim(),
+                    ipa: String(kv?.ipa || "").trim(),
+                    vi: String(kv?.vi || kv?.meaningVi || kv?.def || "").trim()
+                })).filter(kv => kv.word);
                 record.questions = qs;
             } else if (skill === "listening") {
-                const tLines = Array.isArray(d.transcriptLines)
+                let tLines = Array.isArray(d.transcriptLines)
                     ? d.transcriptLines.map(ln => ({
                         speaker: String(ln?.speaker || "").trim(),
                         text: String(ln?.text || ln || "").trim(),
                         translationVi: String(ln?.translationVi || "").trim()
                     })).filter(l => l.text)
                     : [];
+                if (!tLines.length && d.transcript) {
+                    tLines = String(d.transcript).split(/\n+/).map(s => s.trim()).filter(Boolean).map(line => {
+                        const m = line.match(/^([A-Za-z][A-Za-z0-9.\s]{0,22}):\s*(.+)$/);
+                        return m ? { speaker: m[1].trim(), text: m[2].trim(), translationVi: "" } : { speaker: "", text: line, translationVi: "" };
+                    });
+                }
                 record.type = "multiple_choice";
                 record.transcriptLines = tLines;
                 record.transcript = tLines.map(l => l.speaker ? `${l.speaker}: ${l.text}` : l.text).join("\n");
@@ -742,6 +752,9 @@ const LearningHub = {
                 record.sentences = tLines.map(l => l.speaker ? `${l.speaker}: ${l.text}` : l.text);
                 record.questions = qs;
             } else if (skill === "writing") {
+                const rubricList = Array.isArray(d.rubricVi) ? d.rubricVi.filter(Boolean) : [];
+                const structList = Array.isArray(d.targetStructures) ? d.targetStructures.filter(Boolean) : [];
+                const vocabList = Array.isArray(d.keyVocab) ? d.keyVocab.filter(Boolean) : [];
                 record.type = d.taskType || "essay";
                 record.prompt = String(d.prompt || d.promptEn || "").trim();
                 record.promptVi = String(d.promptVi || "").trim();
@@ -749,9 +762,12 @@ const LearningHub = {
                 record.minWords = Number(d.minWords) || 100;
                 record.maxWords = Number(d.maxWords) || 220;
                 record.timeLimit = Number(d.timeLimit) || 25;
-                record.targetStructures = Array.isArray(d.targetStructures) ? d.targetStructures : [];
-                record.keyVocab = Array.isArray(d.keyVocab) ? d.keyVocab : [];
-                record.rubricVi = Array.isArray(d.rubricVi) ? d.rubricVi : [];
+                record.targetStructures = structList;
+                record.keyVocab = vocabList;
+                record.rubricVi = rubricList;
+                record.guidelines = rubricList.length ? rubricList : (Array.isArray(d.guidelines) ? d.guidelines : []);
+                record.sampleOutline = structList.length ? structList : (Array.isArray(d.sampleOutline) ? d.sampleOutline : []);
+                record.vocabulary = vocabList.length ? vocabList : (Array.isArray(d.vocabulary) ? d.vocabulary : []);
                 record.modelAnswer = String(d.modelAnswer || "").trim();
                 record.questions = qs;
             } else if (skill === "speaking") {
@@ -764,17 +780,17 @@ const LearningHub = {
                     ? d.dialogueLines.map(dl => ({ speaker: String(dl?.speaker || "Speaker").trim(), text: String(dl?.text || dl || "").trim() })).filter(l => l.text)
                     : [];
                 record.suggestedQuestions = (Array.isArray(d.suggestedQuestions) ? d.suggestedQuestions : []).map(q => typeof q === "string" ? q : String(q?.question || "")).filter(Boolean);
-                record.usefulPhrases = Array.isArray(d.usefulPhrases) ? d.usefulPhrases : [];
-                record.suggestedVocab = Array.isArray(d.suggestedVocab) ? d.suggestedVocab : [];
+                record.usefulPhrases = Array.isArray(d.usefulPhrases) ? d.usefulPhrases.filter(Boolean) : [];
+                record.suggestedVocab = Array.isArray(d.suggestedVocab) ? d.suggestedVocab.filter(Boolean) : [];
                 record.sampleAnswer = String(d.sampleAnswer || "").trim();
                 record.questions = qs;
             } else if (skill === "vocabulary") {
                 record.words = (Array.isArray(d.words) ? d.words : []).map((w, wi) => ({
                     id: `aivw-${exId}-${wi}`,
-                    term: String(w?.term || "").trim(),
+                    term: String(w?.term || w?.word || "").trim(),
                     ipa: String(w?.ipa || "").trim(),
                     pos: String(w?.pos || "").trim(),
-                    meaningVi: String(w?.meaningVi || "").trim(),
+                    meaningVi: String(w?.meaningVi || w?.def || w?.vi || "").trim(),
                     example: String(w?.example || "").trim(),
                     collocations: Array.isArray(w?.collocations) ? w.collocations : [],
                     synonyms: Array.isArray(w?.synonyms) ? w.synonyms : [],
@@ -782,11 +798,44 @@ const LearningHub = {
                 })).filter(w => w.term);
                 record.questions = qs;
             } else {
+                const normExamples = (Array.isArray(d.examples) ? d.examples : []).map(rawEx => {
+                    if (rawEx && typeof rawEx === "object") {
+                        return {
+                            en: String(rawEx.en || rawEx.english || rawEx.sentence || rawEx.text || "").trim(),
+                            vi: String(rawEx.vi || rawEx.vietnamese || rawEx.meaningVi || rawEx.translation || "").trim()
+                        };
+                    }
+                    const s = String(rawEx || "").trim();
+                    const sep = s.match(/^(.+?)\s*(?:—|–|->|=>|\|)\s*(.+)$/);
+                    if (sep) return { en: sep[1].trim(), vi: sep[2].trim() };
+                    const par = s.match(/^(.+?)\s*\(([^()]+)\)\s*$/);
+                    if (par) return { en: par[1].trim(), vi: par[2].trim() };
+                    return { en: s, vi: "" };
+                }).filter(e => e.en);
+
+                const normMistakes = (Array.isArray(d.commonMistakes) ? d.commonMistakes : []).map(rawM => {
+                    if (rawM && typeof rawM === "object") {
+                        return {
+                            wrong: String(rawM.wrong || rawM.incorrect || "").trim(),
+                            correct: String(rawM.correct || rawM.right || "").trim(),
+                            why: String(rawM.why || rawM.explanation || rawM.explanationVi || "").trim()
+                        };
+                    }
+                    const s = String(rawM || "").trim();
+                    const arr = s.match(/❌?\s*(?:Sai:?\s*)?(.+?)\s*(?:→|->|=>)\s*✅?\s*(?:Đúng:?\s*)?(.+)$/i);
+                    if (arr) {
+                        const r = arr[2].trim();
+                        const pm = r.match(/^(.+?)\s*\(([^()]+)\)\s*$/);
+                        return { wrong: arr[1].trim(), correct: pm ? pm[1].trim() : r, why: pm ? pm[2].trim() : "" };
+                    }
+                    return { wrong: "", correct: "", why: s };
+                }).filter(m => m.wrong || m.correct || m.why);
+
                 record.intro = String(d.intro || record.topic).trim();
-                record.explanation = String(d.explanation || "").trim();
+                record.explanation = String(d.explanation || d.ruleVi || "").trim();
                 record.formula = String(d.formula || "").trim();
-                record.examples = Array.isArray(d.examples) ? d.examples : [];
-                record.commonMistakes = Array.isArray(d.commonMistakes) ? d.commonMistakes : [];
+                record.examples = normExamples;
+                record.commonMistakes = normMistakes;
                 record.exercises = qs.map(q => ({
                     ...q,
                     type: q.options?.length ? "multiple_choice" : (q.type || "fill_blank"),
@@ -829,6 +878,7 @@ const LearningHub = {
         } else if (ex.skill === "vocabulary") {
             this._activeVocabExercise = ex;
             this.renderVocabAiExerciseWorkspace();
+            document.getElementById("lh-vocab-ai-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
         }
     },
 
