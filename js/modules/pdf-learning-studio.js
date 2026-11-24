@@ -132,18 +132,19 @@ function speakPdfDialogueMultiVoice(btn) {
     speakNext();
 }
 
-/* ==================== 1. LOCAL INDEXEDDB VAULT FOR PDF & AUDIO BINARIES ==================== */
+/* ==================== 1. LOCAL INDEXEDDB VAULT FOR PDF, AUDIO & LARGE COURSE STATE ==================== */
 const PdfBinaryVault = {
     _dbPromise: null,
     open() {
         if (this._dbPromise) return this._dbPromise;
-        this._dbPromise = new Promise((resolve, reject) => {
+        this._dbPromise = new Promise((resolve) => {
             if (typeof indexedDB === "undefined") return resolve(null);
-            const req = indexedDB.open("QEnglishPdfVaultDB_v1", 1);
+            const req = indexedDB.open("QEnglishPdfVaultDB_v1", 2);
             req.onupgradeneeded = () => {
                 const db = req.result;
                 if (!db.objectStoreNames.contains("pdfs")) db.createObjectStore("pdfs");
                 if (!db.objectStoreNames.contains("audios")) db.createObjectStore("audios");
+                if (!db.objectStoreNames.contains("kv")) db.createObjectStore("kv");
             };
             req.onsuccess = () => resolve(req.result);
             req.onerror = () => resolve(null);
@@ -239,7 +240,7 @@ async function ensurePdfJsLoaded() {
     return _pdfJsLoadingPromise;
 }
 
-/* ==================== 3. STATE PERSISTENCE & CLOUD SYNC ==================== */
+/* ==================== 3. STATE PERSISTENCE (INDEXEDDB + RAM + CLOUD SYNC) ==================== */
 function getDefaultPdfStudioState() {
     return {
         folders: [],
@@ -251,30 +252,160 @@ function getDefaultPdfStudioState() {
     };
 }
 
-function loadPdfStudioState() {
-    const saved = safeParseJSON(localStorage.getItem(STORAGE_KEYS.PDF_STUDIO), null);
-    if (saved && typeof saved === "object") {
-        pdfStudioState = {
-            ...getDefaultPdfStudioState(),
-            ...saved,
-            folders: Array.isArray(saved.folders) ? saved.folders : [],
-            documents: Array.isArray(saved.documents) ? saved.documents : [],
-            courses: Array.isArray(saved.courses) ? saved.courses : []
-        };
-    } else {
-        pdfStudioState = getDefaultPdfStudioState();
+function normalizePdfStudioStateObject(saved) {
+    if (!saved || typeof saved !== "object") return getDefaultPdfStudioState();
+    return {
+        ...getDefaultPdfStudioState(),
+        ...saved,
+        folders: Array.isArray(saved.folders) ? saved.folders : [],
+        documents: Array.isArray(saved.documents) ? saved.documents : [],
+        courses: Array.isArray(saved.courses) ? saved.courses : []
+    };
+}
+
+function persistPdfStudioStateToLocalAndVault(stateObj, { triggerCloudSync = true } = {}) {
+    const storageKey = STORAGE_KEYS.PDF_STUDIO;
+    const normalized = normalizePdfStudioStateObject(stateObj);
+    pdfStudioState = normalized;
+    if (typeof window !== "undefined") {
+        window.__QENGLISH_PDF_STUDIO_CACHE = window.__QENGLISH_PDF_STUDIO_CACHE || {};
+        window.__QENGLISH_PDF_STUDIO_CACHE[storageKey] = normalized;
     }
+
+    // 1. Always persist full state in IndexedDB "kv" store (hundreds of MB quota, never hits 5MB localStorage cap)
+    PdfBinaryVault.put("kv", storageKey, normalized).then(ok => {
+        if (!ok) return;
+        try {
+            const rawExisting = localStorage.getItem(storageKey);
+            const maxInline = typeof PDF_STUDIO_LOCALSTORAGE_INLINE_MAX === "number" ? PDF_STUDIO_LOCALSTORAGE_INLINE_MAX : 120000;
+            if (rawExisting && rawExisting.length > maxInline) {
+                localStorage.removeItem(storageKey);
+            }
+        } catch {}
+    }).catch(() => {});
+
+    // 2. Keep a tiny inline copy in localStorage ONLY when <= 120 KB; larger courses live strictly in IndexedDB + Cloud
+    try {
+        const serialized = JSON.stringify(normalized);
+        const maxInline = typeof PDF_STUDIO_LOCALSTORAGE_INLINE_MAX === "number" ? PDF_STUDIO_LOCALSTORAGE_INLINE_MAX : 120000;
+        if (serialized.length <= maxInline) {
+            localStorage.setItem(storageKey, serialized);
+        } else {
+            localStorage.removeItem(storageKey);
+        }
+    } catch {
+        try { localStorage.removeItem(storageKey); } catch {}
+    }
+
+    // 3. Schedule Cloud Sync whenever user modifies PDF Studio state
+    if (
+        triggerCloudSync &&
+        typeof window !== "undefined" &&
+        window.__QENGLISH_ACTIVE_UID &&
+        !window.__QENGLISH_SUPPRESS_SYNC &&
+        typeof CloudClient !== "undefined"
+    ) {
+        CloudClient.scheduleCloudSync();
+    }
+    return normalized;
+}
+
+function applyPdfStudioStateFromSync(incomingPdf) {
+    if (!incomingPdf || typeof incomingPdf !== "object") return null;
+    return persistPdfStudioStateToLocalAndVault(incomingPdf, { triggerCloudSync: false });
+}
+
+async function hydratePdfStudioStateFromVault(forceReload = false) {
+    const storageKey = STORAGE_KEYS.PDF_STUDIO;
+    const cached = (typeof window !== "undefined" && window.__QENGLISH_PDF_STUDIO_CACHE)
+        ? window.__QENGLISH_PDF_STUDIO_CACHE[storageKey]
+        : null;
+    if (!forceReload && cached && typeof cached === "object") {
+        pdfStudioState = normalizePdfStudioStateObject(cached);
+        return pdfStudioState;
+    }
+
+    const lsRaw = localStorage.getItem(storageKey);
+    const lsParsed = safeParseJSON(lsRaw, null);
+    let idbParsed = null;
+    try {
+        idbParsed = await PdfBinaryVault.get("kv", storageKey);
+    } catch {}
+
+    const scoreCandidate = (obj) => {
+        if (!obj || typeof obj !== "object") return -1;
+        const hasContent = (Array.isArray(obj.courses) && obj.courses.length > 0) || (Array.isArray(obj.documents) && obj.documents.length > 0) || (Array.isArray(obj.folders) && obj.folders.length > 0);
+        const ts = new Date(obj.updatedAt || 0).getTime() || 0;
+        return (hasContent ? 1e15 : 0) + ts;
+    };
+
+    const candidates = [cached, idbParsed, lsParsed].filter(x => x && typeof x === "object");
+    let chosen = null;
+    if (candidates.length) {
+        candidates.sort((a, b) => scoreCandidate(b) - scoreCandidate(a));
+        chosen = candidates[0];
+    }
+
+    pdfStudioState = normalizePdfStudioStateObject(chosen);
+    if (typeof window !== "undefined") {
+        window.__QENGLISH_PDF_STUDIO_CACHE = window.__QENGLISH_PDF_STUDIO_CACHE || {};
+        window.__QENGLISH_PDF_STUDIO_CACHE[storageKey] = pdfStudioState;
+    }
+
+    // If localStorage had an oversized copy, migrate it cleanly into IndexedDB and free localStorage quota
+    const maxInline = typeof PDF_STUDIO_LOCALSTORAGE_INLINE_MAX === "number" ? PDF_STUDIO_LOCALSTORAGE_INLINE_MAX : 120000;
+    if (chosen && lsRaw && lsRaw.length > maxInline) {
+        const savedOk = await PdfBinaryVault.put("kv", storageKey, pdfStudioState);
+        if (savedOk) {
+            try { localStorage.removeItem(storageKey); } catch {}
+        }
+    }
+    return pdfStudioState;
+}
+
+function loadPdfStudioState() {
+    const storageKey = STORAGE_KEYS.PDF_STUDIO;
+    const cached = (typeof window !== "undefined" && window.__QENGLISH_PDF_STUDIO_CACHE)
+        ? window.__QENGLISH_PDF_STUDIO_CACHE[storageKey]
+        : null;
+    if (cached && typeof cached === "object") {
+        pdfStudioState = normalizePdfStudioStateObject(cached);
+        return pdfStudioState;
+    }
+
+    const saved = safeParseJSON(localStorage.getItem(storageKey), null);
+    if (saved && typeof saved === "object") {
+        pdfStudioState = normalizePdfStudioStateObject(saved);
+        if (typeof window !== "undefined") {
+            window.__QENGLISH_PDF_STUDIO_CACHE = window.__QENGLISH_PDF_STUDIO_CACHE || {};
+            window.__QENGLISH_PDF_STUDIO_CACHE[storageKey] = pdfStudioState;
+        }
+        return pdfStudioState;
+    }
+
+    pdfStudioState = getDefaultPdfStudioState();
+    // Async hydrate from IndexedDB in background in case large course lives in Vault
+    hydratePdfStudioStateFromVault(true).then(hydrated => {
+        if (hydrated && ((hydrated.courses && hydrated.courses.length) || (hydrated.documents && hydrated.documents.length) || (hydrated.folders && hydrated.folders.length))) {
+            if (typeof activeMainPage !== "undefined" && activeMainPage === "pdf-studio" && typeof renderPdfStudioPage === "function") {
+                renderPdfStudioPage();
+            }
+        }
+    }).catch(() => {});
     return pdfStudioState;
 }
 
 function savePdfStudioState() {
     if (!pdfStudioState) loadPdfStudioState();
     pdfStudioState.updatedAt = new Date().toISOString();
-    safeWriteJSON(STORAGE_KEYS.PDF_STUDIO, pdfStudioState);
+    persistPdfStudioStateToLocalAndVault(pdfStudioState, { triggerCloudSync: true });
 }
 
 function resetPdfStudioMemory() {
     pdfStudioState = null;
+    if (typeof window !== "undefined") {
+        window.__QENGLISH_PDF_STUDIO_CACHE = {};
+    }
     pdfStudioUi.activeExam = null;
     pdfStudioUi.activeRemedial = null;
     pdfStudioUi.vocabMatchState = null;

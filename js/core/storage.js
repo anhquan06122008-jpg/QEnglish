@@ -66,9 +66,170 @@ function safeParseJSON(raw, fallback) {
     }
 }
 
-function safeWriteJSON(key, value) {
+const PDF_STUDIO_LOCALSTORAGE_INLINE_MAX = 120000; // >120KB PDF courses live in IndexedDB + Cloud (never bloat 5MB localStorage)
+if (typeof window !== "undefined" && !window.__QENGLISH_PDF_STUDIO_CACHE) {
+    window.__QENGLISH_PDF_STUDIO_CACHE = {};
+}
+
+function stripPdfStudioFromDashboardObj(dashObj) {
+    if (!dashObj || typeof dashObj !== "object" || Array.isArray(dashObj)) return dashObj;
+    if (!Object.prototype.hasOwnProperty.call(dashObj, "pdfStudio")) return dashObj;
+    const copy = { ...dashObj };
+    delete copy.pdfStudio;
+    return copy;
+}
+
+function getCurrentPdfStudioRawForSnapshot() {
+    const scopedKey = STORAGE_KEYS.PDF_STUDIO;
+    if (typeof pdfStudioState !== "undefined" && pdfStudioState && typeof pdfStudioState === "object") {
+        return pdfStudioState;
+    }
+    if (typeof window !== "undefined" && window.__QENGLISH_PDF_STUDIO_CACHE && window.__QENGLISH_PDF_STUDIO_CACHE[scopedKey]) {
+        return window.__QENGLISH_PDF_STUDIO_CACHE[scopedKey];
+    }
+    return safeParseJSON(localStorage.getItem(scopedKey), null);
+}
+
+function migrateOversizedPdfKeyToVault(storageKey, parsedObj, removeImmediately = false) {
+    if (!storageKey || !parsedObj || typeof parsedObj !== "object") return;
+    if (typeof window !== "undefined") {
+        window.__QENGLISH_PDF_STUDIO_CACHE = window.__QENGLISH_PDF_STUDIO_CACHE || {};
+        window.__QENGLISH_PDF_STUDIO_CACHE[storageKey] = parsedObj;
+    }
+    if (removeImmediately) {
+        try { localStorage.removeItem(storageKey); } catch {}
+    }
+    if (typeof PdfBinaryVault !== "undefined" && typeof PdfBinaryVault.put === "function") {
+        PdfBinaryVault.put("kv", storageKey, parsedObj).then(ok => {
+            if (ok && !removeImmediately) {
+                try { localStorage.removeItem(storageKey); } catch {}
+            }
+        }).catch(() => {});
+    }
+}
+
+function cleanupBloatedLocalStorage(options = {}) {
+    const aggressive = Boolean(options && options.aggressive);
+    let freedBytes = 0;
     try {
-        localStorage.setItem(key, JSON.stringify(value));
+        const allKeys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k) allKeys.push(k);
+        }
+
+        // 1. Strip duplicated `pdfStudio` blobs accidentally saved inside any `qenglish_dashboard_v1`
+        allKeys.forEach(k => {
+            if (k === BASE_STORAGE_KEYS.DASHBOARD || k.endsWith(`::${BASE_STORAGE_KEYS.DASHBOARD}`)) {
+                const raw = localStorage.getItem(k);
+                if (!raw || !raw.includes('"pdfStudio"')) return;
+                const parsed = safeParseJSON(raw, null);
+                if (parsed && typeof parsed === "object" && parsed.pdfStudio) {
+                    const pdfKey = k === BASE_STORAGE_KEYS.DASHBOARD
+                        ? BASE_STORAGE_KEYS.PDF_STUDIO
+                        : k.slice(0, k.length - BASE_STORAGE_KEYS.DASHBOARD.length) + BASE_STORAGE_KEYS.PDF_STUDIO;
+                    if (typeof window !== "undefined") {
+                        window.__QENGLISH_PDF_STUDIO_CACHE = window.__QENGLISH_PDF_STUDIO_CACHE || {};
+                        if (!window.__QENGLISH_PDF_STUDIO_CACHE[pdfKey]) {
+                            window.__QENGLISH_PDF_STUDIO_CACHE[pdfKey] = parsed.pdfStudio;
+                        }
+                    }
+                    const cleaned = stripPdfStudioFromDashboardObj(parsed);
+                    const nextRaw = JSON.stringify(cleaned);
+                    try {
+                        localStorage.setItem(k, nextRaw);
+                    } catch {
+                        localStorage.removeItem(k);
+                        localStorage.setItem(k, nextRaw);
+                    }
+                    freedBytes += Math.max(0, raw.length - nextRaw.length);
+                }
+            }
+        });
+
+        // 2. Strip bloated `data` mirrors inside `qenglish_accounts_v1` (which previously stringified DASHBOARD + PDF_STUDIO 2x!)
+        allKeys.forEach(k => {
+            if (k === "qenglish_accounts_v1" || k.endsWith("::qenglish_accounts_v1")) {
+                const raw = localStorage.getItem(k);
+                if (!raw || raw.length < 30000) return;
+                const parsed = safeParseJSON(raw, null);
+                if (!parsed || !parsed.accounts || typeof parsed.accounts !== "object") return;
+                let changed = false;
+                const hasAuthUid = typeof window !== "undefined" && Boolean(window.__QENGLISH_ACTIVE_UID);
+                Object.values(parsed.accounts).forEach(acc => {
+                    if (!acc || !acc.data || typeof acc.data !== "object") return;
+                    if (Object.prototype.hasOwnProperty.call(acc.data, BASE_STORAGE_KEYS.PDF_STUDIO)) {
+                        delete acc.data[BASE_STORAGE_KEYS.PDF_STUDIO];
+                        changed = true;
+                    }
+                    if (acc.data[BASE_STORAGE_KEYS.DASHBOARD]) {
+                        const dVal = typeof acc.data[BASE_STORAGE_KEYS.DASHBOARD] === "string"
+                            ? safeParseJSON(acc.data[BASE_STORAGE_KEYS.DASHBOARD], null)
+                            : acc.data[BASE_STORAGE_KEYS.DASHBOARD];
+                        if (dVal && typeof dVal === "object" && dVal.pdfStudio) {
+                            acc.data[BASE_STORAGE_KEYS.DASHBOARD] = JSON.stringify(stripPdfStudioFromDashboardObj(dVal));
+                            changed = true;
+                        }
+                    }
+                    if (aggressive || hasAuthUid) {
+                        const kept = {};
+                        // In non-aggressive mode preserve legacy deck if present, otherwise clear redundant mirror completely
+                        if (!aggressive && acc.data[BASE_STORAGE_KEYS.DECK_V2] && !hasAuthUid) {
+                            kept[BASE_STORAGE_KEYS.DECK_V2] = acc.data[BASE_STORAGE_KEYS.DECK_V2];
+                        }
+                        if (Object.keys(acc.data).length > Object.keys(kept).length) {
+                            acc.data = kept;
+                            changed = true;
+                        }
+                    }
+                });
+                if (changed) {
+                    const nextRaw = JSON.stringify(parsed);
+                    try {
+                        localStorage.setItem(k, nextRaw);
+                    } catch {
+                        localStorage.removeItem(k);
+                        localStorage.setItem(k, nextRaw);
+                    }
+                    freedBytes += Math.max(0, raw.length - nextRaw.length);
+                }
+            }
+        });
+
+        // 3. Migrate oversized `qenglish_pdf_studio_v1` (>120KB) from 5MB localStorage into IndexedDB vault
+        allKeys.forEach(k => {
+            if (k === BASE_STORAGE_KEYS.PDF_STUDIO || k.endsWith(`::${BASE_STORAGE_KEYS.PDF_STUDIO}`)) {
+                const raw = localStorage.getItem(k);
+                if (!raw || raw.length <= PDF_STUDIO_LOCALSTORAGE_INLINE_MAX) return;
+                const parsed = safeParseJSON(raw, null);
+                if (parsed && typeof parsed === "object") {
+                    migrateOversizedPdfKeyToVault(k, parsed, aggressive);
+                    if (aggressive) freedBytes += raw.length;
+                }
+            }
+        });
+
+        // 4. In emergency aggressive mode, also drop redundant pre-import backup temp key if present
+        if (aggressive) {
+            const preImp = localStorage.getItem("qenglish_pre_import_backup_v1");
+            if (preImp) {
+                localStorage.removeItem("qenglish_pre_import_backup_v1");
+                freedBytes += preImp.length;
+            }
+        }
+    } catch (e) {
+        console.warn("[QEnglish Storage] Cleanup warning:", e);
+    }
+    return freedBytes;
+}
+
+function safeWriteJSON(key, value) {
+    let valueToWrite = value;
+    if (key === BASE_STORAGE_KEYS.DASHBOARD || key.endsWith(`::${BASE_STORAGE_KEYS.DASHBOARD}`)) {
+        valueToWrite = stripPdfStudioFromDashboardObj(value);
+    }
+    const serialized = JSON.stringify(valueToWrite);
+    const finalize = () => {
         if (
             typeof window !== "undefined" &&
             window.__QENGLISH_ACTIVE_UID &&
@@ -79,12 +240,26 @@ function safeWriteJSON(key, value) {
             CloudClient.scheduleCloudSync();
         }
         return true;
+    };
+    try {
+        localStorage.setItem(key, serialized);
+        return finalize();
     } catch (err) {
-        console.error("[QEnglish Storage] Write error for key " + key, err);
-        if (typeof showToast === "function") {
-            showToast("Bộ nhớ trình duyệt đầy hoặc bị chặn. Hãy Xuất Backup!", "error");
+        // Self-healing QuotaExceededError recovery: strip bloated duplicates & move large PDF cache to IndexedDB, then retry once!
+        const freed = cleanupBloatedLocalStorage({ aggressive: true });
+        try {
+            localStorage.setItem(key, serialized);
+            if (freed > 0) {
+                console.info(`[QEnglish Storage] Auto-reclaimed ${Math.round(freed / 1024)} KB from localStorage and saved "${key}".`);
+            }
+            return finalize();
+        } catch (retryErr) {
+            console.error("[QEnglish Storage] Write error for key " + key, retryErr);
+            if (typeof showToast === "function") {
+                showToast("Bộ nhớ trình duyệt đầy hoặc bị chặn. Hãy Xuất Backup!", "error");
+            }
+            return false;
         }
-        return false;
     }
 }
 
@@ -910,7 +1085,8 @@ function exportAllBackupJSON() {
             qenglish_writing_v1: safeParseJSON(localStorage.getItem(STORAGE_KEYS.WRITING), {}),
             qenglish_notebook_v1: notebookItems,
             qenglish_cms_v1: cmsItems,
-            qenglish_settings_v1: appSettings
+            qenglish_settings_v1: appSettings,
+            qenglish_pdf_studio_v1: getCurrentPdfStudioRawForSnapshot()
         }
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -971,6 +1147,10 @@ function importAllBackupJSON(file, onComplete) {
                 if (d.qenglish_settings_v1 && typeof d.qenglish_settings_v1 === "object") {
                     saveSettings(d.qenglish_settings_v1);
                 }
+                const importedPdf = d.qenglish_pdf_studio_v1 || (d.qenglish_dashboard_v1 && d.qenglish_dashboard_v1.pdfStudio);
+                if (importedPdf && typeof importedPdf === "object" && typeof applyPdfStudioStateFromSync === "function") {
+                    applyPdfStudioStateFromSync(importedPdf);
+                }
             } else {
                 throw new Error("File không đúng định dạng Backup của QEnglish.");
             }
@@ -1010,8 +1190,7 @@ const USER_SCOPED_KEYS = [
     BASE_STORAGE_KEYS.WRITING,
     BASE_STORAGE_KEYS.NOTEBOOK,
     BASE_STORAGE_KEYS.CMS,
-    BASE_STORAGE_KEYS.SETTINGS,
-    BASE_STORAGE_KEYS.PDF_STUDIO
+    BASE_STORAGE_KEYS.SETTINGS
 ];
 
 let accountsStore = null;
@@ -1024,10 +1203,13 @@ function loadAccountsStore() {
     } else {
         const primaryId = "acc-primary";
         const initialSnapshot = {};
-        USER_SCOPED_KEYS.forEach(k => {
-            const val = localStorage.getItem(k);
-            if (val !== null) initialSnapshot[k] = val;
-        });
+        if (!(typeof window !== "undefined" && window.__QENGLISH_ACTIVE_UID)) {
+            USER_SCOPED_KEYS.forEach(k => {
+                if (k === BASE_STORAGE_KEYS.PDF_STUDIO) return;
+                const val = localStorage.getItem(k);
+                if (val !== null) initialSnapshot[k] = val;
+            });
+        }
         accountsStore = {
             activeAccountId: primaryId,
             accounts: {
@@ -1065,12 +1247,25 @@ function syncCurrentAccountSnapshot() {
     const acc = getActiveAccount();
     if (!acc) return;
 
-    const snap = {};
-    USER_SCOPED_KEYS.forEach(k => {
-        const val = localStorage.getItem(getScopedStorageKey(k));
-        if (val !== null) snap[k] = val;
-    });
-    acc.data = snap;
+    // When authenticated under an isolated UID (Cloud or Local Auth), data already lives in `qenglish_u_<uid>::*`
+    // and IndexedDB — never duplicate megabytes of stringified JSON inside `qenglish_accounts_v1`!
+    if (typeof window !== "undefined" && window.__QENGLISH_ACTIVE_UID) {
+        acc.data = {};
+    } else {
+        const snap = {};
+        USER_SCOPED_KEYS.forEach(k => {
+            if (k === BASE_STORAGE_KEYS.PDF_STUDIO) return;
+            const val = localStorage.getItem(getScopedStorageKey(k));
+            if (val === null) return;
+            if (k === BASE_STORAGE_KEYS.DASHBOARD) {
+                const parsedDash = safeParseJSON(val, null);
+                snap[k] = parsedDash ? JSON.stringify(stripPdfStudioFromDashboardObj(parsedDash)) : val;
+            } else {
+                snap[k] = val;
+            }
+        });
+        acc.data = snap;
+    }
     acc.updatedAt = new Date().toISOString();
 
     try {
@@ -1313,8 +1508,9 @@ function compactPdfStudioForCloud(rawPdfState) {
 }
 
 function collectCurrentWorkspaceSnapshot() {
-    const dashBase = safeParseJSON(localStorage.getItem(STORAGE_KEYS.DASHBOARD), { tasksByDate: {} }) || { tasksByDate: {} };
-    const pdfRaw = safeParseJSON(localStorage.getItem(STORAGE_KEYS.PDF_STUDIO), null);
+    const dashRaw = safeParseJSON(localStorage.getItem(STORAGE_KEYS.DASHBOARD), { tasksByDate: {} }) || { tasksByDate: {} };
+    const dashBase = stripPdfStudioFromDashboardObj(dashRaw);
+    const pdfRaw = getCurrentPdfStudioRawForSnapshot();
     const pdfCompact = compactPdfStudioForCloud(pdfRaw);
     const dashboardStateMerged = pdfCompact ? { ...dashBase, pdfStudio: pdfCompact } : dashBase;
 
@@ -1351,9 +1547,20 @@ function applyWorkspaceSnapshotToLocal(snapshot, options = {}) {
             safeWriteJSON(STORAGE_KEYS.PROGRESS, snapshot.progress_state);
         }
         if (snapshot.dashboard_state && typeof snapshot.dashboard_state === "object") {
-            safeWriteJSON(STORAGE_KEYS.DASHBOARD, snapshot.dashboard_state);
-            if (snapshot.dashboard_state.pdfStudio && typeof snapshot.dashboard_state.pdfStudio === "object") {
-                safeWriteJSON(STORAGE_KEYS.PDF_STUDIO, snapshot.dashboard_state.pdfStudio);
+            const incomingPdf = snapshot.dashboard_state.pdfStudio;
+            const cleanDash = stripPdfStudioFromDashboardObj(snapshot.dashboard_state);
+            safeWriteJSON(STORAGE_KEYS.DASHBOARD, cleanDash);
+            if (incomingPdf && typeof incomingPdf === "object") {
+                if (typeof applyPdfStudioStateFromSync === "function") {
+                    applyPdfStudioStateFromSync(incomingPdf);
+                } else {
+                    const serializedPdf = JSON.stringify(incomingPdf);
+                    if (serializedPdf.length <= PDF_STUDIO_LOCALSTORAGE_INLINE_MAX) {
+                        safeWriteJSON(STORAGE_KEYS.PDF_STUDIO, incomingPdf);
+                    } else {
+                        migrateOversizedPdfKeyToVault(STORAGE_KEYS.PDF_STUDIO, incomingPdf, true);
+                    }
+                }
             }
         }
         if (snapshot.grammar_state && typeof snapshot.grammar_state === "object") {

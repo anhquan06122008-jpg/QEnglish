@@ -1015,6 +1015,14 @@ async function bootAuthenticatedWorkspace(user, options = {}) {
     window.__QENGLISH_AUTH_USER = user;
     window.__QENGLISH_ACTIVE_UID = options.useLegacyNamespace ? null : user.id;
 
+    // Self-heal bloated localStorage (duplicated pdfStudio in DASHBOARD / qenglish_accounts_v1) before syncing or writing
+    if (typeof cleanupBloatedLocalStorage === "function") {
+        cleanupBloatedLocalStorage({ aggressive: false });
+    }
+    if (typeof hydratePdfStudioStateFromVault === "function") {
+        await hydratePdfStudioStateFromVault(true);
+    }
+
     hideAuthScreen();
 
     // Pull cloud data if authenticated against Supabase Cloud
@@ -1217,6 +1225,9 @@ window.refreshUIAfterRemoteSync = function () {
 };
 
 window.addEventListener("DOMContentLoaded", async () => {
+    if (typeof cleanupBloatedLocalStorage === "function") {
+        cleanupBloatedLocalStorage({ aggressive: false });
+    }
     setupVocabularyKeyboardShortcuts();
     const readingTextEl = document.getElementById("reading-passage-text");
     if (readingTextEl) {
