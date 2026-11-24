@@ -350,6 +350,7 @@ function renderWordList() {
                         <button onclick="toggleStarItem(${escHtml(safeIdJson)})" class="p-2 rounded-lg hover:bg-white/5 ${item.starred ? "text-amber-400" : "text-slate-500"} hover:text-amber-300 transition" title="Đánh dấu từ khó">★</button>
                         <button onclick="saveWordIdToNotebook(${escHtml(safeIdJson)})" class="p-2 rounded-lg hover:bg-white/5 text-violet-300 hover:text-violet-200 transition text-xs" title="Lưu vào Sổ tay">📓</button>
                         <button onclick="enrichWordWithAICoach(${escHtml(safeIdJson)})" class="p-2 rounded-lg hover:bg-white/5 text-emerald-300 hover:text-emerald-200 transition text-xs" title="AI Phân tích 13 thông tin & Collocations">✨</button>
+                        <button onclick="openEditVocabItemModal(${escHtml(safeIdJson)})" class="p-2 rounded-lg hover:bg-white/5 text-sky-300 hover:text-sky-200 transition text-xs" title="Chỉnh sửa thông tin từ vựng">✏️</button>
                         <button onclick="deleteItem(${escHtml(safeIdJson)})" class="p-2 rounded-lg hover:bg-white/5 text-rose-400/80 hover:text-rose-300 transition" title="Xóa từ">🗑</button>
                     </div>
                 </div>
@@ -424,6 +425,192 @@ function deleteItem(id) {
         applyStudyFilter();
         showToast(`Đã xóa từ "${item.term}"!`);
     }
+}
+
+let _editingVocabWordId = null;
+
+function openEditVocabItemModal(id) {
+    const item = deck.find(d => String(d.id) === String(id));
+    if (!item) return;
+    _editingVocabWordId = String(item.id);
+
+    let host = document.getElementById("vocab-edit-word-modal");
+    if (!host) {
+        host = document.createElement("div");
+        host.id = "vocab-edit-word-modal";
+        document.body.appendChild(host);
+    }
+
+    const daySet = new Set();
+    deck.forEach(w => {
+        const d = parseInt(w?.day, 10);
+        if (Number.isFinite(d) && d >= 1) daySet.add(d);
+    });
+    const sortedDays = Array.from(daySet).sort((a, b) => a - b);
+    const maxDay = sortedDays.length ? sortedDays[sortedDays.length - 1] : 1;
+    const quickDays = sortedDays.slice(-6);
+    const curDay = Math.max(1, parseInt(item.day, 10) || 1);
+    const curPos = String(item.pos || "noun").toLowerCase();
+    const posList = ["noun", "verb", "adjective", "adverb", "collocation", "phrase", "phrasal verb", "idiom", "preposition", "vocab"];
+    if (!posList.includes(curPos)) posList.unshift(curPos);
+
+    host.className = "";
+    host.innerHTML = `
+        <div class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5" onclick="if(event.target===this) closeEditVocabItemModal()">
+            <div class="w-full max-w-xl glass-panel rounded-3xl border border-sky-500/45 p-5 sm:p-6 space-y-4 text-xs shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div class="flex items-start justify-between gap-2 pb-3 border-b border-white/10">
+                    <div>
+                        <span class="text-[10px] font-extrabold uppercase tracking-wider text-sky-300">✏️ Chỉnh sửa thông tin từ vựng (Giữ nguyên tiến độ SRS)</span>
+                        <h3 class="text-base sm:text-lg font-black text-white mt-0.5">${escHtml(item.term)}</h3>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <button id="edit-vocab-ai-btn" type="button" onclick="aiAutoFillEditVocabModal()" class="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 font-extrabold text-[11px]">✨ AI lọc lại IPA / POS / CEFR</button>
+                        <button type="button" onclick="closeEditVocabItemModal()" class="px-2.5 py-1.5 rounded-xl bg-white/5 text-slate-300 font-bold">✕</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-300 block mb-1">Từ tiếng Anh *</label>
+                        <input id="edit-vocab-term" type="text" value="${escHtml(item.term || "")}" class="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-white font-bold focus:outline-none focus:border-sky-400">
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-300 block mb-1">Nghĩa tiếng Việt *</label>
+                        <input id="edit-vocab-def" type="text" value="${escHtml(item.def || "")}" class="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-amber-300 font-bold focus:outline-none focus:border-sky-400">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-300 block mb-1">Phiên âm IPA</label>
+                        <input id="edit-vocab-ipa" type="text" value="${escHtml(item.ipa || "")}" placeholder="/.../" class="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-cyan-300 font-mono focus:outline-none focus:border-sky-400">
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-300 block mb-1">Loại từ (POS)</label>
+                        <select id="edit-vocab-pos" class="w-full bg-slate-950 border border-white/15 rounded-xl px-2.5 py-2 text-emerald-300 font-bold">
+                            ${posList.map(p => `<option value="${escHtml(p)}" ${curPos === p ? "selected" : ""}>${escHtml(p)}</option>`).join("")}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-300 block mb-1">Trình độ CEFR</label>
+                        <select id="edit-vocab-level" class="w-full bg-slate-950 border border-white/15 rounded-xl px-2.5 py-2 text-amber-300 font-extrabold">
+                            ${["A1", "A2", "B1", "B2", "C1", "C2"].map(lv => `<option value="${lv}" ${String(item.level || "B1").toUpperCase() === lv ? "selected" : ""}>${lv}</option>`).join("")}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-300 block mb-1">Chủ đề (Category)</label>
+                        <input id="edit-vocab-category" type="text" value="${escHtml(item.category || "General")}" class="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-violet-300 font-bold focus:outline-none focus:border-sky-400">
+                    </div>
+                </div>
+
+                <!-- Day picker -->
+                <div class="p-3 rounded-2xl bg-slate-950/85 border border-white/10 space-y-2">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <label class="text-[11px] font-extrabold text-cyan-300">📅 Ngày học (Day):</label>
+                        <input id="edit-vocab-day" type="number" min="1" max="999" value="${curDay}" class="w-20 bg-slate-900 border border-white/15 rounded-lg px-2.5 py-1 text-cyan-300 font-black text-center">
+                    </div>
+                    <div class="flex flex-wrap gap-1.5">
+                        ${quickDays.map(d => `<button type="button" onclick="document.getElementById('edit-vocab-day').value='${d}'" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-violet-600/30 border border-white/10 text-slate-300 font-bold">Ngày ${d}</button>`).join("")}
+                        <button type="button" onclick="document.getElementById('edit-vocab-day').value='${maxDay + 1}'" class="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 font-bold">+ Ngày ${maxDay + 1}</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-[11px] font-bold text-slate-300 block mb-1">Câu ví dụ (Example)</label>
+                    <textarea id="edit-vocab-example" rows="2" class="w-full bg-slate-950 border border-white/15 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-sky-400">${escHtml(item.example || "")}</textarea>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[11px] font-bold text-emerald-300 block mb-1">Từ đồng nghĩa (Synonyms)</label>
+                        <input id="edit-vocab-syn" type="text" value="${escHtml(item.synonyms || "")}" placeholder="VD: empathy, kindness" class="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-400">
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-rose-300 block mb-1">Từ trái nghĩa (Antonyms)</label>
+                        <input id="edit-vocab-ant" type="text" value="${escHtml(item.antonyms || "")}" placeholder="VD: indifference, cruelty" class="w-full bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-rose-400">
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+                    <button type="button" onclick="closeEditVocabItemModal()" class="px-4 py-2 rounded-xl bg-white/5 text-slate-300 font-bold">Hủy</button>
+                    <button id="edit-vocab-save-btn" type="button" onclick="saveEditedVocabItem()" class="px-6 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-violet-600 hover:opacity-95 text-white font-extrabold shadow-lg">💾 Lưu thay đổi</button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function closeEditVocabItemModal() {
+    _editingVocabWordId = null;
+    document.getElementById("vocab-edit-word-modal")?.classList.add("hidden");
+}
+
+async function aiAutoFillEditVocabModal() {
+    const term = (document.getElementById("edit-vocab-term")?.value || "").trim();
+    const def = (document.getElementById("edit-vocab-def")?.value || "").trim();
+    const example = (document.getElementById("edit-vocab-example")?.value || "").trim();
+    const btn = document.getElementById("edit-vocab-ai-btn");
+    if (!term) return;
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ AI đang phân tích..."; }
+    try {
+        const res = await AIClient.request("vocab-classify", { term, def, example });
+        if (res?.ok && res.data) {
+            const d = res.data;
+            if (d.ipa && document.getElementById("edit-vocab-ipa")) document.getElementById("edit-vocab-ipa").value = d.ipa;
+            if (d.pos && document.getElementById("edit-vocab-pos")) {
+                const posEl = document.getElementById("edit-vocab-pos");
+                const pVal = String(d.pos).trim().toLowerCase();
+                if (![...posEl.options].some(o => o.value === pVal)) {
+                    const opt = document.createElement("option");
+                    opt.value = pVal; opt.textContent = pVal;
+                    posEl.appendChild(opt);
+                }
+                posEl.value = pVal;
+            }
+            if (["A1", "A2", "B1", "B2", "C1", "C2"].includes(String(d.level || "").toUpperCase())) {
+                const lvEl = document.getElementById("edit-vocab-level");
+                if (lvEl) lvEl.value = String(d.level).toUpperCase();
+            }
+            if (d.defVi && !def && document.getElementById("edit-vocab-def")) document.getElementById("edit-vocab-def").value = d.defVi;
+            if (d.category && document.getElementById("edit-vocab-category")) document.getElementById("edit-vocab-category").value = d.category;
+            if (d.example && !example && document.getElementById("edit-vocab-example")) document.getElementById("edit-vocab-example").value = d.example;
+            showToast(`✨ AI đã cập nhật chuẩn IPA / ${d.pos || ""} / ${d.level || ""} cho "${term}"!`);
+        } else {
+            showToast("Không gọi được AI phân loại: " + (res?.error || "Kiểm tra kết nối."), "warning");
+        }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "✨ AI lọc lại IPA / POS / CEFR"; }
+    }
+}
+
+function saveEditedVocabItem() {
+    if (!_editingVocabWordId) return;
+    const item = deck.find(d => String(d.id) === String(_editingVocabWordId));
+    if (!item) return;
+
+    const newTerm = (document.getElementById("edit-vocab-term")?.value || "").trim();
+    const newDef = (document.getElementById("edit-vocab-def")?.value || "").trim();
+    if (!newTerm || !newDef) {
+        showToast("Từ tiếng Anh và Nghĩa tiếng Việt không được để trống!", "error");
+        return;
+    }
+
+    item.term = newTerm;
+    item.def = newDef;
+    item.ipa = (document.getElementById("edit-vocab-ipa")?.value || "").trim() || "/.../";
+    item.pos = (document.getElementById("edit-vocab-pos")?.value || "noun").trim();
+    item.level = (document.getElementById("edit-vocab-level")?.value || "B1").trim();
+    item.category = (document.getElementById("edit-vocab-category")?.value || "General").trim() || "General";
+    item.day = Math.max(1, parseInt(document.getElementById("edit-vocab-day")?.value || "1", 10) || 1);
+    item.example = (document.getElementById("edit-vocab-example")?.value || "").trim();
+    item.synonyms = (document.getElementById("edit-vocab-syn")?.value || "").trim();
+    item.antonyms = (document.getElementById("edit-vocab-ant")?.value || "").trim();
+
+    saveDeckToStorage();
+    renderWordList();
+    applyStudyFilter();
+    closeEditVocabItemModal();
+    showToast(`✅ Đã cập nhật thông tin từ "${item.term}" (Ngày ${item.day} • ${item.level})!`);
 }
 
 /* ==================== 3. QUIZ ENGINE (PRESERVED + ANSWER REVIEW) ==================== */
